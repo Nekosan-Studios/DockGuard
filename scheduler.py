@@ -14,10 +14,15 @@ from models import Scan
 logger = logging.getLogger(__name__)
 
 SCAN_INTERVAL_SECONDS = int(os.environ.get("SCAN_INTERVAL_SECONDS", "60"))
+MAX_CONCURRENT_SCANS = int(os.environ.get("MAX_CONCURRENT_SCANS", "2"))
 
 # In-memory set of image_ids (sha256:...) we have already scanned or scheduled.
 # Bootstrapped from DB on startup so restarts don't re-scan known images.
 _seen_digests: set[str] = set()
+
+# Limits how many Grype processes run at the same time. Created in
+# create_scheduler() so it always reflects the current MAX_CONCURRENT_SCANS value.
+_scan_semaphore: asyncio.Semaphore | None = None
 
 # Exposed for inspection in tests.
 _active_scheduler: AsyncIOScheduler | None = None
@@ -43,8 +48,13 @@ async def check_running_containers(db: Database) -> None:
 
 
 async def _scan_image_async(image_name: str, grype_ref: str, db: Database) -> None:
-    """Run a Grype scan in a thread so the event loop is not blocked."""
-    await asyncio.to_thread(_scan_image_sync, image_name, grype_ref, db)
+    """Run a Grype scan in a thread so the event loop is not blocked.
+
+    Acquires _scan_semaphore before launching so at most MAX_CONCURRENT_SCANS
+    Grype processes run simultaneously.
+    """
+    async with _scan_semaphore:
+        await asyncio.to_thread(_scan_image_sync, image_name, grype_ref, db)
 
 
 def _scan_image_sync(image_name: str, grype_ref: str, db: Database) -> None:
@@ -53,7 +63,9 @@ def _scan_image_sync(image_name: str, grype_ref: str, db: Database) -> None:
 
 def create_scheduler(db: Database) -> AsyncIOScheduler:
     """Create and configure the scheduler, bootstrapping seen digests from DB."""
-    global _seen_digests, _active_scheduler
+    global _seen_digests, _active_scheduler, _scan_semaphore
+    _scan_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
+    logger.info("Scheduler: max concurrent Grype scans = %d", MAX_CONCURRENT_SCANS)
     with Session(db.engine) as session:
         rows = session.exec(select(Scan.image_digest)).all()
         _seen_digests = set(rows)
