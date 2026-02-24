@@ -6,7 +6,8 @@ from sqlmodel import Field, Relationship, SQLModel
 class Scan(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     scanned_at: datetime
-    image_name: str
+    image_name: str          # full image_ref, e.g. "nginx:latest"
+    image_repository: str    # name without tag, e.g. "nginx" or "ghcr.io/owner/repo"
     image_digest: str
     grype_version: str
     db_built: Optional[datetime] = None

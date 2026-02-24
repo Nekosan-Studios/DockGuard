@@ -174,12 +174,14 @@ MOCK_DOCKER_IMAGES = [
         "name": "nginx:latest",
         "grype_ref": "nginx:latest",
         "hash": "aaaa00000000",
+        "image_id": "sha256:aaaa000000000000000000000000000000000000000000000000000000000000",
         "running": False,
     },
     {
         "name": "redis:7",
         "grype_ref": "redis:7",
         "hash": "cccc00000000",
+        "image_id": "sha256:cccc000000000000000000000000000000000000000000000000000000000000",
         "running": True,
     },
 ]

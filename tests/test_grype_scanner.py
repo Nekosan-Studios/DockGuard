@@ -57,10 +57,29 @@ def test_scan_images_stores_scan_row(mock_run, test_db):
         scan = session.exec(select(Scan)).first()
     assert scan is not None
     assert scan.image_name == "nginx:latest"
+    assert scan.image_repository == "nginx"
     assert scan.image_digest == GRYPE_JSON_NGINX["source"]["target"]["imageID"]
     assert scan.grype_version == "0.85.0"
     assert scan.distro_name == "debian"
     assert scan.distro_version == "12"
+
+
+@patch("grype_scanner.subprocess.run")
+def test_scan_image_targeted(mock_run, test_db):
+    """scan_image() scans a single image by name and grype_ref."""
+    mock_run.return_value = _mock_subprocess(GRYPE_JSON_NGINX)
+    scanner = _make_scanner(test_db)
+    scanner.scan_image("nginx:latest", "nginx:latest")
+
+    mock_run.assert_called_once_with(
+        ["grype", "nginx:latest", "-o", "json", "-q"],
+        capture_output=True,
+        text=True,
+    )
+    with Session(test_db.engine) as session:
+        scan = session.exec(select(Scan)).first()
+    assert scan is not None
+    assert scan.image_name == "nginx:latest"
 
 
 @patch("grype_scanner.subprocess.run")

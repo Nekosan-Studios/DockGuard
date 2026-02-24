@@ -10,6 +10,7 @@ This is an extremely early work in progress, the first iteration of the back end
 |---|---|
 | `docker_watcher.py` | Lists local Docker images via the Docker SDK; returns name, digest, grype reference, and running state |
 | `grype_scanner.py` | Runs `grype -o json -q` against each image, parses output, persists to DB |
+| `scheduler.py` | APScheduler job that polls Docker every 60s and triggers Grype scans for new or updated images |
 | `models.py` | SQLModel ORM definitions — `Scan` and `Vulnerability` tables |
 | `database.py` | SQLite engine setup, `init_db()`, `get_session()` FastAPI dependency |
 | `api.py` | FastAPI endpoints for querying scan results |
@@ -24,12 +25,12 @@ uv sync             # creates .venv and installs all dependencies
 ## Running
 
 ```bash
-# Run scans and persist results to DB
-uv run python grype_scanner.py
-
-# Start the API
 uv run uvicorn api:app --reload
 ```
+
+Starting the API server also starts the background scheduler. Every 60 seconds it checks which Docker containers are running. If a new image appears, or an existing image has been re-pulled to a new digest (e.g. `latest` was updated), a Grype scan is automatically queued and run in the background. Results are persisted to the database as scans complete.
+
+The poll interval can be changed with the `SCAN_INTERVAL_SECONDS` environment variable (default: `60`).
 
 ## Database
 
@@ -56,7 +57,8 @@ isolated in-memory SQLite database and are fully independent of one another.
 | `tests/conftest.py` | `test_db` and `api_client` fixtures, `seed_scan()` helper |
 | `tests/test_docker_watcher.py` | `DockerWatcher.list_images()` — tagged, untagged, running, Docker unavailable |
 | `tests/test_grype_scanner.py` | `GrypeScanner` — subprocess args, DB persistence, field parsing, error handling |
-| `tests/test_api.py` | All 5 API endpoints including 404s, latest-scan-only logic, and history ordering |
+| `tests/test_api.py` | All API endpoints including 404s, latest-scan-only logic, history ordering, and digest lookups |
+| `tests/test_scheduler.py` | Scheduler polling logic — new image detection, digest deduplication, DB bootstrap |
 
 ## Changing the Database Schema
 
@@ -74,7 +76,7 @@ uv run alembic revision --autogenerate -m "describe your change"
 uv run alembic upgrade head
 ```
 
-The app and scanner both run `alembic upgrade head` automatically on startup,
+The app runs `alembic upgrade head` automatically on startup,
 so once the migration file is committed, it will be applied on the next run.
 
 To roll back the last migration:
@@ -84,12 +86,26 @@ uv run alembic downgrade -1
 
 ## API Endpoints
 
-Image names are passed as a `name` query parameter to handle names containing forward slashes (e.g. `ghcr.io/owner/repo:latest`).
+### Image identifiers
 
-| Method | Path | Description |
+The API uses three ways to refer to images. Which one to use depends on context:
+
+| Identifier | Example | Use when |
 |---|---|---|
-| GET | `/images/vulnerabilities?name=<image>` | All vulns for latest scan of an image |
-| GET | `/images/vulnerabilities/critical?name=<image>` | Critical vulns for latest scan |
-| GET | `/vulnerabilities/critical/running` | Critical vulns across all currently running containers |
-| GET | `/vulnerabilities/count` | Total vuln count across latest scan per image |
-| GET | `/images/vulnerabilities/history?name=<image>` | Vuln counts over time per scan/digest |
+| `image_repository` | `nginx`, `ghcr.io/owner/repo` | Querying history across all tags of an image |
+| `image_ref` | `nginx:latest`, `ghcr.io/owner/repo:tag` | Querying a specific tagged image (most endpoints) |
+| `image_digest` | `sha256:abc123...` | Pinning an exact image version; accepted wherever `image_ref` is |
+
+The history endpoint accepts all three forms and auto-detects which was provided.
+
+### Routes
+
+| Method | Path | Parameter | Description |
+|---|---|---|---|
+| GET | `/images/vulnerabilities` | `?image_ref=` | All vulns for the latest scan of an image |
+| GET | `/images/vulnerabilities/critical` | `?image_ref=` | Critical vulns for the latest scan |
+| GET | `/vulnerabilities/critical/running` | — | Critical vulns across all currently running containers |
+| GET | `/vulnerabilities/count` | — | Total vuln count across the latest scan per image |
+| GET | `/images/vulnerabilities/history` | `?image=` | Vuln counts over time; accepts `image_repository`, `image_ref`, or `image_digest` |
+
+Image parameters are passed as query strings to handle names containing forward slashes (e.g. `ghcr.io/owner/repo:latest`).

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from api import app
 from database import Database, db as production_db
+from grype_scanner import _parse_image_repository
 from models import Scan, Vulnerability
 from datetime import datetime, timezone
 
@@ -56,6 +57,7 @@ def seed_scan(database: Database, image_name: str, image_digest: str, vulns: lis
     scan = Scan(
         scanned_at=scanned_at or datetime.now(timezone.utc),
         image_name=image_name,
+        image_repository=_parse_image_repository(image_name),
         image_digest=image_digest,
         grype_version="0.85.0",
         db_built=datetime(2024, 1, 15, tzinfo=timezone.utc),

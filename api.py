@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -5,14 +6,21 @@ from sqlmodel import Session, func, select
 
 from database import db
 from docker_watcher import DockerWatcher
+from grype_scanner import _parse_image_repository
 from models import Scan, Vulnerability
+from scheduler import create_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
-    # everything before yield runs at startup, after yield at shutdown
+    # alembic.ini's fileConfig sets root logger to WARNING; restore to INFO
+    # so app loggers (scheduler, grype_scanner, docker_watcher) are visible.
+    logging.getLogger().setLevel(logging.INFO)
+    scheduler = create_scheduler(db)
+    scheduler.start()
     yield
+    scheduler.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -20,18 +28,35 @@ router = app.router
 
 
 # ---------------------------------------------------------------------------
-# Helper: resolve the most recent scan for a given image name
+# Helpers
 # ---------------------------------------------------------------------------
 
-def _latest_scan_for(image_name: str, session: Session) -> Scan:
-    scan = session.exec(
-        select(Scan)
-        .where(Scan.image_name == image_name)
-        .order_by(Scan.scanned_at.desc())
-    ).first()
+def _latest_scan_for_ref(image_ref: str, session: Session) -> Scan:
+    """Resolve the most recent scan by image_ref (name+tag) or image_digest."""
+    if image_ref.startswith("sha256:"):
+        stmt = select(Scan).where(Scan.image_digest == image_ref)
+    else:
+        stmt = select(Scan).where(Scan.image_name == image_ref)
+    scan = session.exec(stmt.order_by(Scan.scanned_at.desc())).first()
     if not scan:
-        raise HTTPException(status_code=404, detail=f"No scans found for image '{image_name}'")
+        raise HTTPException(status_code=404, detail=f"No scans found for '{image_ref}'")
     return scan
+
+
+def _parse_image_query(image: str) -> tuple[str, str]:
+    """Detect whether image is a digest, image_ref, or image_repository.
+
+    Returns (filter_type, value) where filter_type is one of:
+      "digest"           — sha256:...
+      "image_ref"        — nginx:latest, ghcr.io/owner/repo:tag
+      "image_repository" — nginx, ghcr.io/owner/repo
+    """
+    if image.startswith("sha256:"):
+        return "digest", image
+    last_colon = image.rfind(":")
+    if last_colon != -1 and "/" not in image[last_colon + 1:]:
+        return "image_ref", image
+    return "image_repository", image
 
 
 # ---------------------------------------------------------------------------
@@ -40,11 +65,11 @@ def _latest_scan_for(image_name: str, session: Session) -> Scan:
 
 @app.get("/images/vulnerabilities")
 def get_vulnerabilities(
-    name: str = Query(..., description="Full image name, e.g. ghcr.io/owner/repo:latest"),
+    image_ref: str = Query(..., description="Image reference: name+tag (nginx:latest) or digest (sha256:...)"),
     session: Session = Depends(db.get_session),
 ):
     """All vulnerabilities for the most recent scan of an image."""
-    scan = _latest_scan_for(name, session)
+    scan = _latest_scan_for_ref(image_ref, session)
     vulns = session.exec(
         select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     ).all()
@@ -53,11 +78,11 @@ def get_vulnerabilities(
 
 @app.get("/images/vulnerabilities/critical")
 def get_critical_vulnerabilities(
-    name: str = Query(..., description="Full image name, e.g. ghcr.io/owner/repo:latest"),
+    image_ref: str = Query(..., description="Image reference: name+tag (nginx:latest) or digest (sha256:...)"),
     session: Session = Depends(db.get_session),
 ):
     """Critical vulnerabilities for the most recent scan of an image."""
-    scan = _latest_scan_for(name, session)
+    scan = _latest_scan_for_ref(image_ref, session)
     vulns = session.exec(
         select(Vulnerability)
         .where(Vulnerability.scan_id == scan.id)
@@ -77,7 +102,7 @@ def get_critical_vulnerabilities_running(session: Session = Depends(db.get_sessi
     results = []
     for image_name in running_images:
         try:
-            scan = _latest_scan_for(image_name, session)
+            scan = _latest_scan_for_ref(image_name, session)
         except HTTPException:
             continue
         vulns = session.exec(
@@ -103,17 +128,36 @@ def get_total_vulnerability_count(session: Session = Depends(db.get_session)):
 
 @app.get("/images/vulnerabilities/history")
 def get_vulnerability_count_history(
-    name: str = Query(..., description="Full image name, e.g. ghcr.io/owner/repo:latest"),
+    image: str = Query(
+        ...,
+        description=(
+            "Image identifier — one of: "
+            "image_repository (nginx), "
+            "image_ref (nginx:latest), "
+            "or image_digest (sha256:...)"
+        ),
+    ),
     session: Session = Depends(db.get_session),
 ):
-    """Vulnerability counts over time for an image, grouped by scan (digest version)."""
-    scans = session.exec(
-        select(Scan)
-        .where(Scan.image_name == name)
-        .order_by(Scan.scanned_at.asc())
-    ).all()
+    """Vulnerability counts over time for an image.
+
+    Query by image_repository to get history across all tags, by image_ref for a
+    specific tag, or by image_digest for an exact image version.
+    Each history entry includes image_ref so you can see which tag was scanned.
+    """
+    filter_type, value = _parse_image_query(image)
+
+    stmt = select(Scan)
+    if filter_type == "digest":
+        stmt = stmt.where(Scan.image_digest == value)
+    elif filter_type == "image_ref":
+        stmt = stmt.where(Scan.image_name == value)
+    else:
+        stmt = stmt.where(Scan.image_repository == value)
+
+    scans = session.exec(stmt.order_by(Scan.scanned_at.asc())).all()
     if not scans:
-        raise HTTPException(status_code=404, detail=f"No scans found for image '{name}'")
+        raise HTTPException(status_code=404, detail=f"No scans found for '{image}'")
 
     history = []
     for scan in scans:
@@ -124,8 +168,9 @@ def get_vulnerability_count_history(
         history.append({
             "scan_id": scan.id,
             "scanned_at": scan.scanned_at,
+            "image_ref": scan.image_name,
             "image_digest": scan.image_digest,
             "total": count,
         })
 
-    return {"image_name": name, "history": history}
+    return {"image": image, "history": history}

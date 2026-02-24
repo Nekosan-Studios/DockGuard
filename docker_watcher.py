@@ -1,4 +1,8 @@
+import logging
+
 import docker
+
+logger = logging.getLogger(__name__)
 
 
 class DockerWatcher:
@@ -7,7 +11,7 @@ class DockerWatcher:
         try:
             self.client = docker.from_env()
         except docker.errors.DockerException as e:
-            print(f"Error: Could not connect to Docker. Is Docker Desktop running?\nDetails: {e}")
+            logger.warning("Could not connect to Docker (is Docker Desktop running?): %s", e)
             self.client = None
 
     def list_images(self) -> list[dict]:
@@ -26,6 +30,7 @@ class DockerWatcher:
                 "name": tag if tag else "<untagged>",
                 "grype_ref": tag if tag else f"docker:{image.id}",
                 "hash": image.id.replace("sha256:", "")[:12],
+                "image_id": image.id,  # full sha256:... for change detection
                 "running": image.id in running_image_ids,
             })
 

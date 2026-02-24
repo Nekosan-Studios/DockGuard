@@ -1,4 +1,5 @@
 import json
+import logging
 import subprocess
 from datetime import datetime, timezone
 
@@ -8,10 +9,29 @@ from database import Database, db
 from docker_watcher import DockerWatcher
 from models import Scan, Vulnerability
 
+logger = logging.getLogger(__name__)
+
+
+def _parse_image_repository(image_ref: str) -> str:
+    """Extract repository from image_ref by stripping the tag.
+
+    Examples:
+        'nginx:latest'                    -> 'nginx'
+        'ghcr.io/owner/repo:tag'          -> 'ghcr.io/owner/repo'
+        'myregistry.com:5000/nginx:latest' -> 'myregistry.com:5000/nginx'
+        'nginx'                           -> 'nginx'
+    """
+    last_colon = image_ref.rfind(":")
+    if last_colon == -1:
+        return image_ref
+    if "/" not in image_ref[last_colon + 1:]:
+        return image_ref[:last_colon]
+    return image_ref
+
 
 class GrypeScanner:
 
-    def __init__(self, watcher: DockerWatcher, database: Database):
+    def __init__(self, watcher: DockerWatcher | None, database: Database):
         self.watcher = watcher
         self.db = database
 
@@ -19,33 +39,32 @@ class GrypeScanner:
         images = self.watcher.list_images()
 
         if not images:
-            print("No images found to scan.")
+            logger.info("No images found to scan.")
             return
 
         for image in images:
-            name = image["name"]
-            ref = image["grype_ref"]
+            self.scan_image(image["name"], image["grype_ref"])
 
-            print(f"--- Launching Grype scan for: {name} ({image['hash']}) ---")
-            result = subprocess.run(
-                ["grype", ref, "-o", "json", "-q"],
-                capture_output=True,
-                text=True,
-            )
-            print(f"--- Grype scan complete for: {name} ---")
+    def scan_image(self, image_name: str, grype_ref: str) -> None:
+        """Scan a single image and persist results to the database."""
+        logger.info("Scanning %s", image_name)
+        result = subprocess.run(
+            ["grype", grype_ref, "-o", "json", "-q"],
+            capture_output=True,
+            text=True,
+        )
 
-            if result.returncode != 0:
-                print(f"    Grype error: {result.stderr.strip()}")
-                continue
+        if result.returncode != 0:
+            logger.error("Grype error for %s: %s", image_name, result.stderr.strip())
+            return
 
-            try:
-                grype_json = json.loads(result.stdout)
-            except json.JSONDecodeError as e:
-                print(f"    Failed to parse Grype JSON output: {e}")
-                continue
+        try:
+            grype_json = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse Grype JSON for %s: %s", image_name, e)
+            return
 
-            self._store_scan(grype_json, name)
-            print()
+        self._store_scan(grype_json, image_name)
 
     def _store_scan(self, grype_json: dict, image_name: str) -> None:
         source = grype_json.get("source", {})
@@ -57,6 +76,7 @@ class GrypeScanner:
         scan = Scan(
             scanned_at=datetime.now(timezone.utc),
             image_name=image_name,
+            image_repository=_parse_image_repository(image_name),
             image_digest=target.get("imageID", ""),
             grype_version=descriptor.get("version", ""),
             db_built=self._parse_datetime(db_info.get("built")),
@@ -119,7 +139,7 @@ class GrypeScanner:
                 v.scan_id = scan.id
                 session.add(v)
             session.commit()
-            print(f"    Stored scan id={scan.id} with {len(vulnerabilities)} vulnerabilities.")
+            logger.info("Stored scan id=%s for %s with %d vulnerabilities", scan.id, image_name, len(vulnerabilities))
 
     def _parse_datetime(self, value: str | None) -> datetime | None:
         if not value:
@@ -131,6 +151,7 @@ class GrypeScanner:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)-8s %(name)s - %(message)s")
     db.init()  # runs alembic upgrade head
     scanner = GrypeScanner(watcher=DockerWatcher(), database=db)
     scanner.scan_images()
