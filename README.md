@@ -42,10 +42,12 @@ Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding
 
 ## API Endpoints
 
+Image names are passed as a `name` query parameter to handle names containing forward slashes (e.g. `ghcr.io/owner/repo:latest`).
+
 | Method | Path | Description |
 |---|---|---|
-| GET | `/images/{image_name}/vulnerabilities` | All vulns for latest scan of an image |
-| GET | `/images/{image_name}/vulnerabilities/critical` | Critical vulns for latest scan |
+| GET | `/images/vulnerabilities?name=<image>` | All vulns for latest scan of an image |
+| GET | `/images/vulnerabilities/critical?name=<image>` | Critical vulns for latest scan |
 | GET | `/vulnerabilities/critical/running` | Critical vulns across all currently running containers |
 | GET | `/vulnerabilities/count` | Total vuln count across latest scan per image |
-| GET | `/images/{image_name}/vulnerabilities/history` | Vuln counts over time per scan/digest |
+| GET | `/images/vulnerabilities/history?name=<image>` | Vuln counts over time per scan/digest |

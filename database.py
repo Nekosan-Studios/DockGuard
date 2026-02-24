@@ -2,13 +2,18 @@ from sqlmodel import Session, SQLModel, create_engine
 
 DATABASE_URL = "sqlite:///docker_security_watch.db"
 
-engine = create_engine(DATABASE_URL)
+
+class Database:
+
+    def __init__(self, url: str = DATABASE_URL):
+        self.engine = create_engine(url)
+
+    def init(self):
+        SQLModel.metadata.create_all(self.engine)
+
+    def get_session(self):
+        with Session(self.engine) as session:
+            yield session
 
 
-def init_db():
-    SQLModel.metadata.create_all(engine)
-
-
-def get_session():
-    with Session(engine) as session:
-        yield session
+db = Database()
