@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 from sqlmodel import Session
 
-from database import Database, db
-from docker_watcher import DockerWatcher
-from models import Scan, Vulnerability
+from .database import Database, db
+from .docker_watcher import DockerWatcher
+from .models import Scan, Vulnerability
 
 logger = logging.getLogger(__name__)
 

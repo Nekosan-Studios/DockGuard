@@ -25,8 +25,59 @@ uv sync             # creates .venv and installs all dependencies
 ## Running
 
 ```bash
-uv run uvicorn api:app --reload
+uv run uvicorn server.api:app --reload
 ```
+
+## Docker
+
+Grype is bundled in the image (pinned to a specific version), so no local install is needed.
+
+### Build the image
+
+```bash
+docker build -t docker-security-watch .
+```
+
+### Run with Docker Compose (recommended)
+
+```bash
+docker compose up
+```
+
+The compose file (`docker-compose.yml`) handles everything:
+- Mounts `/var/run/docker.sock` so the app can introspect the host Docker daemon
+- Creates a named volume `dsw-data` mounted at `/app/data` for database persistence
+- Sets `DATABASE_URL`, `SCAN_INTERVAL_SECONDS`, and `MAX_CONCURRENT_SCANS`
+
+The API is available at `http://localhost:8000`.
+
+To run in the background:
+
+```bash
+docker compose up -d
+docker compose logs -f   # tail logs
+docker compose down      # stop and remove container (data volume is preserved)
+```
+
+### Run with docker run (no compose)
+
+```bash
+docker run -d \
+  --name docker-security-watch \
+  -p 8000:8000 \
+  -v dsw-data:/app/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e DATABASE_URL=sqlite:////app/data/docker_security_watch.db \
+  -e SCAN_INTERVAL_SECONDS=60 \
+  -e MAX_CONCURRENT_SCANS=2 \
+  docker-security-watch
+```
+
+### Notes
+
+- **Docker socket**: The app must be able to reach the host Docker daemon. On Linux this is `/var/run/docker.sock`. On Docker Desktop for Mac/Windows the socket is also exposed at the same path via the Docker Desktop VM.
+- **Database persistence**: The SQLite file is stored inside the named volume. Removing the container does not delete scan history; only `docker volume rm dsw-data` does.
+- **Rebuilding after code changes**: `docker compose up --build` rebuilds the image before starting.
 
 Starting the API server also starts the background scheduler. Every 60 seconds it checks which Docker containers are running. If a new image appears, or an existing image has been re-pulled to a new digest (e.g. `latest` was updated), a Grype scan is automatically queued and run in the background. Results are persisted to the database as scans complete.
 

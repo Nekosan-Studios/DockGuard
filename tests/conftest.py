@@ -7,10 +7,10 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine
 from unittest.mock import patch
 
-from api import app
-from database import Database, db as production_db
-from grype_scanner import _parse_image_repository
-from models import Scan, Vulnerability
+from server.api import app
+from server.database import Database, db as production_db
+from server.grype_scanner import _parse_image_repository
+from server.models import Scan, Vulnerability
 from datetime import datetime, timezone
 
 
@@ -44,7 +44,7 @@ def test_db():
 def api_client(test_db):
     app.dependency_overrides[production_db.get_session] = test_db.get_session
 
-    with patch("api.DockerWatcher") as mock_watcher_cls:
+    with patch("server.api.DockerWatcher") as mock_watcher_cls:
         mock_watcher_cls.return_value.list_images.return_value = []
         with TestClient(app, raise_server_exceptions=True) as client:
             yield client, test_db, mock_watcher_cls
@@ -129,9 +129,9 @@ def integration_client(tmp_path):
     db_file = tmp_path / "integration.db"
     temp_db = Database(f"sqlite:///{db_file}")
     app.dependency_overrides[production_db.get_session] = temp_db.get_session
-    with patch("database.DATABASE_URL", f"sqlite:///{db_file}"):
-        with patch("api.db", temp_db):
-            with patch("scheduler.DockerWatcher") as mock_watcher:
+    with patch("server.database.DATABASE_URL", f"sqlite:///{db_file}"):
+        with patch("server.api.db", temp_db):
+            with patch("server.scheduler.DockerWatcher") as mock_watcher:
                 mock_watcher.return_value.list_images.return_value = []
                 with TestClient(app, raise_server_exceptions=True) as client:
                     yield client, temp_db
@@ -201,9 +201,9 @@ def e2e_client(tmp_path, require_docker, require_grype):
     db_file = tmp_path / "e2e.db"
     temp_db = Database(f"sqlite:///{db_file}")
     app.dependency_overrides[production_db.get_session] = temp_db.get_session
-    with patch("database.DATABASE_URL", f"sqlite:///{db_file}"):
-        with patch("api.db", temp_db):
-            with patch("scheduler.SCAN_INTERVAL_SECONDS", 5):
+    with patch("server.database.DATABASE_URL", f"sqlite:///{db_file}"):
+        with patch("server.api.db", temp_db):
+            with patch("server.scheduler.SCAN_INTERVAL_SECONDS", 5):
                 with TestClient(app, raise_server_exceptions=True) as client:
                     yield client, temp_db
     app.dependency_overrides.clear()

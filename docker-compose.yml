@@ -1,0 +1,18 @@
+services:
+  docker-security-watch:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the SQLite database across container restarts
+      - dsw-data:/app/data
+      # Mount the host Docker socket so the app can introspect running containers.
+      # Required — without this the scheduler cannot detect which images are running.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DATABASE_URL=sqlite:////app/data/docker_security_watch.db
+      - SCAN_INTERVAL_SECONDS=60
+      - MAX_CONCURRENT_SCANS=2
+
+volumes:
+  dsw-data:

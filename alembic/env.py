@@ -4,8 +4,8 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
-from database import DATABASE_URL
-from models import Scan, Vulnerability  # noqa: F401 — registers models with SQLModel.metadata
+from server.database import DATABASE_URL
+from server.models import Scan, Vulnerability  # noqa: F401 — registers models with SQLModel.metadata
 
 config = context.config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)

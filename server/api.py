@@ -4,11 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlmodel import Session, func, select
 
-from database import db
-from docker_watcher import DockerWatcher
-from grype_scanner import _parse_image_repository
-from models import Scan, Vulnerability
-from scheduler import create_scheduler
+from .database import db
+from .docker_watcher import DockerWatcher
+from .grype_scanner import _parse_image_repository
+from .models import Scan, Vulnerability
+from .scheduler import ContainerScheduler
 
 
 @asynccontextmanager
@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     # alembic.ini's fileConfig sets root logger to WARNING; restore to INFO
     # so app loggers (scheduler, grype_scanner, docker_watcher) are visible.
     logging.getLogger().setLevel(logging.INFO)
-    scheduler = create_scheduler(db)
+    scheduler = ContainerScheduler(db)
     scheduler.start()
     yield
     scheduler.shutdown()
