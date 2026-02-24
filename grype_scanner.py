@@ -131,6 +131,6 @@ class GrypeScanner:
 
 
 if __name__ == "__main__":
-    db.init()
+    db.init()  # runs alembic upgrade head
     scanner = GrypeScanner(watcher=DockerWatcher(), database=db)
     scanner.scan_images()

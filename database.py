@@ -1,4 +1,4 @@
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, create_engine
 
 DATABASE_URL = "sqlite:///docker_security_watch.db"
 
@@ -9,7 +9,10 @@ class Database:
         self.engine = create_engine(url)
 
     def init(self):
-        SQLModel.metadata.create_all(self.engine)
+        from alembic import command
+        from alembic.config import Config
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
 
     def get_session(self):
         with Session(self.engine) as session:

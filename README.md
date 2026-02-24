@@ -17,20 +17,18 @@ This is an extremely early work in progress, the first iteration of the back end
 ## Setup
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
 brew install grype  # must be installed separately — not a Python package
+uv sync             # creates .venv and installs all dependencies
 ```
 
 ## Running
 
 ```bash
 # Run scans and persist results to DB
-python grype_scanner.py
+uv run python grype_scanner.py
 
 # Start the API
-uvicorn api:app --reload
+uv run uvicorn api:app --reload
 ```
 
 ## Database
@@ -39,6 +37,30 @@ SQLite file: `docker_security_watch.db` (created automatically on first run).
 
 Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding).
 `image_digest` on `Scan` is how version changes are tracked over time for the same image name.
+
+## Changing the Database Schema
+
+Alembic manages all schema migrations. After editing `models.py`:
+
+```bash
+# 1. Generate a migration from the model changes
+uv run alembic revision --autogenerate -m "describe your change"
+
+# 2. Open the generated file in alembic/versions/ and verify the auto-generated
+#    upgrade/downgrade — check for any missing `import sqlmodel` if SQLModel
+#    string types are used (known autogenerate quirk)
+
+# 3. Apply the migration
+uv run alembic upgrade head
+```
+
+The app and scanner both run `alembic upgrade head` automatically on startup,
+so once the migration file is committed, it will be applied on the next run.
+
+To roll back the last migration:
+```bash
+uv run alembic downgrade -1
+```
 
 ## API Endpoints
 

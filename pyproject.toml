@@ -1,0 +1,12 @@
+[project]
+name = "docker-security-watch"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi",
+    "apscheduler",
+    "uvicorn",
+    "docker",
+    "sqlmodel",
+    "alembic",
+]
