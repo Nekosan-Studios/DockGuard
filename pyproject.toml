@@ -10,3 +10,9 @@ dependencies = [
     "sqlmodel",
     "alembic",
 ]
+
+[dependency-groups]
+dev = ["pytest", "httpx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

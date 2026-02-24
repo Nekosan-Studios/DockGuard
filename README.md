@@ -38,6 +38,26 @@ SQLite file: `docker_security_watch.db` (created automatically on first run).
 Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding).
 `image_digest` on `Scan` is how version changes are tracked over time for the same image name.
 
+## Running Tests
+
+```bash
+uv sync --group dev   # install test dependencies (first time only)
+uv run pytest -v
+```
+
+No Docker daemon or Grype binary required — both are mocked. Tests use an
+isolated in-memory SQLite database and are fully independent of one another.
+
+**Test structure:**
+
+| File | Covers |
+|---|---|
+| `tests/fixtures.py` | Static Grype JSON payloads and mock Docker image data |
+| `tests/conftest.py` | `test_db` and `api_client` fixtures, `seed_scan()` helper |
+| `tests/test_docker_watcher.py` | `DockerWatcher.list_images()` — tagged, untagged, running, Docker unavailable |
+| `tests/test_grype_scanner.py` | `GrypeScanner` — subprocess args, DB persistence, field parsing, error handling |
+| `tests/test_api.py` | All 5 API endpoints including 404s, latest-scan-only logic, and history ordering |
+
 ## Changing the Database Schema
 
 Alembic manages all schema migrations. After editing `models.py`:

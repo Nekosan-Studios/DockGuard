@@ -93,14 +93,10 @@ def get_critical_vulnerabilities_running(session: Session = Depends(db.get_sessi
 @app.get("/vulnerabilities/count")
 def get_total_vulnerability_count(session: Session = Depends(db.get_session)):
     """Total vulnerability count across the latest scan of every image."""
-    subquery = (
-        select(func.max(Scan.id))
-        .group_by(Scan.image_name)
-        .subquery()
-    )
+    latest_scan_ids = select(func.max(Scan.id)).group_by(Scan.image_name)
     count = session.exec(
         select(func.count(Vulnerability.id))
-        .where(Vulnerability.scan_id.in_(subquery))
+        .where(Vulnerability.scan_id.in_(latest_scan_ids))
     ).one()
     return {"total_vulnerability_count": count}
 
