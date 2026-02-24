@@ -1,4 +1,7 @@
+import shutil
+
 import pytest
+import docker as docker_sdk
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine
@@ -102,3 +105,105 @@ VULN_CRITICAL_2 = dict(
     epss_score=0.55, epss_percentile=0.95, risk_score=8.9,
     fix_state="fixed", fixed_version="7.0.15",
 )
+
+
+# ---------------------------------------------------------------------------
+# Integration fixtures — use a real temp SQLite file; alembic migrations run
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def tmp_db(tmp_path):
+    """Real Database backed by a throwaway SQLite file (no migrations run yet)."""
+    db_file = tmp_path / "test.db"
+    database = Database(f"sqlite:///{db_file}")
+    yield database
+
+
+@pytest.fixture
+def integration_client(tmp_path):
+    """TestClient with real lifespan (alembic migrations run) against a temp DB.
+
+    DockerWatcher is mocked to return no containers so the scheduler never
+    triggers a real Grype scan.
+    """
+    db_file = tmp_path / "integration.db"
+    temp_db = Database(f"sqlite:///{db_file}")
+    app.dependency_overrides[production_db.get_session] = temp_db.get_session
+    with patch("database.DATABASE_URL", f"sqlite:///{db_file}"):
+        with patch("api.db", temp_db):
+            with patch("scheduler.DockerWatcher") as mock_watcher:
+                mock_watcher.return_value.list_images.return_value = []
+                with TestClient(app, raise_server_exceptions=True) as client:
+                    yield client, temp_db
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# E2E fixtures — skip automatically when Docker / Grype are unavailable
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def require_docker():
+    """Skip the test if Docker daemon is not reachable."""
+    try:
+        docker_sdk.from_env().ping()
+    except Exception:
+        pytest.skip("Docker daemon not available")
+
+
+@pytest.fixture
+def require_grype():
+    """Skip the test if grype is not on PATH."""
+    if shutil.which("grype") is None:
+        pytest.skip("grype not on PATH")
+
+
+@pytest.fixture
+def test_container(require_docker):
+    """Ensure a known small container is running for E2E tests.
+
+    1. If the 'dsw-test' container is already running → use it, leave it running.
+    2. Otherwise → start alpine:latest with 'sleep 300', stop it after the test.
+
+    Yields dict: {"image_ref": "alpine:latest", "started_by_fixture": bool}
+    """
+    client = docker_sdk.from_env()
+    test_image = "alpine:latest"
+    test_name = "dsw-test"
+
+    for container in client.containers.list():
+        if container.name == test_name:
+            yield {"image_ref": test_image, "started_by_fixture": False}
+            return
+
+    try:
+        client.images.get(test_image)
+    except docker_sdk.errors.ImageNotFound:
+        client.images.pull(test_image)
+
+    container = client.containers.run(
+        test_image,
+        command="sleep 300",
+        name=test_name,
+        detach=True,
+        auto_remove=True,
+    )
+    yield {"image_ref": test_image, "started_by_fixture": True}
+    container.stop()
+
+
+@pytest.fixture
+def e2e_client(tmp_path, require_docker, require_grype):
+    """TestClient backed by a temp DB with real Docker and real Grype.
+
+    Scheduler interval is patched to 5 s so the test does not wait a full minute.
+    """
+    db_file = tmp_path / "e2e.db"
+    temp_db = Database(f"sqlite:///{db_file}")
+    app.dependency_overrides[production_db.get_session] = temp_db.get_session
+    with patch("database.DATABASE_URL", f"sqlite:///{db_file}"):
+        with patch("api.db", temp_db):
+            with patch("scheduler.SCAN_INTERVAL_SECONDS", 5):
+                with TestClient(app, raise_server_exceptions=True) as client:
+                    yield client, temp_db
+    app.dependency_overrides.clear()

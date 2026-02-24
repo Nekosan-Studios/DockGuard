@@ -19,6 +19,9 @@ SCAN_INTERVAL_SECONDS = int(os.environ.get("SCAN_INTERVAL_SECONDS", "60"))
 # Bootstrapped from DB on startup so restarts don't re-scan known images.
 _seen_digests: set[str] = set()
 
+# Exposed for inspection in tests.
+_active_scheduler: AsyncIOScheduler | None = None
+
 
 async def check_running_containers(db: Database) -> None:
     """Scheduled job: detect new/updated running containers and trigger scans."""
@@ -50,7 +53,7 @@ def _scan_image_sync(image_name: str, grype_ref: str, db: Database) -> None:
 
 def create_scheduler(db: Database) -> AsyncIOScheduler:
     """Create and configure the scheduler, bootstrapping seen digests from DB."""
-    global _seen_digests
+    global _seen_digests, _active_scheduler
     with Session(db.engine) as session:
         rows = session.exec(select(Scan.image_digest)).all()
         _seen_digests = set(rows)
@@ -65,4 +68,5 @@ def create_scheduler(db: Database) -> AsyncIOScheduler:
         name="Monitor running containers for new/updated images",
         replace_existing=True,
     )
+    _active_scheduler = scheduler
     return scheduler
