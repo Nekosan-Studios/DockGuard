@@ -1,4 +1,4 @@
-FROM python:python:3.14.3-slim-trixie
+FROM python:3.14.3-slim-trixie
 
 # Install system dependencies needed for grype install script
 RUN apt-get update && apt-get install -y --no-install-recommends \
