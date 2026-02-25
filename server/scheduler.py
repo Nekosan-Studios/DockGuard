@@ -1,15 +1,18 @@
 import asyncio
 import logging
 import os
+import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlmodel import Session, select
+from datetime import datetime
 
 from .database import Database
 from .docker_watcher import DockerWatcher
 from .grype_scanner import GrypeScanner
 from .models import Scan
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ class ContainerScheduler:
             IntervalTrigger(seconds=SCAN_INTERVAL_SECONDS),
             id="check_running_containers",
             name="Monitor running containers for new/updated images",
+            next_run_time=datetime.now(),
             replace_existing=True,
         )
         _active_scheduler = self
