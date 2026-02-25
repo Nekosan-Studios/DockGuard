@@ -9,6 +9,7 @@ RUN npm ci
 
 # Copy source and build
 COPY . .
+RUN npm run check
 RUN npm run build
 
 # Prune devDependencies so we only carry prod deps into the final image
