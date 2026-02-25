@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM node:22-slim AS builder
+FROM node:25-trixie-slim AS builder
 
 WORKDIR /app
 
