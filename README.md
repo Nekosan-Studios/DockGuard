@@ -1,90 +1,91 @@
 # DockerSecurityWatch
 
-A Python tool that lets home labbers understand the security vulnerabilities present in the docker images they run.
-
-This is an extremely early work in progress, the first iteration of the back end is all that is written at this time.  It will evolve into a fuller featured modern web app.
+A tool for home labbers to understand the security vulnerabilities present in the Docker images they run. It automatically scans running containers with Grype, persists results to SQLite, and surfaces them through a SvelteKit web dashboard.
 
 ## Key Files
 
+### Backend (`server/`)
+
 | File | Purpose |
 |---|---|
-| `docker_watcher.py` | Lists local Docker images via the Docker SDK; returns name, digest, grype reference, and running state |
-| `grype_scanner.py` | Runs `grype -o json -q` against each image, parses output, persists to DB |
-| `scheduler.py` | APScheduler job that polls Docker every 60s and triggers Grype scans for new or updated images |
-| `models.py` | SQLModel ORM definitions — `Scan` and `Vulnerability` tables |
-| `database.py` | SQLite engine setup, `init_db()`, `get_session()` FastAPI dependency |
-| `api.py` | FastAPI endpoints for querying scan results |
+| `server/docker_watcher.py` | Lists local Docker images via the Docker SDK; returns name, digest, grype reference, and running state |
+| `server/grype_scanner.py` | Runs `grype -o json -q` against each image, parses output, persists to DB |
+| `server/scheduler.py` | APScheduler job that polls Docker every 60s and triggers Grype scans for new or updated images |
+| `server/models.py` | SQLModel ORM definitions — `Scan` and `Vulnerability` tables |
+| `server/database.py` | SQLite engine setup, `init()`, `get_session()` FastAPI dependency |
+| `server/api.py` | FastAPI endpoints for querying scan results |
+
+### Frontend (`frontend/`)
+
+| File | Purpose |
+|---|---|
+| `frontend/src/routes/+layout.svelte` | Root layout — ModeWatcher, SidebarProvider, top header with mode toggle |
+| `frontend/src/routes/+page.svelte` | Dashboard page — stat cards and recent activity table |
+| `frontend/src/routes/+page.server.ts` | Server-side load function — fetches `/activity/recent` from the API |
+| `frontend/src/lib/components/app-sidebar.svelte` | Sidebar nav — Dashboard, Containers, Images, Tasks, Settings |
+| `frontend/src/lib/components/mode-toggle.svelte` | Light/dark theme toggle button |
+| `frontend/src/lib/components/ui/` | shadcn-svelte UI primitives (card, table, badge, button, sidebar, …) |
 
 ## Setup
 
 ```bash
-brew install grype  # must be installed separately — not a Python package
-uv sync             # creates .venv and installs all dependencies
+brew install grype      # must be installed separately — not a Python package
+uv sync                 # creates .venv and installs all Python dependencies
+cd frontend && npm ci   # install frontend dependencies
 ```
 
 ## Running
 
-### To start the back end in dev mode
+### Backend (dev mode)
 ```bash
-uv run uvicorn server.api:app --reload
+uv run uvicorn server.api:app --reload --port 8765
 ```
 
-### To start the front end in dev mode
+### Frontend (dev mode)
 ```bash
-  cd frontend && npm run dev
+cd frontend && npm run dev
 ```
-Then visit http://localhost:5173. Make sure the FastAPI backend is running on port 8765.
+
+Then visit http://localhost:5173. The frontend dev server proxies API calls to http://localhost:8765 via the SvelteKit server-side load function — make sure the backend is running.
 
 ## Docker
 
-Grype is bundled in the image (pinned to a specific version), so no local install is needed.
-
-### Build the image
-
-```bash
-docker build -t docker-security-watch .
-```
+Grype is bundled in the backend image (pinned to a specific version), so no local install is needed when running via Docker.
 
 ### Run with Docker Compose (recommended)
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
-The compose file (`docker-compose.yml`) handles everything:
-- Mounts `/var/run/docker.sock` so the app can introspect the host Docker daemon
-- Creates a named volume `dsw-data` mounted at `/app/data` for database persistence
-- Sets `DATABASE_URL`, `SCAN_INTERVAL_SECONDS`, and `MAX_CONCURRENT_SCANS`
+This starts two services:
 
-The API is available at `http://localhost:8765`.
+| Service | Port | Description |
+|---|---|---|
+| `docker-security-watch` | 8765 | FastAPI backend + Grype scanner |
+| `frontend` | 3000 | SvelteKit Node.js server |
+
+The compose file handles everything:
+- Mounts `/var/run/docker.sock` so the backend can introspect the host Docker daemon
+- Creates a named volume `dsw-data` at `/app/data` for database persistence
+- Sets `DATABASE_URL`, `SCAN_INTERVAL_SECONDS`, and `MAX_CONCURRENT_SCANS` on the backend
+- Sets `API_URL=http://docker-security-watch:8765` on the frontend so it can reach the backend over the internal Docker network
+
+Visit http://localhost:3000 for the dashboard.
 
 To run in the background:
 
 ```bash
 docker compose up -d
-docker compose logs -f   # tail logs
-docker compose down      # stop and remove container (data volume is preserved)
-```
-
-### Run with docker run (no compose)
-
-```bash
-docker run -d \
-  --name docker-security-watch \
-  -p 8765:8765 \
-  -v dsw-data:/app/data \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e DATABASE_URL=sqlite:////app/data/docker_security_watch.db \
-  -e SCAN_INTERVAL_SECONDS=60 \
-  -e MAX_CONCURRENT_SCANS=2 \
-  docker-security-watch
+docker compose logs -f        # tail logs from all services
+docker compose logs frontend  # frontend logs only
+docker compose down           # stop (data volume is preserved)
 ```
 
 ### Notes
 
-- **Docker socket**: The app must be able to reach the host Docker daemon. On Linux this is `/var/run/docker.sock`. On Docker Desktop for Mac/Windows the socket is also exposed at the same path via the Docker Desktop VM.
-- **Database persistence**: The SQLite file is stored inside the named volume. Removing the container does not delete scan history; only `docker volume rm dsw-data` does.
-- **Rebuilding after code changes**: `docker compose up --build` rebuilds the image before starting.
+- **Docker socket**: The backend must be able to reach the host Docker daemon. On Linux this is `/var/run/docker.sock`. Docker Desktop for Mac/Windows exposes the same path via the VM.
+- **Database persistence**: The SQLite file lives in the named volume. Removing containers does not delete scan history; only `docker volume rm dsw-data` does.
 
 Starting the API server also starts the background scheduler. Every 60 seconds it checks which Docker containers are running. If a new image appears, or an existing image has been re-pulled to a new digest (e.g. `latest` was updated), a Grype scan is automatically queued and run in the background. Results are persisted to the database as scans complete.
 
@@ -92,7 +93,7 @@ The poll interval can be changed with the `SCAN_INTERVAL_SECONDS` environment va
 
 ## Database
 
-SQLite file: `docker_security_watch.db` (created automatically on first run).
+SQLite file: `docker_security_watch.db` (created automatically on first run, or at `DATABASE_URL` if set).
 
 Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding).
 `image_digest` on `Scan` is how version changes are tracked over time for the same image name.
@@ -165,5 +166,6 @@ The history endpoint accepts all three forms and auto-detects which was provided
 | GET | `/vulnerabilities/critical/running` | — | Critical vulns across all currently running containers |
 | GET | `/vulnerabilities/count` | — | Total vuln count across the latest scan per image |
 | GET | `/images/vulnerabilities/history` | `?image=` | Vuln counts over time; accepts `image_repository`, `image_ref`, or `image_digest` |
+| GET | `/activity/recent` | `?limit=5` | Latest N scans with per-severity vulnerability counts (used by dashboard) |
 
 Image parameters are passed as query strings to handle names containing forward slashes (e.g. `ghcr.io/owner/repo:latest`).

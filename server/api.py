@@ -174,3 +174,33 @@ def get_vulnerability_count_history(
         })
 
     return {"image": image, "history": history}
+
+
+@app.get("/activity/recent")
+def get_recent_activity(
+    limit: int = Query(default=5, le=20),
+    session: Session = Depends(db.get_session),
+):
+    """Most recent scans with per-severity vulnerability counts."""
+    scans = session.exec(
+        select(Scan).order_by(Scan.scanned_at.desc()).limit(limit)
+    ).all()
+
+    result = []
+    for scan in scans:
+        severity_rows = session.exec(
+            select(Vulnerability.severity, func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id == scan.id)
+            .group_by(Vulnerability.severity)
+        ).all()
+        vulns_by_severity = {sev: cnt for sev, cnt in severity_rows}
+        result.append({
+            "scan_id": scan.id,
+            "scanned_at": scan.scanned_at,
+            "image_name": scan.image_name,
+            "image_digest": scan.image_digest,
+            "vulns_by_severity": vulns_by_severity,
+            "total": sum(vulns_by_severity.values()),
+        })
+
+    return {"activities": result}
