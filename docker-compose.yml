@@ -2,7 +2,7 @@ services:
   docker-security-watch:
     build: .
     ports:
-      - "8000:8000"
+      - "8765:8765"
     volumes:
       # Persist the SQLite database across container restarts
       - dsw-data:/app/data

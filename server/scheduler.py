@@ -14,7 +14,7 @@ from .models import Scan
 logger = logging.getLogger(__name__)
 
 SCAN_INTERVAL_SECONDS = int(os.environ.get("SCAN_INTERVAL_SECONDS", "60"))
-MAX_CONCURRENT_SCANS = int(os.environ.get("MAX_CONCURRENT_SCANS", "2"))
+MAX_CONCURRENT_SCANS = int(os.environ.get("MAX_CONCURRENT_SCANS", "1"))
 
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
 _active_scheduler: "ContainerScheduler | None" = None

@@ -24,9 +24,16 @@ uv sync             # creates .venv and installs all dependencies
 
 ## Running
 
+### To start the back end in dev mode
 ```bash
 uv run uvicorn server.api:app --reload
 ```
+
+### To start the front end in dev mode
+```bash
+  cd frontend && npm run dev
+```
+Then visit http://localhost:5173. Make sure the FastAPI backend is running on port 8765.
 
 ## Docker
 
@@ -49,7 +56,7 @@ The compose file (`docker-compose.yml`) handles everything:
 - Creates a named volume `dsw-data` mounted at `/app/data` for database persistence
 - Sets `DATABASE_URL`, `SCAN_INTERVAL_SECONDS`, and `MAX_CONCURRENT_SCANS`
 
-The API is available at `http://localhost:8000`.
+The API is available at `http://localhost:8765`.
 
 To run in the background:
 
@@ -64,7 +71,7 @@ docker compose down      # stop and remove container (data volume is preserved)
 ```bash
 docker run -d \
   --name docker-security-watch \
-  -p 8000:8000 \
+  -p 8765:8765 \
   -v dsw-data:/app/data \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e DATABASE_URL=sqlite:////app/data/docker_security_watch.db \

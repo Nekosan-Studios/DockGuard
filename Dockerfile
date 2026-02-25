@@ -31,6 +31,6 @@ COPY server/ ./server/
 # Create the data directory where the SQLite volume will be mounted
 RUN mkdir -p /app/data
 
-EXPOSE 8000
+EXPOSE 8765
 
-CMD ["uv", "run", "uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8765"]
