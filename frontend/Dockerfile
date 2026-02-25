@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM node:25-trixie-slim AS builder
+FROM node:25-alpine AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Production stage ──────────────────────────────────────────────────────────
-FROM node:22-slim
+FROM node:25-alpine
 
 WORKDIR /app
 

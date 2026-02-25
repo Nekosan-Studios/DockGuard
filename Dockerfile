@@ -1,10 +1,7 @@
-FROM python:3.14.3-slim-trixie
+FROM python:3.14.3-alpine
 
 # Install system dependencies needed for grype install script
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache curl ca-certificates
 
 # Install grype (pinned version for reproducible builds)
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
