@@ -3,6 +3,7 @@
   import { api } from '$lib/api.js';
   import StatCard from '$lib/components/StatCard.svelte';
   import SeverityBadge from '$lib/components/SeverityBadge.svelte';
+  import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '$lib/components/ui/table/index.js';
 
   let totalCount = $state(null);
   let criticalRunning = $state(null);
@@ -65,58 +66,58 @@
     <div class="empty-state">No critical vulnerabilities found in running containers.</div>
   </div>
 {:else}
-  <div class="table-wrapper">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>CVE ID</th>
-          <th>Severity</th>
-          <th>Package</th>
-          <th>Version</th>
-          <th>Fixed In</th>
-          <th>CVSS</th>
-          <th>KEV</th>
-        </tr>
-      </thead>
-      <tbody>
+  <div class="rounded-xl border bg-card overflow-hidden">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>CVE ID</TableHead>
+          <TableHead>Severity</TableHead>
+          <TableHead>Package</TableHead>
+          <TableHead>Version</TableHead>
+          <TableHead>Fixed In</TableHead>
+          <TableHead>CVSS</TableHead>
+          <TableHead>KEV</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {#each criticalRunning.vulnerabilities as vuln}
-          <tr>
-            <td>
+          <TableRow>
+            <TableCell>
               {#if vuln.urls}
                 <a
                   href={vuln.urls.split(',')[0].trim()}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style="color: var(--accent); text-decoration: none; font-family: monospace; font-size: 12px;"
+                  style="color: var(--accent-foreground); text-decoration: none; font-family: monospace; font-size: 12px;"
                 >
                   {vuln.vuln_id}
                 </a>
               {:else}
                 <span style="font-family: monospace; font-size: 12px;">{vuln.vuln_id}</span>
               {/if}
-            </td>
-            <td><SeverityBadge severity={vuln.severity} /></td>
-            <td style="font-family: monospace; font-size: 12px;">{vuln.package_name}</td>
-            <td style="font-family: monospace; font-size: 12px; color: var(--muted);">{vuln.installed_version}</td>
-            <td style="font-family: monospace; font-size: 12px; color: var(--muted);">
+            </TableCell>
+            <TableCell><SeverityBadge severity={vuln.severity} /></TableCell>
+            <TableCell style="font-family: monospace; font-size: 12px;">{vuln.package_name}</TableCell>
+            <TableCell style="font-family: monospace; font-size: 12px; color: var(--muted-foreground);">{vuln.installed_version}</TableCell>
+            <TableCell style="font-family: monospace; font-size: 12px; color: var(--muted-foreground);">
               {vuln.fixed_version ?? '—'}
-            </td>
-            <td>{vuln.cvss_base_score != null ? vuln.cvss_base_score.toFixed(1) : '—'}</td>
-            <td>
+            </TableCell>
+            <TableCell>{vuln.cvss_base_score != null ? vuln.cvss_base_score.toFixed(1) : '—'}</TableCell>
+            <TableCell>
               {#if vuln.is_kev}
                 <span class="kev-check" title="Known Exploited Vulnerability">KEV</span>
               {:else}
-                <span style="color: var(--muted);">—</span>
+                <span style="color: var(--muted-foreground);">—</span>
               {/if}
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
         {/each}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   </div>
 
   {#if criticalRunning.running_images?.length}
-    <div style="margin-top: 16px; font-size: 12px; color: var(--muted);">
+    <div style="margin-top: 16px; font-size: 12px; color: var(--muted-foreground);">
       Scanned images:
       {#each criticalRunning.running_images as img, i}
         <span style="font-family: monospace;">{img}</span>{#if i < criticalRunning.running_images.length - 1}, {/if}

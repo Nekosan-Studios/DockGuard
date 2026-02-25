@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api.js';
   import SeverityBadge from '$lib/components/SeverityBadge.svelte';
+  import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '$lib/components/ui/table/index.js';
 
   let data = $state(null);
   let loading = $state(true);
@@ -48,90 +49,90 @@
 {:else}
   <!-- Running images summary -->
   {#if data.running_images?.length}
-    <div style="margin-bottom: 16px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+    <div style="margin-bottom: 16px; font-size: 12px; color: var(--muted-foreground); display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
       <span>Running:</span>
       {#each data.running_images as img}
         <span style="
           font-family: monospace;
-          background-color: var(--card-bg);
+          background-color: var(--card);
           border: 1px solid var(--border);
           padding: 2px 8px;
           border-radius: 4px;
-          color: var(--text);
+          color: var(--foreground);
         ">{img}</span>
       {/each}
     </div>
   {/if}
 
-  <div class="table-wrapper">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>CVE ID</th>
-          <th>Severity</th>
-          <th>CVSS</th>
-          <th>EPSS</th>
-          <th>KEV</th>
-          <th>Package</th>
-          <th>Version</th>
-          <th>Fixed In</th>
-        </tr>
-      </thead>
-      <tbody>
+  <div class="rounded-xl border bg-card overflow-hidden">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>CVE ID</TableHead>
+          <TableHead>Severity</TableHead>
+          <TableHead>CVSS</TableHead>
+          <TableHead>EPSS</TableHead>
+          <TableHead>KEV</TableHead>
+          <TableHead>Package</TableHead>
+          <TableHead>Version</TableHead>
+          <TableHead>Fixed In</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {#each data.vulnerabilities as vuln}
-          <tr>
-            <td>
+          <TableRow>
+            <TableCell>
               {#if vuln.urls}
                 <a
                   href={vuln.urls.split(',')[0].trim()}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style="color: var(--accent); text-decoration: none; font-family: monospace; font-size: 12px;"
+                  style="color: var(--accent-foreground); text-decoration: none; font-family: monospace; font-size: 12px;"
                 >
                   {vuln.vuln_id}
                 </a>
               {:else}
                 <span style="font-family: monospace; font-size: 12px;">{vuln.vuln_id}</span>
               {/if}
-            </td>
-            <td><SeverityBadge severity={vuln.severity} /></td>
-            <td>
+            </TableCell>
+            <TableCell><SeverityBadge severity={vuln.severity} /></TableCell>
+            <TableCell>
               {#if vuln.cvss_base_score != null}
-                <span style="font-weight: 600; color: {vuln.cvss_base_score >= 9 ? '#ff7b7b' : vuln.cvss_base_score >= 7 ? '#ff9e40' : 'var(--text)'};">
+                <span style="font-weight: 600; color: {vuln.cvss_base_score >= 9 ? '#ff7b7b' : vuln.cvss_base_score >= 7 ? '#ff9e40' : 'var(--foreground)'};">
                   {vuln.cvss_base_score.toFixed(1)}
                 </span>
               {:else}
-                <span style="color: var(--muted);">—</span>
+                <span style="color: var(--muted-foreground);">—</span>
               {/if}
-            </td>
-            <td>
+            </TableCell>
+            <TableCell>
               {#if vuln.epss_score != null}
                 <span title="EPSS percentile: {vuln.epss_percentile != null ? (vuln.epss_percentile * 100).toFixed(1) + '%' : 'N/A'}">
                   {(vuln.epss_score * 100).toFixed(1)}%
                 </span>
               {:else}
-                <span style="color: var(--muted);">—</span>
+                <span style="color: var(--muted-foreground);">—</span>
               {/if}
-            </td>
-            <td>
+            </TableCell>
+            <TableCell>
               {#if vuln.is_kev}
                 <span class="kev-check" title="CISA Known Exploited Vulnerability">✓</span>
               {:else}
-                <span style="color: var(--muted);">—</span>
+                <span style="color: var(--muted-foreground);">—</span>
               {/if}
-            </td>
-            <td style="font-family: monospace; font-size: 12px;">{vuln.package_name}</td>
-            <td style="font-family: monospace; font-size: 12px; color: var(--muted);">{vuln.installed_version}</td>
-            <td style="font-family: monospace; font-size: 12px;">
+            </TableCell>
+            <TableCell style="font-family: monospace; font-size: 12px;">{vuln.package_name}</TableCell>
+            <TableCell style="font-family: monospace; font-size: 12px; color: var(--muted-foreground);">{vuln.installed_version}</TableCell>
+            <TableCell style="font-family: monospace; font-size: 12px;">
               {#if vuln.fixed_version}
                 <span style="color: #3fb950;">{vuln.fixed_version}</span>
               {:else}
-                <span style="color: var(--muted);">—</span>
+                <span style="color: var(--muted-foreground);">—</span>
               {/if}
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
         {/each}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   </div>
 {/if}
