@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import subprocess
 import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 SCAN_INTERVAL_SECONDS = int(os.environ.get("SCAN_INTERVAL_SECONDS", "60"))
 MAX_CONCURRENT_SCANS = int(os.environ.get("MAX_CONCURRENT_SCANS", "1"))
+DB_CHECK_INTERVAL_SECONDS = int(os.environ.get("DB_CHECK_INTERVAL_SECONDS", "3600"))
 
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
 _active_scheduler: "ContainerScheduler | None" = None
@@ -39,6 +41,13 @@ class ContainerScheduler:
             id="check_running_containers",
             name="Monitor running containers for new/updated images",
             next_run_time=datetime.now(),
+            replace_existing=True,
+        )
+        self._scheduler.add_job(
+            self._check_db_update,
+            IntervalTrigger(seconds=DB_CHECK_INTERVAL_SECONDS),
+            id="check_db_update",
+            name="Check for grype DB updates and trigger rescan if available",
             replace_existing=True,
         )
         _active_scheduler = self
@@ -76,6 +85,33 @@ class ContainerScheduler:
                 img["name"], img["hash"],
             )
             asyncio.create_task(self._scan_image_async(img["name"], img["grype_ref"]))
+
+    async def _check_db_update(self) -> None:
+        """Scheduled job: check if a newer grype DB is available.
+
+        Uses 'grype db check' exit codes:
+          0 → DB is current, nothing to do
+          1 → update available, clear _seen_digests so all images are rescanned
+          other → unexpected error, log and take no action
+        """
+        try:
+            result = subprocess.run(
+                ["grype", "db", "check"],
+                capture_output=True,
+            )
+        except Exception as e:
+            logger.error("grype db check failed: %s", e)
+            return
+
+        if result.returncode == 0:
+            logger.debug("Grype DB is current — no rescan needed")
+        elif result.returncode == 1:
+            logger.info("New grype DB available — clearing seen digests to trigger full rescan")
+            self._seen_digests.clear()
+        else:
+            logger.error(
+                "grype db check returned unexpected exit code %d", result.returncode
+            )
 
     async def _scan_image_async(self, image_name: str, grype_ref: str) -> None:
         """Run a Grype scan in a thread so the event loop is not blocked.

@@ -155,6 +155,7 @@ def test_db_check_current_does_not_clear_seen_digests(mock_run, test_db, caplog)
     sched._seen_digests = {"sha256:aaaa"}
     mock_run.return_value = MagicMock(returncode=0)
 
+    caplog.clear()
     with caplog.at_level(logging.ERROR, logger="backend.scheduler"):
         asyncio.run(sched._check_db_update())
 
