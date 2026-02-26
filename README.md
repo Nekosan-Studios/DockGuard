@@ -92,6 +92,8 @@ Starting the API server also starts the background scheduler. Every 60 seconds i
 
 The poll interval can be changed with the `SCAN_INTERVAL_SECONDS` environment variable (default: `60`).
 
+Every hour the scheduler also runs `grype db check`. If a newer Grype vulnerability database is available, all previously-seen image digests are cleared so every image — including any that were stopped at the time — is rescanned against the updated database when next observed. The check interval can be changed with the `DB_CHECK_INTERVAL_SECONDS` environment variable (default: `3600`).
+
 ## Database
 
 SQLite file: `docker_security_watch.db` (created automatically on first run, or at `DATABASE_URL` if set).
