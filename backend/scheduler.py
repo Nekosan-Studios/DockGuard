@@ -71,8 +71,7 @@ class ContainerScheduler:
     async def _check_running_containers(self) -> None:
         """Scheduled job: detect new/updated running containers and trigger scans."""
         watcher = DockerWatcher()
-        images = watcher.list_images()
-        running = [img for img in images if img["running"]]
+        running = watcher.list_running_containers()
 
         for img in running:
             image_id = img["image_id"]  # full sha256:...
@@ -82,9 +81,9 @@ class ContainerScheduler:
             self._seen_digests.add(image_id)
             logger.info(
                 "New running image detected: %s (%s) — scheduling Grype scan",
-                img["name"], img["hash"],
+                img["image_name"], img["hash"],
             )
-            asyncio.create_task(self._scan_image_async(img["name"], img["grype_ref"]))
+            asyncio.create_task(self._scan_image_async(img["image_name"], img["grype_ref"], img["container_name"]))
 
     async def _check_db_update(self) -> None:
         """Scheduled job: check if a newer grype DB is available.
@@ -117,14 +116,14 @@ class ContainerScheduler:
                 result.stderr.strip(),
             )
 
-    async def _scan_image_async(self, image_name: str, grype_ref: str) -> None:
+    async def _scan_image_async(self, image_name: str, grype_ref: str, container_name: str | None = None) -> None:
         """Run a Grype scan in a thread so the event loop is not blocked.
 
         Acquires _scan_semaphore before launching so at most MAX_CONCURRENT_SCANS
         Grype processes run simultaneously.
         """
         async with self._scan_semaphore:
-            await asyncio.to_thread(self._scan_image_sync, image_name, grype_ref)
+            await asyncio.to_thread(self._scan_image_sync, image_name, grype_ref, container_name)
 
-    def _scan_image_sync(self, image_name: str, grype_ref: str) -> None:
-        GrypeScanner(watcher=None, database=self.db).scan_image(image_name, grype_ref)
+    def _scan_image_sync(self, image_name: str, grype_ref: str, container_name: str | None = None) -> None:
+        GrypeScanner(watcher=None, database=self.db).scan_image(image_name, grype_ref, container_name)

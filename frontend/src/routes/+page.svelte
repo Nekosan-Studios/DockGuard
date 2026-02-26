@@ -107,6 +107,7 @@
 						<Table.Row>
 							<Table.Head class="w-[80px]">Type</Table.Head>
 							<Table.Head class="w-[130px]">Scanned</Table.Head>
+							<Table.Head>Container</Table.Head>
 							<Table.Head>Image</Table.Head>
 							<Table.Head>Vulnerabilities</Table.Head>
 							<Table.Head class="w-[70px] text-right">Total</Table.Head>
@@ -124,6 +125,13 @@
 								</Table.Cell>
 								<Table.Cell class="text-muted-foreground text-xs">
 									{timeAgo(activity.scanned_at)}
+								</Table.Cell>
+								<Table.Cell class="text-sm">
+									{#if activity.container_name}
+										{activity.container_name}
+									{:else}
+										<span class="text-muted-foreground">—</span>
+									{/if}
 								</Table.Cell>
 								<Table.Cell class="font-mono text-sm">
 									{activity.image_name}

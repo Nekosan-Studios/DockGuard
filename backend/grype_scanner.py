@@ -45,7 +45,7 @@ class GrypeScanner:
         for image in images:
             self.scan_image(image["name"], image["grype_ref"])
 
-    def scan_image(self, image_name: str, grype_ref: str) -> None:
+    def scan_image(self, image_name: str, grype_ref: str, container_name: str | None = None) -> None:
         """Scan a single image and persist results to the database."""
         logger.info("Scanning %s", image_name)
         result = subprocess.run(
@@ -64,9 +64,9 @@ class GrypeScanner:
             logger.error("Failed to parse Grype JSON for %s: %s", image_name, e)
             return
 
-        self._store_scan(grype_json, image_name)
+        self._store_scan(grype_json, image_name, container_name)
 
-    def _store_scan(self, grype_json: dict, image_name: str) -> None:
+    def _store_scan(self, grype_json: dict, image_name: str, container_name: str | None = None) -> None:
         source = grype_json.get("source", {})
         target = source.get("target", {})
         distro = grype_json.get("distro", {})
@@ -82,6 +82,7 @@ class GrypeScanner:
             db_built=self._parse_datetime(db_info.get("built")),
             distro_name=distro.get("name") or None,
             distro_version=distro.get("version") or None,
+            container_name=container_name,
         )
 
         vulnerabilities = []

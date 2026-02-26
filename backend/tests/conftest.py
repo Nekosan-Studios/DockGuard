@@ -53,6 +53,7 @@ def api_client(test_db):
 
     with patch("backend.api.DockerWatcher") as mock_watcher_cls:
         mock_watcher_cls.return_value.list_images.return_value = []
+        mock_watcher_cls.return_value.list_running_containers.return_value = []
         with TestClient(app, raise_server_exceptions=True) as client:
             yield client, test_db, mock_watcher_cls
 
