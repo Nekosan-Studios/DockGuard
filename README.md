@@ -105,11 +105,14 @@ Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding
 
 ```bash
 uv sync --group dev   # install test dependencies (first time only)
-uv run pytest -v
+uv run pytest -v      # unit + integration tests (fast, no Docker/Grype needed)
+uv run pytest -v -m e2e   # end-to-end tests (requires Docker daemon + grype on PATH)
 ```
 
-No Docker daemon or Grype binary required — both are mocked. Tests use an
-isolated in-memory SQLite database and are fully independent of one another.
+The default run excludes e2e tests because they take ~45 seconds (real Grype
+scan). No Docker daemon or Grype binary is needed for the default run — both
+are mocked. Tests use an isolated in-memory SQLite database and are fully
+independent of one another.
 
 **Test structure:**
 

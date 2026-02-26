@@ -3,13 +3,8 @@
 These tests exercise the full pipeline:
   Docker daemon → scheduler detects running container → Grype scans → DB → API
 
-Run selectively with:
+Excluded from the default test run (see addopts in pyproject.toml). Run with:
     uv run pytest -v -m e2e
-
-TODO: E2E tests run for ~60s+ due to the real Grype scan and scheduler interval.
-      Consider excluding them from the default test run (e.g. via -m "not e2e" in
-      pyproject.toml addopts) so `uv run pytest -v` stays fast. Revisit once the
-      test suite grows and CI separation between unit/integration/e2e is needed.
 """
 import time
 
