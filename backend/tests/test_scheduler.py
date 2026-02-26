@@ -1,5 +1,6 @@
 import asyncio
-from unittest.mock import patch
+import logging
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -129,3 +130,58 @@ def test_docker_unavailable_does_not_crash(mock_watcher_cls, mock_create_task, t
     asyncio.run(sched._check_running_containers())
 
     mock_create_task.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _check_db_update: clears seen_digests when grype DB update is available
+# ---------------------------------------------------------------------------
+
+@patch("backend.scheduler.subprocess.run")
+def test_db_check_update_available_clears_seen_digests(mock_run, test_db):
+    """returncode == 1 (update available) → _seen_digests is cleared entirely."""
+    sched = ContainerScheduler(test_db)
+    sched._seen_digests = {"sha256:aaaa", "sha256:bbbb"}
+    mock_run.return_value = MagicMock(returncode=1)
+
+    asyncio.run(sched._check_db_update())
+
+    assert len(sched._seen_digests) == 0
+
+
+@patch("backend.scheduler.subprocess.run")
+def test_db_check_current_does_not_clear_seen_digests(mock_run, test_db):
+    """returncode == 0 (DB current) → _seen_digests is unchanged."""
+    sched = ContainerScheduler(test_db)
+    sched._seen_digests = {"sha256:aaaa"}
+    mock_run.return_value = MagicMock(returncode=0)
+
+    asyncio.run(sched._check_db_update())
+
+    assert "sha256:aaaa" in sched._seen_digests
+
+
+@patch("backend.scheduler.subprocess.run")
+def test_db_check_unexpected_returncode_does_not_clear_seen_digests(mock_run, test_db, caplog):
+    """Unexpected returncode → _seen_digests unchanged, error is logged."""
+    sched = ContainerScheduler(test_db)
+    sched._seen_digests = {"sha256:aaaa"}
+    mock_run.return_value = MagicMock(returncode=2)
+
+    with caplog.at_level(logging.ERROR, logger="backend.scheduler"):
+        asyncio.run(sched._check_db_update())
+
+    assert "sha256:aaaa" in sched._seen_digests
+    assert "2" in caplog.text
+
+
+@patch("backend.scheduler.subprocess.run", side_effect=FileNotFoundError("grype not found"))
+def test_db_check_subprocess_exception_does_not_clear_seen_digests(mock_run, test_db, caplog):
+    """Subprocess exception → _seen_digests unchanged, error is logged."""
+    sched = ContainerScheduler(test_db)
+    sched._seen_digests = {"sha256:aaaa"}
+
+    with caplog.at_level(logging.ERROR, logger="backend.scheduler"):
+        asyncio.run(sched._check_db_update())
+
+    assert "sha256:aaaa" in sched._seen_digests
+    assert len(caplog.records) > 0
