@@ -7,13 +7,12 @@ from sqlmodel import Session, func, select
 
 from .database import db
 from .docker_watcher import DockerWatcher
-from .grype_scanner import _parse_image_repository
 from .models import Scan, Vulnerability
 from .scheduler import ContainerScheduler
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     db.init()
     # alembic.ini's fileConfig sets root logger to WARNING; restore to INFO
     # so app loggers (scheduler, grype_scanner, docker_watcher) are visible.
