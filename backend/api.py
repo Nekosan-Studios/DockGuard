@@ -107,7 +107,7 @@ def get_critical_vulnerabilities(
 def get_critical_vulnerabilities_running(session: Session = Depends(db.get_session)):
     """Critical vulnerabilities across all currently running containers."""
     watcher = DockerWatcher()
-    running_images = {img["name"] for img in watcher.list_images() if img["running"]}
+    running_images = {img["image_name"] for img in watcher.list_running_containers()}
     if not running_images:
         return {"running_images": [], "count": 0, "vulnerabilities": []}
 
@@ -188,6 +188,53 @@ def get_vulnerability_count_history(
     return {"image": image, "history": history}
 
 
+@app.get("/containers/running")
+def get_running_containers(session: Session = Depends(db.get_session)):
+    """Running containers with their latest scan's vulnerability breakdown."""
+    watcher = DockerWatcher()
+    running = watcher.list_running_containers()
+    if not running:
+        return {"containers": []}
+
+    containers = []
+    for img in running:
+        try:
+            scan = _latest_scan_for_ref(img["image_name"], session)
+        except HTTPException:
+            containers.append({
+                "container_name": img["container_name"],
+                "image_name": img["image_name"],
+                "image_repository": None,
+                "image_digest": None,
+                "scan_id": None,
+                "scanned_at": None,
+                "vulns_by_severity": {},
+                "total": 0,
+                "has_scan": False,
+            })
+            continue
+
+        severity_rows = session.exec(
+            select(Vulnerability.severity, func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id == scan.id)
+            .group_by(Vulnerability.severity)
+        ).all()
+        vulns_by_severity = {sev: cnt for sev, cnt in severity_rows}
+        containers.append({
+            "container_name": img["container_name"],
+            "image_name": scan.image_name,
+            "image_repository": scan.image_repository,
+            "image_digest": scan.image_digest,
+            "scan_id": scan.id,
+            "scanned_at": _as_utc(scan.scanned_at),
+            "vulns_by_severity": vulns_by_severity,
+            "total": sum(vulns_by_severity.values()),
+            "has_scan": True,
+        })
+
+    return {"containers": containers}
+
+
 @app.get("/activity/recent")
 def get_recent_activity(
     limit: int = Query(default=5, le=20),
@@ -211,6 +258,7 @@ def get_recent_activity(
             "scanned_at": _as_utc(scan.scanned_at),
             "image_name": scan.image_name,
             "image_digest": scan.image_digest,
+            "container_name": scan.container_name,
             "vulns_by_severity": vulns_by_severity,
             "total": sum(vulns_by_severity.values()),
         })

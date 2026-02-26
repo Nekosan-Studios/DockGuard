@@ -19,6 +19,14 @@ def _make_mock_container(image_id: str) -> MagicMock:
     return container
 
 
+def _make_mock_running_container(name: str, image_id: str, tags: list[str]) -> MagicMock:
+    container = MagicMock()
+    container.name = name
+    container.image.id = image_id
+    container.image.tags = tags
+    return container
+
+
 @patch("docker.from_env")
 def test_list_images_tagged(mock_from_env):
     image_id = "sha256:abcdef123456789000000000000000000000000000000000000000000000000"
@@ -86,3 +94,83 @@ def test_list_images_docker_unavailable(mock_from_env):
     watcher = DockerWatcher()
     assert watcher.client is None
     assert watcher.list_images() == []
+
+
+# ---------------------------------------------------------------------------
+# list_running_containers
+# ---------------------------------------------------------------------------
+
+@patch("docker.from_env")
+def test_list_running_containers_tagged(mock_from_env):
+    image_id = "sha256:abcdef123456789000000000000000000000000000000000000000000000000"
+    mock_client = MagicMock()
+    mock_client.containers.list.return_value = [
+        _make_mock_running_container("/my-nginx", image_id, ["nginx:latest"]),
+    ]
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    containers = watcher.list_running_containers()
+
+    assert len(containers) == 1
+    assert containers[0]["container_name"] == "my-nginx"
+    assert containers[0]["image_name"] == "nginx:latest"
+    assert containers[0]["grype_ref"] == "nginx:latest"
+    assert containers[0]["hash"] == "abcdef123456"
+    assert containers[0]["image_id"] == image_id
+
+
+@patch("docker.from_env")
+def test_list_running_containers_untagged(mock_from_env):
+    image_id = "sha256:deadbeef000000000000000000000000000000000000000000000000000000"
+    mock_client = MagicMock()
+    mock_client.containers.list.return_value = [
+        _make_mock_running_container("/my-container", image_id, []),
+    ]
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    containers = watcher.list_running_containers()
+
+    assert containers[0]["image_name"] == "<untagged>"
+    assert containers[0]["grype_ref"] == f"docker:{image_id}"
+
+
+@patch("docker.from_env")
+def test_list_running_containers_multiple_same_image(mock_from_env):
+    """Two containers running the same image each appear as separate entries."""
+    image_id = "sha256:aaaa000000000000000000000000000000000000000000000000000000000000"
+    mock_client = MagicMock()
+    mock_client.containers.list.return_value = [
+        _make_mock_running_container("/web-1", image_id, ["nginx:latest"]),
+        _make_mock_running_container("/web-2", image_id, ["nginx:latest"]),
+    ]
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    containers = watcher.list_running_containers()
+
+    assert len(containers) == 2
+    names = {c["container_name"] for c in containers}
+    assert names == {"web-1", "web-2"}
+
+
+@patch("docker.from_env")
+def test_list_running_containers_strips_leading_slash(mock_from_env):
+    image_id = "sha256:aaaa000000000000000000000000000000000000000000000000000000000000"
+    mock_client = MagicMock()
+    mock_client.containers.list.return_value = [
+        _make_mock_running_container("/my-app", image_id, ["myapp:1.0"]),
+    ]
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    containers = watcher.list_running_containers()
+
+    assert containers[0]["container_name"] == "my-app"
+
+
+@patch("docker.from_env", side_effect=docker.errors.DockerException("connection refused"))
+def test_list_running_containers_docker_unavailable(mock_from_env):
+    watcher = DockerWatcher()
+    assert watcher.list_running_containers() == []

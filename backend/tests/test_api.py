@@ -11,6 +11,16 @@ from backend.tests.conftest import (
 )
 
 
+def _make_running_container(container_name: str, image_name: str, image_id: str) -> dict:
+    return {
+        "container_name": container_name,
+        "image_name": image_name,
+        "grype_ref": image_name,
+        "hash": image_id.replace("sha256:", "")[:12],
+        "image_id": image_id,
+    }
+
+
 # ---------------------------------------------------------------------------
 # GET /images/vulnerabilities
 # ---------------------------------------------------------------------------
@@ -82,8 +92,8 @@ def test_get_critical_vulnerabilities_not_found(api_client):
 def test_get_critical_running_with_running_containers(api_client):
     client, test_db, mock_watcher_cls = api_client
     seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL_2, VULN_CRITICAL_2])
-    mock_watcher_cls.return_value.list_images.return_value = [
-        {"name": "redis:7", "grype_ref": "redis:7", "hash": "cccc00000000", "image_id": "sha256:cccc", "running": True},
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("my-redis", "redis:7", "sha256:cccc"),
     ]
 
     response = client.get("/vulnerabilities/critical/running")
@@ -96,9 +106,7 @@ def test_get_critical_running_with_running_containers(api_client):
 def test_get_critical_running_no_running_containers(api_client):
     client, test_db, mock_watcher_cls = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
-    mock_watcher_cls.return_value.list_images.return_value = [
-        {"name": "nginx:latest", "grype_ref": "nginx:latest", "hash": "aaaa00000000", "image_id": "sha256:aaaa", "running": False},
-    ]
+    mock_watcher_cls.return_value.list_running_containers.return_value = []
 
     response = client.get("/vulnerabilities/critical/running")
     data = response.json()
@@ -108,9 +116,9 @@ def test_get_critical_running_no_running_containers(api_client):
 
 def test_get_critical_running_no_scan_for_running_image(api_client):
     client, test_db, mock_watcher_cls = api_client
-    # running image exists in Docker but has no scan in DB
-    mock_watcher_cls.return_value.list_images.return_value = [
-        {"name": "alpine:latest", "grype_ref": "alpine:latest", "hash": "dddd00000000", "image_id": "sha256:dddd", "running": True},
+    # running container exists in Docker but has no scan in DB
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("my-alpine", "alpine:latest", "sha256:dddd"),
     ]
 
     response = client.get("/vulnerabilities/critical/running")
@@ -218,3 +226,98 @@ def test_get_history_not_found(api_client):
     client, test_db, _ = api_client
     response = client.get("/images/vulnerabilities/history?image=unknown:image")
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /containers/running
+# ---------------------------------------------------------------------------
+
+def test_get_running_containers_no_running(api_client):
+    client, test_db, mock_watcher_cls = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
+    mock_watcher_cls.return_value.list_running_containers.return_value = []
+
+    response = client.get("/containers/running")
+    assert response.status_code == 200
+    assert response.json()["containers"] == []
+
+
+def test_get_running_containers_with_scan(api_client):
+    client, test_db, mock_watcher_cls = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM])
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    response = client.get("/containers/running")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["containers"]) == 1
+    c = data["containers"][0]
+    assert c["container_name"] == "my-nginx"
+    assert c["image_name"] == "nginx:latest"
+    assert c["has_scan"] is True
+    assert c["total"] == 3
+    assert c["vulns_by_severity"]["Critical"] == 1
+    assert c["vulns_by_severity"]["High"] == 1
+    assert c["vulns_by_severity"]["Medium"] == 1
+    assert c["scanned_at"] is not None
+
+
+def test_get_running_containers_no_scan_for_image(api_client):
+    client, test_db, mock_watcher_cls = api_client
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("my-alpine", "alpine:latest", "sha256:dddd"),
+    ]
+
+    response = client.get("/containers/running")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["containers"]) == 1
+    c = data["containers"][0]
+    assert c["container_name"] == "my-alpine"
+    assert c["image_name"] == "alpine:latest"
+    assert c["has_scan"] is False
+    assert c["total"] == 0
+    assert c["vulns_by_severity"] == {}
+    assert c["scanned_at"] is None
+
+
+def test_get_running_containers_multiple_mixed(api_client):
+    client, test_db, mock_watcher_cls = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
+    seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL_2, VULN_CRITICAL_2])
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+        _make_running_container("my-redis", "redis:7", "sha256:cccc"),
+        _make_running_container("my-alpine", "alpine:latest", "sha256:dddd"),
+    ]
+
+    response = client.get("/containers/running")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["containers"]) == 3
+
+    by_name = {c["container_name"]: c for c in data["containers"]}
+    assert by_name["my-nginx"]["has_scan"] is True
+    assert by_name["my-nginx"]["total"] == 2
+    assert by_name["my-redis"]["has_scan"] is True
+    assert by_name["my-redis"]["vulns_by_severity"]["Critical"] == 2
+    assert by_name["my-alpine"]["has_scan"] is False
+
+
+def test_get_running_containers_uses_latest_scan(api_client):
+    client, test_db, mock_watcher_cls = api_client
+    t1 = datetime.now(timezone.utc) - timedelta(hours=1)
+    t2 = datetime.now(timezone.utc)
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM], scanned_at=t1)
+    seed_scan(test_db, "nginx:latest", "sha256:bbbb", [VULN_CRITICAL], scanned_at=t2)
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:bbbb"),
+    ]
+
+    response = client.get("/containers/running")
+    data = response.json()
+    c = data["containers"][0]
+    assert c["total"] == 1
+    assert c["image_digest"] == "sha256:bbbb"

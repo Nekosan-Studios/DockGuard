@@ -12,13 +12,13 @@ from backend.tests.conftest import seed_scan, VULN_CRITICAL
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_running_image(name: str, image_id: str) -> dict:
+def _make_running_container(image_name: str, image_id: str, container_name: str = "test-container") -> dict:
     return {
-        "name": name,
-        "grype_ref": name,
+        "container_name": container_name,
+        "image_name": image_name,
+        "grype_ref": image_name,
         "hash": image_id.replace("sha256:", "")[:12],
         "image_id": image_id,
-        "running": True,
     }
 
 
@@ -49,8 +49,8 @@ def test_create_scheduler_empty_db_has_no_digests(test_db):
 @patch("backend.scheduler.DockerWatcher")
 def test_new_image_schedules_scan(mock_watcher_cls, mock_create_task, test_db):
     sched = ContainerScheduler(test_db)
-    mock_watcher_cls.return_value.list_images.return_value = [
-        _make_running_image("nginx:latest", "sha256:aaaa"),
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("nginx:latest", "sha256:aaaa"),
     ]
 
     asyncio.run(sched._check_running_containers())
@@ -64,8 +64,8 @@ def test_new_image_schedules_scan(mock_watcher_cls, mock_create_task, test_db):
 def test_known_digest_is_skipped(mock_watcher_cls, mock_create_task, test_db):
     sched = ContainerScheduler(test_db)
     sched._seen_digests = {"sha256:aaaa"}
-    mock_watcher_cls.return_value.list_images.return_value = [
-        _make_running_image("nginx:latest", "sha256:aaaa"),
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("nginx:latest", "sha256:aaaa"),
     ]
 
     asyncio.run(sched._check_running_containers())
@@ -81,8 +81,8 @@ def test_db_scanned_digest_not_rescanned_on_restart(mock_watcher_cls, mock_creat
 
     sched = ContainerScheduler(test_db)
 
-    mock_watcher_cls.return_value.list_images.return_value = [
-        _make_running_image("nginx:latest", "sha256:aaaa"),
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("nginx:latest", "sha256:aaaa"),
     ]
 
     asyncio.run(sched._check_running_containers())
@@ -98,8 +98,8 @@ def test_updated_image_same_tag_triggers_scan(mock_watcher_cls, mock_create_task
     sched = ContainerScheduler(test_db)
 
     # New digest for the same nginx:latest tag
-    mock_watcher_cls.return_value.list_images.return_value = [
-        _make_running_image("nginx:latest", "sha256:bbbb"),
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("nginx:latest", "sha256:bbbb"),
     ]
 
     asyncio.run(sched._check_running_containers())
@@ -110,11 +110,10 @@ def test_updated_image_same_tag_triggers_scan(mock_watcher_cls, mock_create_task
 
 @patch("backend.scheduler.asyncio.create_task")
 @patch("backend.scheduler.DockerWatcher")
-def test_non_running_images_are_ignored(mock_watcher_cls, mock_create_task, test_db):
+def test_no_running_containers_triggers_no_scan(mock_watcher_cls, mock_create_task, test_db):
+    """Empty list from list_running_containers → no scan scheduled."""
     sched = ContainerScheduler(test_db)
-    mock_watcher_cls.return_value.list_images.return_value = [
-        {**_make_running_image("nginx:latest", "sha256:aaaa"), "running": False},
-    ]
+    mock_watcher_cls.return_value.list_running_containers.return_value = []
 
     asyncio.run(sched._check_running_containers())
 
@@ -125,7 +124,7 @@ def test_non_running_images_are_ignored(mock_watcher_cls, mock_create_task, test
 @patch("backend.scheduler.DockerWatcher")
 def test_docker_unavailable_does_not_crash(mock_watcher_cls, mock_create_task, test_db):
     sched = ContainerScheduler(test_db)
-    mock_watcher_cls.return_value.list_images.return_value = []
+    mock_watcher_cls.return_value.list_running_containers.return_value = []
 
     asyncio.run(sched._check_running_containers())
 
