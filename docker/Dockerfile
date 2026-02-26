@@ -22,6 +22,7 @@ FROM python:3.14.3-alpine
 RUN apk add --no-cache \
     curl \
     ca-certificates \
+    tzdata \
     supervisor \
     nodejs \
     npm

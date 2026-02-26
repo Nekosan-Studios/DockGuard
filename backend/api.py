@@ -1,18 +1,18 @@
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlmodel import Session, func, select
 
 from .database import db
 from .docker_watcher import DockerWatcher
-from .grype_scanner import _parse_image_repository
 from .models import Scan, Vulnerability
 from .scheduler import ContainerScheduler
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     db.init()
     # alembic.ini's fileConfig sets root logger to WARNING; restore to INFO
     # so app loggers (scheduler, grype_scanner, docker_watcher) are visible.
@@ -30,6 +30,18 @@ router = app.router
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """SQLite drops timezone info on storage; re-attach UTC before serializing.
+
+    Without this, FastAPI emits '2024-01-15T10:30:00' (no Z). Browsers then
+    treat that as *local* time instead of UTC, showing times shifted by the
+    local UTC offset in the wrong direction.
+    """
+    if dt is None or dt.tzinfo is not None:
+        return dt
+    return dt.replace(tzinfo=timezone.utc)
+
 
 def _latest_scan_for_ref(image_ref: str, session: Session) -> Scan:
     """Resolve the most recent scan by image_ref (name+tag) or image_digest."""
@@ -73,7 +85,7 @@ def get_vulnerabilities(
     vulns = session.exec(
         select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     ).all()
-    return {"scan_id": scan.id, "scanned_at": scan.scanned_at, "count": len(vulns), "vulnerabilities": vulns}
+    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(vulns), "vulnerabilities": vulns}
 
 
 @app.get("/images/vulnerabilities/critical")
@@ -88,7 +100,7 @@ def get_critical_vulnerabilities(
         .where(Vulnerability.scan_id == scan.id)
         .where(Vulnerability.severity == "Critical")
     ).all()
-    return {"scan_id": scan.id, "scanned_at": scan.scanned_at, "count": len(vulns), "vulnerabilities": vulns}
+    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(vulns), "vulnerabilities": vulns}
 
 
 @app.get("/vulnerabilities/critical/running")
@@ -167,7 +179,7 @@ def get_vulnerability_count_history(
         ).one()
         history.append({
             "scan_id": scan.id,
-            "scanned_at": scan.scanned_at,
+            "scanned_at": _as_utc(scan.scanned_at),
             "image_ref": scan.image_name,
             "image_digest": scan.image_digest,
             "total": count,
@@ -196,7 +208,7 @@ def get_recent_activity(
         vulns_by_severity = {sev: cnt for sev, cnt in severity_rows}
         result.append({
             "scan_id": scan.id,
-            "scanned_at": scan.scanned_at,
+            "scanned_at": _as_utc(scan.scanned_at),
             "image_name": scan.image_name,
             "image_digest": scan.image_digest,
             "vulns_by_severity": vulns_by_severity,
