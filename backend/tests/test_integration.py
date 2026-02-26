@@ -47,11 +47,14 @@ def test_alembic_upgrade_runs_cleanly(tmp_db, monkeypatch):
 
 
 def test_scheduler_job_registered(integration_client):
-    """APScheduler must have the container-monitor job registered after startup."""
+    """APScheduler must have both scheduled jobs registered after startup."""
     _client, _db = integration_client
     assert sched_module._active_scheduler is not None, "_active_scheduler was never set"
     jobs = sched_module._active_scheduler.get_jobs()
     job_ids = [j.id for j in jobs]
     assert "check_running_containers" in job_ids, (
         f"Expected job 'check_running_containers', found: {job_ids}"
+    )
+    assert "check_db_update" in job_ids, (
+        f"Expected job 'check_db_update', found: {job_ids}"
     )
