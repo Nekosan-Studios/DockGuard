@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import subprocess
-import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -95,9 +94,11 @@ class ContainerScheduler:
           other → unexpected error, log and take no action
         """
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["grype", "db", "check"],
                 capture_output=True,
+                text=True,
             )
         except Exception as e:
             logger.error("grype db check failed: %s", e)
@@ -110,7 +111,9 @@ class ContainerScheduler:
             self._seen_digests.clear()
         else:
             logger.error(
-                "grype db check returned unexpected exit code %d", result.returncode
+                "grype db check returned unexpected exit code %d: %s",
+                result.returncode,
+                result.stderr.strip(),
             )
 
     async def _scan_image_async(self, image_name: str, grype_ref: str) -> None:
