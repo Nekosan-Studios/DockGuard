@@ -47,6 +47,7 @@ class ContainerScheduler:
             IntervalTrigger(seconds=DB_CHECK_INTERVAL_SECONDS),
             id="check_db_update",
             name="Check for grype DB updates and trigger rescan if available",
+            next_run_time=datetime.now(),
             replace_existing=True,
         )
         _active_scheduler = self
@@ -105,7 +106,7 @@ class ContainerScheduler:
             return
 
         if result.returncode == 0:
-            logger.debug("Grype DB is current — no rescan needed")
+            logger.info("Grype DB is current — no rescan needed")
         elif result.returncode == 1:
             logger.info("New grype DB available — clearing seen digests to trigger full rescan")
             self._seen_digests.clear()

@@ -16,6 +16,7 @@ dev = ["pytest", "httpx"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
+addopts = "-m 'not e2e'"
 markers = [
     "e2e: end-to-end tests requiring a live Docker daemon and grype on PATH",
 ]

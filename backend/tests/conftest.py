@@ -1,6 +1,13 @@
 import shutil
 
 import pytest
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Remind the developer to run e2e tests when they are excluded by default."""
+    markexpr = getattr(session.config.option, "markexpr", "")
+    if "not e2e" in markexpr:
+        print("\nNote: e2e tests excluded. Run `uv run pytest -v -m e2e` to include them.")
 import docker as docker_sdk
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
