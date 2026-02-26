@@ -26,14 +26,10 @@
 			'bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-500 dark:border-gray-600'
 	};
 
-	function formatDate(iso: string): string {
-		const d = new Date(iso);
-		return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-	}
+	import { formatDistanceToNow } from 'date-fns';
 
-	function formatTime(iso: string): string {
-		const d = new Date(iso);
-		return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+	function timeAgo(iso: string): string {
+		return formatDistanceToNow(new Date(iso), { addSuffix: true });
 	}
 
 	function activeSeverities(vulnsBySeverity: Record<string, number>) {
@@ -127,8 +123,7 @@
 									</span>
 								</Table.Cell>
 								<Table.Cell class="text-muted-foreground text-xs">
-									<div>{formatDate(activity.scanned_at)}</div>
-									<div>{formatTime(activity.scanned_at)}</div>
+									{timeAgo(activity.scanned_at)}
 								</Table.Cell>
 								<Table.Cell class="font-mono text-sm">
 									{activity.image_name}
