@@ -15,6 +15,7 @@ build/
 
 # Database
 *.db
+docker/data/
 
 # Environment variables
 .env

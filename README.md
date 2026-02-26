@@ -86,7 +86,7 @@ docker compose -f docker/docker-compose.yml down           # stop (data volume i
 ### Notes
 
 - **Docker socket**: The backend must be able to reach the host Docker daemon. On Linux this is `/var/run/docker.sock`. Docker Desktop for Mac/Windows exposes the same path via the VM.
-- **Database persistence**: The SQLite file lives in the named volume. Removing containers does not delete scan history; only `docker volume rm dsw-data` does.
+- **Database persistence**: The SQLite file is written to `docker/data/docker_security_watch.db` on your host filesystem. Removing or recreating containers does not delete scan history. To wipe the database, delete that file.
 
 Starting the API server also starts the background scheduler. Every 60 seconds it checks which Docker containers are running. If a new image appears, or an existing image has been re-pulled to a new digest (e.g. `latest` was updated), a Grype scan is automatically queued and run in the background. Results are persisted to the database as scans complete.
 

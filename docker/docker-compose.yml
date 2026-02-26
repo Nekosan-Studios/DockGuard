@@ -7,7 +7,7 @@ services:
       - "8765:8765"
       - "3000:3000"
     volumes:
-      - dsw-data:/app/data
+      - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - DATABASE_URL=sqlite:////app/data/docker_security_watch.db
@@ -17,5 +17,3 @@ services:
       - API_URL=http://localhost:8765
       - TZ=America/Los_Angeles
 
-volumes:
-  dsw-data:
