@@ -4,16 +4,16 @@ A tool for home labbers to understand the security vulnerabilities present in th
 
 ## Key Files
 
-### Backend (`server/`)
+### Backend (`backend/`)
 
 | File | Purpose |
 |---|---|
-| `server/docker_watcher.py` | Lists local Docker images via the Docker SDK; returns name, digest, grype reference, and running state |
-| `server/grype_scanner.py` | Runs `grype -o json -q` against each image, parses output, persists to DB |
-| `server/scheduler.py` | APScheduler job that polls Docker every 60s and triggers Grype scans for new or updated images |
-| `server/models.py` | SQLModel ORM definitions — `Scan` and `Vulnerability` tables |
-| `server/database.py` | SQLite engine setup, `init()`, `get_session()` FastAPI dependency |
-| `server/api.py` | FastAPI endpoints for querying scan results |
+| `backend/docker_watcher.py` | Lists local Docker images via the Docker SDK; returns name, digest, grype reference, and running state |
+| `backend/grype_scanner.py` | Runs `grype -o json -q` against each image, parses output, persists to DB |
+| `backend/scheduler.py` | APScheduler job that polls Docker every 60s and triggers Grype scans for new or updated images |
+| `backend/models.py` | SQLModel ORM definitions — `Scan` and `Vulnerability` tables |
+| `backend/database.py` | SQLite engine setup, `init()`, `get_session()` FastAPI dependency |
+| `backend/api.py` | FastAPI endpoints for querying scan results |
 
 ### Frontend (`frontend/`)
 
@@ -38,7 +38,7 @@ cd frontend && npm ci   # install frontend dependencies
 
 ### Backend (dev mode)
 ```bash
-uv run uvicorn server.api:app --reload --port 8765
+uv run uvicorn backend.api:app --reload --port 8765
 ```
 
 ### Frontend (dev mode)
@@ -55,31 +55,32 @@ Grype is bundled in the backend image (pinned to a specific version), so no loca
 ### Run with Docker Compose (recommended)
 
 ```bash
-docker compose up --build
+docker compose -f docker/docker-compose.yml up --build
 ```
 
-This starts two services:
+This starts a unified container running both the backend and frontend.
 
-| Service | Port | Description |
+
+| Service | Ports | Description |
 |---|---|---|
-| `docker-security-watch` | 8765 | FastAPI backend + Grype scanner |
-| `frontend` | 3000 | SvelteKit Node.js server |
+| `docker-security-watch` | 3000, 8765 | SvelteKit Frontend + FastAPI Backend + Grype |
 
 The compose file handles everything:
+- Builds a single multi-stage image (see `docker/Dockerfile`)
+- Uses `supervisord` to manage both the Node.js and Python processes
 - Mounts `/var/run/docker.sock` so the backend can introspect the host Docker daemon
 - Creates a named volume `dsw-data` at `/app/data` for database persistence
 - Sets `DATABASE_URL`, `SCAN_INTERVAL_SECONDS`, and `MAX_CONCURRENT_SCANS` on the backend
-- Sets `API_URL=http://docker-security-watch:8765` on the frontend so it can reach the backend over the internal Docker network
+- Sets `API_URL=http://localhost:8765` so the frontend can reach the backend locally
 
 Visit http://localhost:3000 for the dashboard.
 
 To run in the background:
 
 ```bash
-docker compose up -d
-docker compose logs -f        # tail logs from all services
-docker compose logs frontend  # frontend logs only
-docker compose down           # stop (data volume is preserved)
+docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml logs -f        # tail logs
+docker compose -f docker/docker-compose.yml down           # stop (data volume is preserved)
 ```
 
 ### Notes
@@ -112,12 +113,12 @@ isolated in-memory SQLite database and are fully independent of one another.
 
 | File | Covers |
 |---|---|
-| `tests/fixtures.py` | Static Grype JSON payloads and mock Docker image data |
-| `tests/conftest.py` | `test_db` and `api_client` fixtures, `seed_scan()` helper |
-| `tests/test_docker_watcher.py` | `DockerWatcher.list_images()` — tagged, untagged, running, Docker unavailable |
-| `tests/test_grype_scanner.py` | `GrypeScanner` — subprocess args, DB persistence, field parsing, error handling |
-| `tests/test_api.py` | All API endpoints including 404s, latest-scan-only logic, history ordering, and digest lookups |
-| `tests/test_scheduler.py` | Scheduler polling logic — new image detection, digest deduplication, DB bootstrap |
+| `backend/tests/fixtures.py` | Static Grype JSON payloads and mock Docker image data |
+| `backend/tests/conftest.py` | `test_db` and `api_client` fixtures, `seed_scan()` helper |
+| `backend/tests/test_docker_watcher.py` | `DockerWatcher.list_images()` — tagged, untagged, running, Docker unavailable |
+| `backend/tests/test_grype_scanner.py` | `GrypeScanner` — subprocess args, DB persistence, field parsing, error handling |
+| `backend/tests/test_api.py` | All API endpoints including 404s, latest-scan-only logic, history ordering, and digest lookups |
+| `backend/tests/test_scheduler.py` | Scheduler polling logic — new image detection, digest deduplication, DB bootstrap |
 
 ## Changing the Database Schema
 
@@ -125,14 +126,14 @@ Alembic manages all schema migrations. After editing `models.py`:
 
 ```bash
 # 1. Generate a migration from the model changes
-uv run alembic revision --autogenerate -m "describe your change"
+uv run alembic -c backend/alembic.ini revision --autogenerate -m "describe your change"
 
-# 2. Open the generated file in alembic/versions/ and verify the auto-generated
+# 2. Open the generated file in backend/alembic/versions/ and verify the auto-generated
 #    upgrade/downgrade — check for any missing `import sqlmodel` if SQLModel
 #    string types are used (known autogenerate quirk)
 
 # 3. Apply the migration
-uv run alembic upgrade head
+uv run alembic -c backend/alembic.ini upgrade head
 ```
 
 The app runs `alembic upgrade head` automatically on startup,
@@ -140,7 +141,7 @@ so once the migration file is committed, it will be applied on the next run.
 
 To roll back the last migration:
 ```bash
-uv run alembic downgrade -1
+uv run alembic -c backend/alembic.ini downgrade -1
 ```
 
 ## API Endpoints

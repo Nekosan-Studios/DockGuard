@@ -1,7 +1,7 @@
 .git
 .gitignore
 .venv
-tests/
+backend/tests/
 *.db
 **/__pycache__
 *.pyc
@@ -11,5 +11,6 @@ tests/
 .vscode
 .claude
 README.md
-Dockerfile
-docker-compose.yml
+docker/
+frontend/node_modules/
+frontend/.svelte-kit/

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import docker
 import pytest
 
-from server.docker_watcher import DockerWatcher
+from backend.docker_watcher import DockerWatcher
 
 
 def _make_mock_image(image_id: str, tags: list[str]) -> MagicMock:

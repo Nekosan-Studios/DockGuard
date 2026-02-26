@@ -11,9 +11,11 @@ class Database:
         self.engine = create_engine(url)
 
     def init(self):
+        from pathlib import Path
+
         from alembic import command
         from alembic.config import Config
-        alembic_cfg = Config("alembic.ini")
+        alembic_cfg = Config(str(Path(__file__).parent / "alembic.ini"))
         command.upgrade(alembic_cfg, "head")
 
     def get_session(self):

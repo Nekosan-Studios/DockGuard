@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from server.scheduler import ContainerScheduler
-from tests.conftest import seed_scan, VULN_CRITICAL
+from backend.scheduler import ContainerScheduler
+from backend.tests.conftest import seed_scan, VULN_CRITICAL
 
 
 # ---------------------------------------------------------------------------
@@ -44,8 +44,8 @@ def test_create_scheduler_empty_db_has_no_digests(test_db):
 # _check_running_containers: new image triggers scan task
 # ---------------------------------------------------------------------------
 
-@patch("server.scheduler.asyncio.create_task")
-@patch("server.scheduler.DockerWatcher")
+@patch("backend.scheduler.asyncio.create_task")
+@patch("backend.scheduler.DockerWatcher")
 def test_new_image_schedules_scan(mock_watcher_cls, mock_create_task, test_db):
     sched = ContainerScheduler(test_db)
     mock_watcher_cls.return_value.list_images.return_value = [
@@ -58,8 +58,8 @@ def test_new_image_schedules_scan(mock_watcher_cls, mock_create_task, test_db):
     assert "sha256:aaaa" in sched._seen_digests
 
 
-@patch("server.scheduler.asyncio.create_task")
-@patch("server.scheduler.DockerWatcher")
+@patch("backend.scheduler.asyncio.create_task")
+@patch("backend.scheduler.DockerWatcher")
 def test_known_digest_is_skipped(mock_watcher_cls, mock_create_task, test_db):
     sched = ContainerScheduler(test_db)
     sched._seen_digests = {"sha256:aaaa"}
@@ -72,8 +72,8 @@ def test_known_digest_is_skipped(mock_watcher_cls, mock_create_task, test_db):
     mock_create_task.assert_not_called()
 
 
-@patch("server.scheduler.asyncio.create_task")
-@patch("server.scheduler.DockerWatcher")
+@patch("backend.scheduler.asyncio.create_task")
+@patch("backend.scheduler.DockerWatcher")
 def test_db_scanned_digest_not_rescanned_on_restart(mock_watcher_cls, mock_create_task, test_db):
     """Simulate server restart: digest is in DB; ContainerScheduler bootstraps it on init."""
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
@@ -89,8 +89,8 @@ def test_db_scanned_digest_not_rescanned_on_restart(mock_watcher_cls, mock_creat
     mock_create_task.assert_not_called()
 
 
-@patch("server.scheduler.asyncio.create_task")
-@patch("server.scheduler.DockerWatcher")
+@patch("backend.scheduler.asyncio.create_task")
+@patch("backend.scheduler.DockerWatcher")
 def test_updated_image_same_tag_triggers_scan(mock_watcher_cls, mock_create_task, test_db):
     """Same tag but different digest (e.g. latest was re-pulled) → new scan."""
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
@@ -107,8 +107,8 @@ def test_updated_image_same_tag_triggers_scan(mock_watcher_cls, mock_create_task
     assert "sha256:bbbb" in sched._seen_digests
 
 
-@patch("server.scheduler.asyncio.create_task")
-@patch("server.scheduler.DockerWatcher")
+@patch("backend.scheduler.asyncio.create_task")
+@patch("backend.scheduler.DockerWatcher")
 def test_non_running_images_are_ignored(mock_watcher_cls, mock_create_task, test_db):
     sched = ContainerScheduler(test_db)
     mock_watcher_cls.return_value.list_images.return_value = [
@@ -120,8 +120,8 @@ def test_non_running_images_are_ignored(mock_watcher_cls, mock_create_task, test
     mock_create_task.assert_not_called()
 
 
-@patch("server.scheduler.asyncio.create_task")
-@patch("server.scheduler.DockerWatcher")
+@patch("backend.scheduler.asyncio.create_task")
+@patch("backend.scheduler.DockerWatcher")
 def test_docker_unavailable_does_not_crash(mock_watcher_cls, mock_create_task, test_db):
     sched = ContainerScheduler(test_db)
     mock_watcher_cls.return_value.list_images.return_value = []

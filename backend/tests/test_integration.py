@@ -8,7 +8,7 @@ import logging
 import pytest
 from sqlalchemy import inspect as sa_inspect
 
-import server.scheduler as sched_module
+import backend.scheduler as sched_module
 
 
 def test_app_loggers_enabled_after_startup(integration_client):
@@ -32,7 +32,7 @@ def test_alembic_upgrade_runs_cleanly(tmp_db, monkeypatch):
     Catches bugs like missing 'import sqlmodel' in generated migration files,
     wrong backfill logic, or columns that were renamed/dropped accidentally.
     """
-    monkeypatch.setattr("server.database.DATABASE_URL", str(tmp_db.engine.url))
+    monkeypatch.setattr("backend.database.DATABASE_URL", str(tmp_db.engine.url))
     tmp_db.init()
 
     inspector = sa_inspect(tmp_db.engine)

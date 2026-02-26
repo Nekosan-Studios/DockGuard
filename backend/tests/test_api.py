@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tests.conftest import (
+from backend.tests.conftest import (
     VULN_CRITICAL,
     VULN_CRITICAL_2,
     VULN_HIGH,

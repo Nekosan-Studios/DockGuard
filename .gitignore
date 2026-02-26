@@ -1,10 +1,9 @@
-# Virtual environment
+# Virtual environment (uv, node, etc.)
 .venv/
+node_modules/
+frontend/node_modules/
 
-# Database
-*.db
-
-# Python
+# Python / Pytest
 __pycache__/
 *.py[cod]
 *.pyo
@@ -12,15 +11,30 @@ __pycache__/
 dist/
 build/
 .eggs/
+.pytest_cache/
+
+# Database
+*.db
 
 # Environment variables
 .env
 .env.*
+!frontend/.env.example
+!frontend/.env.test
 
-# macOS
+# Frontend (SvelteKit / Vite)
+frontend/.svelte-kit/
+frontend/.output/
+frontend/build/
+frontend/.vercel/
+frontend/.netlify/
+frontend/.wrangler/
+frontend/vite.config.js.timestamp-*
+frontend/vite.config.ts.timestamp-*
+
+# OS / Tools
 .DS_Store
-
-# IDE
+Thumbs.db
 .vscode/
 .idea/
 *.swp

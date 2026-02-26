@@ -69,7 +69,7 @@ echo
 
 # ─── start backend ──────────────────────────────────────────────────────────────
 echo "Starting backend  :8765 ..."
-(cd "$SCRIPT_DIR" && uv run uvicorn server.api:app --reload --port 8765) &
+(cd "$SCRIPT_DIR" && uv run uvicorn backend.api:app --reload --port 8765) &
 PIDS+=($!)
 
 # ─── start frontend ─────────────────────────────────────────────────────────────

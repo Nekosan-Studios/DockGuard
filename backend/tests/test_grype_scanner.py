@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlmodel import Session, select
 
-from server.grype_scanner import GrypeScanner
-from server.models import Scan, Vulnerability
-from tests.conftest import seed_scan
-from tests.fixtures import GRYPE_JSON_NGINX, GRYPE_JSON_REDIS, MOCK_DOCKER_IMAGES
+from backend.grype_scanner import GrypeScanner
+from backend.models import Scan, Vulnerability
+from backend.tests.conftest import seed_scan
+from backend.tests.fixtures import GRYPE_JSON_NGINX, GRYPE_JSON_REDIS, MOCK_DOCKER_IMAGES
 
 
 def _make_scanner(test_db, images=None):
@@ -31,7 +31,7 @@ def _mock_subprocess(json_payload: dict, returncode: int = 0) -> CompletedProces
 # subprocess interaction
 # ---------------------------------------------------------------------------
 
-@patch("server.grype_scanner.subprocess.run")
+@patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_calls_subprocess_with_correct_args(mock_run, test_db):
     mock_run.return_value = _mock_subprocess(GRYPE_JSON_NGINX)
     scanner = _make_scanner(test_db, images=[MOCK_DOCKER_IMAGES[0]])  # nginx only
@@ -47,7 +47,7 @@ def test_scan_images_calls_subprocess_with_correct_args(mock_run, test_db):
 # Scan persistence
 # ---------------------------------------------------------------------------
 
-@patch("server.grype_scanner.subprocess.run")
+@patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_stores_scan_row(mock_run, test_db):
     mock_run.return_value = _mock_subprocess(GRYPE_JSON_NGINX)
     scanner = _make_scanner(test_db, images=[MOCK_DOCKER_IMAGES[0]])
@@ -64,7 +64,7 @@ def test_scan_images_stores_scan_row(mock_run, test_db):
     assert scan.distro_version == "12"
 
 
-@patch("server.grype_scanner.subprocess.run")
+@patch("backend.grype_scanner.subprocess.run")
 def test_scan_image_targeted(mock_run, test_db):
     """scan_image() scans a single image by name and grype_ref."""
     mock_run.return_value = _mock_subprocess(GRYPE_JSON_NGINX)
@@ -82,7 +82,7 @@ def test_scan_image_targeted(mock_run, test_db):
     assert scan.image_name == "nginx:latest"
 
 
-@patch("server.grype_scanner.subprocess.run")
+@patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_stores_correct_vulnerability_count(mock_run, test_db):
     mock_run.return_value = _mock_subprocess(GRYPE_JSON_NGINX)
     scanner = _make_scanner(test_db, images=[MOCK_DOCKER_IMAGES[0]])
@@ -168,7 +168,7 @@ def test_store_scan_no_vulnerabilities(test_db):
 # Error handling
 # ---------------------------------------------------------------------------
 
-@patch("server.grype_scanner.subprocess.run")
+@patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_grype_error_does_not_store(mock_run, test_db):
     mock_run.return_value = CompletedProcess(
         args=["grype"], returncode=1, stdout="", stderr="grype: command failed"
@@ -180,7 +180,7 @@ def test_scan_images_grype_error_does_not_store(mock_run, test_db):
         assert session.exec(select(Scan)).first() is None
 
 
-@patch("server.grype_scanner.subprocess.run")
+@patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_invalid_json_does_not_store(mock_run, test_db):
     mock_run.return_value = CompletedProcess(
         args=["grype"], returncode=0, stdout="not valid json {{{", stderr=""
