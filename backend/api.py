@@ -1,4 +1,4 @@
-import logging
+import colorlog
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -16,9 +16,9 @@ async def lifespan(_: FastAPI):
     db.init()
     # alembic.ini's fileConfig sets root logger to WARNING; restore to INFO
     # so app loggers (scheduler, grype_scanner, docker_watcher) are visible.
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
+    colorlog.basicConfig(
+        level=colorlog.INFO,
+        format="%(asctime)s %(log_color)s%(levelname)-8s%(reset)s %(name)s - %(message)s",
         force=True,
     )
     scheduler = ContainerScheduler(db)
