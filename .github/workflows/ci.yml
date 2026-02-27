@@ -11,8 +11,9 @@ permissions:
   packages: write
 
 jobs:
-  # ── Job 1: Run tests ────────────────────────────────────────────────
+  # ── Job 1: Run tests (PRs only) ─────────────────────────────────────
   test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,9 +55,8 @@ jobs:
         run: npm run check
         working-directory: frontend
 
-  # ── Job 2: Build & push Docker image ────────────────────────────────
+  # ── Job 2: Build & push Docker image (push to master only) ─────────
   docker-build-push:
-    needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
