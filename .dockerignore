@@ -2,7 +2,7 @@
 .gitignore
 .venv
 backend/tests/
-*.db
+data/
 **/__pycache__
 *.pyc
 *.pyo

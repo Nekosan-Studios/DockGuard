@@ -7,7 +7,7 @@ services:
       - "8765:8765"
       - "3000:3000"
     volumes:
-      - ./data:/app/data
+      - ../data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - SCAN_INTERVAL_SECONDS=60

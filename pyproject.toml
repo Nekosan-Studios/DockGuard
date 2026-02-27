@@ -9,6 +9,7 @@ dependencies = [
     "docker",
     "sqlmodel",
     "alembic",
+    "colorlog>=6.10.1",
 ]
 
 [dependency-groups]

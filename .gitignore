@@ -15,7 +15,8 @@ build/
 
 # Database
 *.db
-docker/data/
+data/
+!data/.gitkeep
 
 # Environment variables
 .env
