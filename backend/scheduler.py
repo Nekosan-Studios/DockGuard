@@ -89,8 +89,8 @@ class ContainerScheduler:
         """Scheduled job: check if a newer grype DB is available.
 
         Uses 'grype db check' exit codes:
-          0 → DB is current, nothing to do
-          1 → update available, clear _seen_digests so all images are rescanned
+          0   → DB is current, nothing to do
+          100 → update available, clear _seen_digests so all images are rescanned
           other → unexpected error, log and take no action
         """
         try:
@@ -106,7 +106,7 @@ class ContainerScheduler:
 
         if result.returncode == 0:
             logger.info("Grype DB is current — no rescan needed")
-        elif result.returncode == 1:
+        elif result.returncode == 100:
             logger.info("New grype DB available — clearing seen digests to trigger full rescan")
             self._seen_digests.clear()
         else:

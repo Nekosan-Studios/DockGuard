@@ -137,10 +137,10 @@ def test_docker_unavailable_does_not_crash(mock_watcher_cls, mock_create_task, t
 
 @patch("backend.scheduler.subprocess.run")
 def test_db_check_update_available_clears_seen_digests(mock_run, test_db):
-    """returncode == 1 (update available) → _seen_digests is cleared entirely."""
+    """returncode == 100 (update available) → _seen_digests is cleared entirely."""
     sched = ContainerScheduler(test_db)
     sched._seen_digests = {"sha256:aaaa", "sha256:bbbb"}
-    mock_run.return_value = MagicMock(returncode=1)
+    mock_run.return_value = MagicMock(returncode=100)
 
     asyncio.run(sched._check_db_update())
 
