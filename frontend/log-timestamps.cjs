@@ -8,8 +8,10 @@ const orig = {
   error: console.error,
 };
 
+const levels = { log: 'INFO    ', warn: 'WARN    ', error: 'ERROR   ' };
+
 for (const method of ['log', 'warn', 'error']) {
   console[method] = (...args) => {
-    orig[method](new Date().toISOString(), ...args);
+    orig[method](new Date().toISOString(), levels[method], ...args);
   };
 }
