@@ -70,7 +70,7 @@ The compose file handles everything:
 - Uses `supervisord` to manage both the Node.js and Python processes
 - Mounts `/var/run/docker.sock` so the backend can introspect the host Docker daemon
 - Creates a named volume `dsw-data` at `/app/data` for database persistence
-- Sets `DATABASE_URL`, `SCAN_INTERVAL_SECONDS`, and `MAX_CONCURRENT_SCANS` on the backend
+- Sets `SCAN_INTERVAL_SECONDS` and `MAX_CONCURRENT_SCANS` on the backend
 - Sets `API_URL=http://localhost:8765` so the frontend can reach the backend locally
 
 Visit http://localhost:3000 for the dashboard.
@@ -94,9 +94,19 @@ The poll interval can be changed with the `SCAN_INTERVAL_SECONDS` environment va
 
 Every hour the scheduler also runs `grype db check`. If a newer Grype vulnerability database is available, all previously-seen image digests are cleared so every image — including any that were stopped at the time — is rescanned against the updated database when next observed. The check interval can be changed with the `DB_CHECK_INTERVAL_SECONDS` environment variable (default: `3600`).
 
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_PATH` | `docker_security_watch.db` | Path to write the SQLitedatabase file. The default writes to the current working directory. When running in Docker, use a volume mount for persistence (preferred over overriding this variable). |
+| `SCAN_INTERVAL_SECONDS` | `60` | How often (in seconds) the scheduler polls Docker for new/updated containers. |
+| `MAX_CONCURRENT_SCANS` | `1` | Maximum number of Grype scans to run in parallel. |
+| `DB_CHECK_INTERVAL_SECONDS` | `3600` | How often (in seconds) to check for Grype vulnerability database updates. |
+| `API_URL` | `http://localhost:8765` | URL the SvelteKit server-side load functions use to reach the backend API. |
+
 ## Database
 
-SQLite file: `docker_security_watch.db` (created automatically on first run, or at `DATABASE_URL` if set).
+SQLite file: `docker_security_watch.db` (created automatically on first run, or at `DATABASE_PATH` if set).
 
 Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding).
 `image_digest` on `Scan` is how version changes are tracked over time for the same image name.

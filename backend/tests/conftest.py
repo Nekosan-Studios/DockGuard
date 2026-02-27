@@ -137,7 +137,7 @@ def integration_client(tmp_path):
     db_file = tmp_path / "integration.db"
     temp_db = Database(f"sqlite:///{db_file}")
     app.dependency_overrides[production_db.get_session] = temp_db.get_session
-    with patch("backend.database.DATABASE_URL", f"sqlite:///{db_file}"):
+    with patch("backend.database.DATABASE_PATH", str(db_file)):
         with patch("backend.api.db", temp_db):
             with patch("backend.scheduler.DockerWatcher") as mock_watcher:
                 mock_watcher.return_value.list_images.return_value = []
@@ -209,7 +209,7 @@ def e2e_client(tmp_path, require_docker, require_grype):
     db_file = tmp_path / "e2e.db"
     temp_db = Database(f"sqlite:///{db_file}")
     app.dependency_overrides[production_db.get_session] = temp_db.get_session
-    with patch("backend.database.DATABASE_URL", f"sqlite:///{db_file}"):
+    with patch("backend.database.DATABASE_PATH", str(db_file)):
         with patch("backend.api.db", temp_db):
             with patch("backend.scheduler.SCAN_INTERVAL_SECONDS", 5):
                 with TestClient(app, raise_server_exceptions=True) as client:

@@ -32,7 +32,7 @@ def test_alembic_upgrade_runs_cleanly(tmp_db, monkeypatch):
     Catches bugs like missing 'import sqlmodel' in generated migration files,
     wrong backfill logic, or columns that were renamed/dropped accidentally.
     """
-    monkeypatch.setattr("backend.database.DATABASE_URL", str(tmp_db.engine.url))
+    monkeypatch.setattr("backend.database.DATABASE_PATH", str(tmp_db.engine.url).replace("sqlite:///", ""))
     tmp_db.init()
 
     inspector = sa_inspect(tmp_db.engine)
