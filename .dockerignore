@@ -11,6 +11,5 @@ backend/tests/
 .vscode
 .claude
 README.md
-docker/
 frontend/node_modules/
 frontend/.svelte-kit/
