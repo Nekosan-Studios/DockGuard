@@ -152,7 +152,7 @@ class GrypeScanner:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)-8s %(name)s - %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(name)s - %(message)s")
     db.init()  # runs alembic upgrade head
     scanner = GrypeScanner(watcher=DockerWatcher(), database=db)
     scanner.scan_images()

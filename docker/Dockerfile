@@ -50,6 +50,7 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY --from=frontend-builder /app/frontend/build ./frontend/build
 COPY --from=frontend-builder /app/frontend/node_modules ./frontend/node_modules
 COPY --from=frontend-builder /app/frontend/package.json ./frontend/
+COPY frontend/log-timestamps.cjs ./frontend/
 
 # Create data directory
 RUN mkdir -p /app/data
