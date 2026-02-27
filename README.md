@@ -86,7 +86,7 @@ docker compose -f docker/docker-compose.yml down           # stop (data volume i
 ### Notes
 
 - **Docker socket**: The backend must be able to reach the host Docker daemon. On Linux this is `/var/run/docker.sock`. Docker Desktop for Mac/Windows exposes the same path via the VM.
-- **Database persistence**: The SQLite file is written to `docker/data/docker_security_watch.db` on your host filesystem. Removing or recreating containers does not delete scan history. To wipe the database, delete that file.
+- **Database persistence**: The SQLite file is written to `data/docker_security_watch.db` (relative to the project root on the host). Removing or recreating containers does not delete scan history. To wipe the database, delete that file.
 
 Starting the API server also starts the background scheduler. Every 60 seconds it checks which Docker containers are running. If a new image appears, or an existing image has been re-pulled to a new digest (e.g. `latest` was updated), a Grype scan is automatically queued and run in the background. Results are persisted to the database as scans complete.
 
@@ -98,7 +98,7 @@ Every hour the scheduler also runs `grype db check`. If a newer Grype vulnerabil
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_PATH` | `docker_security_watch.db` | Path to write the SQLitedatabase file. The default writes to the current working directory. When running in Docker, use a volume mount for persistence (preferred over overriding this variable). |
+| `DATABASE_PATH` | `data/docker_security_watch.db` | Path to the SQLite database file. The default writes to a `data/` subdirectory relative to the working directory. When running in Docker, the compose file volume-mounts this directory for persistence. |
 | `SCAN_INTERVAL_SECONDS` | `60` | How often (in seconds) the scheduler polls Docker for new/updated containers. |
 | `MAX_CONCURRENT_SCANS` | `1` | Maximum number of Grype scans to run in parallel. |
 | `DB_CHECK_INTERVAL_SECONDS` | `3600` | How often (in seconds) to check for Grype vulnerability database updates. |
@@ -106,7 +106,7 @@ Every hour the scheduler also runs `grype db check`. If a newer Grype vulnerabil
 
 ## Database
 
-SQLite file: `docker_security_watch.db` (created automatically on first run, or at `DATABASE_PATH` if set).
+SQLite file: `data/docker_security_watch.db` (created automatically on first run, or at `DATABASE_PATH` if set).
 
 Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding).
 `image_digest` on `Scan` is how version changes are tracked over time for the same image name.
