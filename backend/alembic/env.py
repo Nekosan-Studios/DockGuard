@@ -4,11 +4,11 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
-from backend.database import DATABASE_URL
+import backend.database as _db
 from backend.models import Scan, Vulnerability  # noqa: F401 — registers models with SQLModel.metadata
 
 config = context.config
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+config.set_main_option("sqlalchemy.url", f"sqlite:///{_db.DATABASE_PATH}")
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)

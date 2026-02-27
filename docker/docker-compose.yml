@@ -10,7 +10,6 @@ services:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - DATABASE_URL=sqlite:////app/data/docker_security_watch.db
       - SCAN_INTERVAL_SECONDS=60
       - MAX_CONCURRENT_SCANS=1
       - DB_CHECK_INTERVAL_SECONDS=3600

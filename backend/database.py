@@ -2,7 +2,8 @@ import os
 
 from sqlmodel import Session, create_engine
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///docker_security_watch.db")
+DATABASE_PATH = os.environ.get("DATABASE_PATH", "docker_security_watch.db")
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 
 class Database:
