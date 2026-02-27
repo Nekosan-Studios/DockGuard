@@ -16,4 +16,3 @@ services:
       - DB_CHECK_INTERVAL_SECONDS=3600
       - API_URL=http://localhost:8765
       - TZ=America/Los_Angeles
-
