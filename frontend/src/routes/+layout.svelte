@@ -3,6 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { ModeWatcher } from 'mode-watcher';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import ModeToggle from '$lib/components/mode-toggle.svelte';
 
@@ -15,6 +16,7 @@
 
 <ModeWatcher />
 
+<Tooltip.Provider delayDuration={400}>
 <Sidebar.Provider>
 	<AppSidebar />
 	<Sidebar.Inset>
@@ -29,3 +31,4 @@
 		</main>
 	</Sidebar.Inset>
 </Sidebar.Provider>
+</Tooltip.Provider>
