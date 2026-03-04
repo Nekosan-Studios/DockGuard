@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
 from .database import db
@@ -201,11 +202,31 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     if not running:
         return {"containers": []}
 
+    image_names = [img["image_name"] for img in running]
+    latest_scan_id_subq = (
+        select(func.max(Scan.id))
+        .where(Scan.image_name.in_(image_names))
+        .group_by(Scan.image_name)
+    )
+    scans_by_image = {
+        s.image_name: s
+        for s in session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
+    }
+
+    scan_ids = [s.id for s in scans_by_image.values()]
+    severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
+    if scan_ids:
+        for scan_id, severity, cnt in session.exec(
+            select(Vulnerability.scan_id, Vulnerability.severity, func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id.in_(scan_ids))
+            .group_by(Vulnerability.scan_id, Vulnerability.severity)
+        ).all():
+            severity_by_scan[scan_id][severity] = cnt
+
     containers = []
     for img in running:
-        try:
-            scan = _latest_scan_for_ref(img["image_name"], session)
-        except HTTPException:
+        scan = scans_by_image.get(img["image_name"])
+        if not scan:
             containers.append({
                 "container_name": img["container_name"],
                 "image_name": img["image_name"],
@@ -219,12 +240,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
             })
             continue
 
-        severity_rows = session.exec(
-            select(Vulnerability.severity, func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id == scan.id)
-            .group_by(Vulnerability.severity)
-        ).all()
-        vulns_by_severity = {sev: cnt for sev, cnt in severity_rows}
+        vulns_by_severity = severity_by_scan.get(scan.id, {})
         containers.append({
             "container_name": img["container_name"],
             "image_name": scan.image_name,
@@ -257,23 +273,21 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         select(func.count(func.distinct(Scan.image_name)))
     ).one()
 
-    critical_count = 0
-    kev_count = 0
-    for image_name in running_images:
-        try:
-            scan = _latest_scan_for_ref(image_name, session)
-        except HTTPException:
-            continue
-        critical_count += session.exec(
-            select(func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id == scan.id)
-            .where(Vulnerability.severity == "Critical")
+    if running_images:
+        latest_scan_id_subq = (
+            select(func.max(Scan.id))
+            .where(Scan.image_name.in_(running_images))
+            .group_by(Scan.image_name)
+        )
+        row = session.exec(
+            select(
+                func.coalesce(func.sum(sa_case((Vulnerability.severity == "Critical", 1), else_=0)), 0),
+                func.coalesce(func.sum(sa_case((Vulnerability.is_kev == True, 1), else_=0)), 0),  # noqa: E712
+            ).where(Vulnerability.scan_id.in_(latest_scan_id_subq))
         ).one()
-        kev_count += session.exec(
-            select(func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id == scan.id)
-            .where(Vulnerability.is_kev == True)  # noqa: E712
-        ).one()
+        critical_count, kev_count = int(row[0]), int(row[1])
+    else:
+        critical_count, kev_count = 0, 0
 
     # 30-day trend: critical vulns per day, deduped to latest scan per image per day
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
@@ -286,20 +300,25 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         day = scan.scanned_at.date().isoformat()
         day_image_scan[day][scan.image_name] = scan  # later scan overwrites earlier
 
-    trend = []
-    for day in sorted(day_image_scan.keys()):
-        day_critical = sum(
-            session.exec(
-                select(func.count(Vulnerability.id))
-                .where(Vulnerability.scan_id == s.id)
-                .where(Vulnerability.severity == "Critical")
-            ).one()
-            for s in day_image_scan[day].values()
-        )
-        trend.append({"date": day, "critical": day_critical})
+    trend_scan_ids = [s.id for day_scans in day_image_scan.values() for s in day_scans.values()]
+    if trend_scan_ids:
+        crit_rows = session.exec(
+            select(Vulnerability.scan_id, func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id.in_(trend_scan_ids))
+            .where(Vulnerability.severity == "Critical")
+            .group_by(Vulnerability.scan_id)
+        ).all()
+        critical_by_scan = dict(crit_rows)
+    else:
+        critical_by_scan = {}
+
+    trend = [
+        {"date": day, "critical": sum(critical_by_scan.get(s.id, 0) for s in day_image_scan[day].values())}
+        for day in sorted(day_image_scan.keys())
+    ]
 
     # Status bar fields: grype version, vuln DB built date, last db check time
-    latest_scan = session.exec(select(Scan).order_by(Scan.scanned_at.desc())).first()
+    latest_scan = session.exec(select(Scan).order_by(Scan.scanned_at.desc()).limit(1)).first()
     grype_version = latest_scan.grype_version if latest_scan else None
     db_built = _as_utc(latest_scan.db_built) if latest_scan else None
 
@@ -329,14 +348,19 @@ def get_recent_activity(
         select(Scan).order_by(Scan.scanned_at.desc()).limit(limit)
     ).all()
 
+    scan_ids = [s.id for s in scans]
+    severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
+    if scan_ids:
+        for scan_id, severity, cnt in session.exec(
+            select(Vulnerability.scan_id, Vulnerability.severity, func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id.in_(scan_ids))
+            .group_by(Vulnerability.scan_id, Vulnerability.severity)
+        ).all():
+            severity_by_scan[scan_id][severity] = cnt
+
     result = []
     for scan in scans:
-        severity_rows = session.exec(
-            select(Vulnerability.severity, func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id == scan.id)
-            .group_by(Vulnerability.severity)
-        ).all()
-        vulns_by_severity = {sev: cnt for sev, cnt in severity_rows}
+        vulns_by_severity = severity_by_scan.get(scan.id, {})
         result.append({
             "scan_id": scan.id,
             "scanned_at": _as_utc(scan.scanned_at),
