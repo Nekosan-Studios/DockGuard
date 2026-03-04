@@ -245,7 +245,24 @@
 				? payload
 				: (payload.vulnerabilities ?? []);
 			if (payload.scanned_at) containerScanTimes.set(imageName, payload.scanned_at);
-			const sorted = raw.slice().sort((a, b) => {
+			// Grype reports the same CVE+package+version as multiple matches when the
+			// package is installed in different paths (common in Node/npm images).
+			// Merge duplicates so the {#each} key is unique and no rows are lost.
+			const deduped = new Map<string, Vulnerability>();
+			for (const v of raw) {
+				const key = `${v.vuln_id}|${v.package_name}|${v.installed_version}`;
+				if (deduped.has(key)) {
+					const existing = deduped.get(key)!;
+					if (v.locations && existing.locations && v.locations !== existing.locations) {
+						existing.locations = existing.locations + '\n' + v.locations;
+					} else if (v.locations && !existing.locations) {
+						existing.locations = v.locations;
+					}
+				} else {
+					deduped.set(key, { ...v });
+				}
+			}
+			const sorted = [...deduped.values()].sort((a, b) => {
 				const si = SEVERITY_ORDER.indexOf(a.severity);
 				const sj = SEVERITY_ORDER.indexOf(b.severity);
 				if (si !== sj) return si - sj;
