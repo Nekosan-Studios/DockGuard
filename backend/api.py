@@ -1,4 +1,6 @@
 import colorlog
+import logging
+import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -11,6 +13,23 @@ from .database import db
 from .docker_watcher import DockerWatcher
 from .models import AppState, Scan, Vulnerability
 from .scheduler import ContainerScheduler
+
+logger = logging.getLogger(__name__)
+
+_DESC_LIMIT = 250
+_LOC_LIMIT = 5
+
+
+def _serialise_vuln(v: Vulnerability) -> dict:
+    """Convert a Vulnerability ORM object to a dict, truncating large text fields."""
+    d = v.model_dump()
+    if d.get("description") and len(d["description"]) > _DESC_LIMIT:
+        d["description"] = d["description"][:_DESC_LIMIT] + "…"
+    if d.get("locations"):
+        paths = d["locations"].split("\n")
+        if len(paths) > _LOC_LIMIT:
+            d["locations"] = "\n".join(paths[:_LOC_LIMIT])
+    return d
 
 
 @asynccontextmanager
@@ -84,14 +103,24 @@ def _parse_image_query(image: str) -> tuple[str, str]:
 @app.get("/images/vulnerabilities")
 def get_vulnerabilities(
     image_ref: str = Query(..., description="Image reference: name+tag (nginx:latest) or digest (sha256:...)"),
+    severity: str | None = Query(None, description="Filter by severity (e.g. Critical, High)"),
     session: Session = Depends(db.get_session),
 ):
-    """All vulnerabilities for the most recent scan of an image."""
+    """Vulnerabilities for the most recent scan of an image, optionally filtered by severity."""
+    t0 = time.perf_counter()
     scan = _latest_scan_for_ref(image_ref, session)
-    vulns = session.exec(
-        select(Vulnerability).where(Vulnerability.scan_id == scan.id)
-    ).all()
-    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(vulns), "vulnerabilities": vulns}
+    q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
+    if severity:
+        q = q.where(Vulnerability.severity == severity)
+    vulns = session.exec(q).all()
+    serialised = [_serialise_vuln(v) for v in vulns]
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    payload_est = sum(len(d.get("description") or "") + len(d.get("locations") or "") for d in serialised)
+    logger.info(
+        "GET /images/vulnerabilities image_ref=%s severity=%s count=%d payload_est=%dB db_ms=%.1f",
+        image_ref, severity, len(serialised), payload_est, elapsed_ms,
+    )
+    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(serialised), "vulnerabilities": serialised}
 
 
 @app.get("/images/vulnerabilities/critical")
@@ -106,7 +135,8 @@ def get_critical_vulnerabilities(
         .where(Vulnerability.scan_id == scan.id)
         .where(Vulnerability.severity == "Critical")
     ).all()
-    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(vulns), "vulnerabilities": vulns}
+    serialised = [_serialise_vuln(v) for v in vulns]
+    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(serialised), "vulnerabilities": serialised}
 
 
 @app.get("/vulnerabilities/critical/running")
