@@ -43,6 +43,7 @@ class Vulnerability(SQLModel, table=True):
     package_language: Optional[str] = None
     purl: Optional[str] = None
     locations: Optional[str] = None  # newline-separated file paths
+    first_seen_at: Optional[datetime] = None
 
     scan: Optional[Scan] = Relationship(back_populates="vulnerabilities")
 
@@ -51,3 +52,5 @@ class AppState(SQLModel, table=True):
     """Single-row table (id=1) for app-wide persistent state."""
     id: int = Field(default=1, primary_key=True)
     last_db_checked_at: Optional[datetime] = None
+    grype_version: Optional[str] = None
+    db_built: Optional[datetime] = None

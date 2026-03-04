@@ -317,19 +317,31 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         for day in sorted(day_image_scan.keys())
     ]
 
-    # Status bar fields: grype version, vuln DB built date, last db check time
-    latest_scan = session.exec(select(Scan).order_by(Scan.scanned_at.desc()).limit(1)).first()
-    grype_version = latest_scan.grype_version if latest_scan else None
-    db_built = _as_utc(latest_scan.db_built) if latest_scan else None
-
+    # Status bar fields: prefer AppState (updated each hourly DB check) so values
+    # are always current; fall back to latest scan for installs that haven't
+    # yet run a DB check with the updated scheduler.
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None
+    grype_version = (app_state.grype_version if app_state else None)
+    db_built = _as_utc(app_state.db_built) if app_state else None
+
+    if not grype_version or not db_built:
+        latest_scan = session.exec(select(Scan).order_by(Scan.scanned_at.desc()).limit(1)).first()
+        grype_version = grype_version or (latest_scan.grype_version if latest_scan else None)
+        db_built = db_built or (_as_utc(latest_scan.db_built) if latest_scan else None)
+
+    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    new_vulns_24h = session.exec(
+        select(func.count(Vulnerability.id))
+        .where(Vulnerability.first_seen_at >= cutoff_24h)
+    ).one()
 
     return {
         "running_containers": len(running),
         "images_scanned": images_scanned,
         "critical_count": critical_count,
         "kev_count": kev_count,
+        "new_vulns_24h": int(new_vulns_24h),
         "trend": trend,
         "docker_connected": docker_connected,
         "grype_version": grype_version,

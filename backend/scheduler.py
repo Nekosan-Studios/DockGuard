@@ -119,15 +119,51 @@ class ContainerScheduler:
                     result.stderr.strip(),
                 )
 
+        grype_version, db_built = await self._fetch_grype_info()
+
         with Session(self.db.engine) as session:
             state = session.get(AppState, 1)
             if state is None:
-                session.add(AppState(id=1, last_db_checked_at=now))
+                session.add(AppState(id=1, last_db_checked_at=now, grype_version=grype_version, db_built=db_built))
             else:
                 state.last_db_checked_at = now
+                if grype_version:
+                    state.grype_version = grype_version
+                if db_built:
+                    state.db_built = db_built
                 session.add(state)
             session.commit()
-        logger.debug("Persisted last_db_checked_at = %s", now)
+        logger.debug("Persisted last_db_checked_at = %s, grype_version = %s, db_built = %s", now, grype_version, db_built)
+
+    async def _fetch_grype_info(self) -> tuple[str | None, "datetime | None"]:
+        """Run grype version + grype db status to get current grype version and DB built date."""
+        grype_version: str | None = None
+        db_built: "datetime | None" = None
+
+        try:
+            ver_result = await asyncio.to_thread(
+                subprocess.run, ["grype", "version"], capture_output=True, text=True,
+            )
+            for line in ver_result.stdout.splitlines():
+                if line.startswith("Version:"):
+                    grype_version = line.split(":", 1)[1].strip()
+                    break
+        except Exception as e:
+            logger.warning("Could not determine grype version: %s", e)
+
+        try:
+            db_result = await asyncio.to_thread(
+                subprocess.run, ["grype", "db", "status"], capture_output=True, text=True,
+            )
+            for line in db_result.stdout.splitlines():
+                if line.startswith("Built:"):
+                    built_str = line.split(":", 1)[1].strip()
+                    db_built = datetime.fromisoformat(built_str.replace("Z", "+00:00"))
+                    break
+        except Exception as e:
+            logger.warning("Could not determine grype DB built date: %s", e)
+
+        return grype_version, db_built
 
     async def _scan_image_async(self, image_name: str, grype_ref: str, container_name: str | None = None) -> None:
         """Run a Grype scan in a thread so the event loop is not blocked.

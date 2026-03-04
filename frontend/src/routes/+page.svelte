@@ -113,7 +113,7 @@
 	</div>
 
 	<!-- Stat cards -->
-	<div class="grid max-w-lg gap-4 sm:grid-cols-2">
+	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		<!-- Running containers + images scanned -->
 		<Card.Root>
 			<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -134,10 +134,10 @@
 			</Card.Content>
 		</Card.Root>
 
-		<!-- Critical + KEV -->
+		<!-- Critical vulnerabilities -->
 		<Card.Root>
 			<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
-				<Card.Title class="text-sm font-medium">Active Threats</Card.Title>
+				<Card.Title class="text-sm font-medium">Critical Vulnerabilities</Card.Title>
 				<TriangleAlert class="text-muted-foreground h-4 w-4" />
 			</Card.Header>
 			<Card.Content>
@@ -145,19 +145,46 @@
 					<div class="text-2xl font-bold">—</div>
 					<p class="text-muted-foreground text-xs">No data yet</p>
 				{:else}
-					<div class="flex items-end gap-4">
-						<div>
-							<div class="text-2xl font-bold">{data.summary.critical_count}</div>
-							<p class="text-muted-foreground text-xs">critical</p>
-						</div>
-						<div class="border-border border-l pl-4">
-							<div class="flex items-center gap-1 text-2xl font-bold {data.summary.kev_count > 0 ? 'text-red-600 dark:text-red-400' : ''}">
-								{#if data.summary.kev_count > 0}<Zap class="h-4 w-4" />{/if}
-								{data.summary.kev_count}
-							</div>
-							<p class="text-muted-foreground text-xs">actively exploited</p>
-						</div>
+					<div class="text-2xl font-bold">{data.summary.critical_count}</div>
+					<p class="text-muted-foreground text-xs">across running containers</p>
+				{/if}
+			</Card.Content>
+		</Card.Root>
+
+		<!-- Actively exploited (KEV) -->
+		<Card.Root>
+			<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<Card.Title class="text-sm font-medium">Actively Exploited</Card.Title>
+				<Zap class="text-muted-foreground h-4 w-4" />
+			</Card.Header>
+			<Card.Content>
+				{#if data.summary.kev_count === null}
+					<div class="text-2xl font-bold">—</div>
+					<p class="text-muted-foreground text-xs">No data yet</p>
+				{:else}
+					<div class="text-2xl font-bold {data.summary.kev_count > 0 ? 'text-red-600 dark:text-red-400' : ''}">
+						{data.summary.kev_count}
 					</div>
+					<p class="text-muted-foreground text-xs">known exploited vulnerabilities (KEV)</p>
+				{/if}
+			</Card.Content>
+		</Card.Root>
+
+		<!-- New vulnerabilities (24h) -->
+		<Card.Root>
+			<Card.Header class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<Card.Title class="text-sm font-medium">New (Last 24h)</Card.Title>
+				<Shield class="text-muted-foreground h-4 w-4" />
+			</Card.Header>
+			<Card.Content>
+				{#if data.summary.new_vulns_24h === null}
+					<div class="text-2xl font-bold">—</div>
+					<p class="text-muted-foreground text-xs">No data yet</p>
+				{:else}
+					<div class="text-2xl font-bold {(data.summary.new_vulns_24h ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : ''}">
+						{data.summary.new_vulns_24h ?? 0}
+					</div>
+					<p class="text-muted-foreground text-xs">newly discovered vulnerabilities</p>
 				{/if}
 			</Card.Content>
 		</Card.Root>
@@ -189,10 +216,14 @@
 								color: chartConfig.critical.color
 							}
 						]}
-						axis="x"
+						axis={true}
 						props={{
 							xAxis: {
 								format: (d: string) => d
+							},
+							yAxis: {
+								format: (d: number) => Number.isInteger(d) ? String(d) : '',
+								ticks: 4
 							}
 						}}
 					>
