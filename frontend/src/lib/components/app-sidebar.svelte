@@ -3,6 +3,7 @@
 	import Container from '@lucide/svelte/icons/container';
 	import Cylinder from '@lucide/svelte/icons/cylinder';
 	import ListTodo from '@lucide/svelte/icons/list-todo';
+	import Database from '@lucide/svelte/icons/database';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Shield from '@lucide/svelte/icons/shield';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
@@ -12,6 +13,7 @@
 		{ title: 'Containers', url: '/containers', icon: Container },
 		{ title: 'Images', url: '/images', icon: Cylinder },
 		{ title: 'Tasks', url: '/tasks', icon: ListTodo },
+		{ title: 'DB Explorer', url: '/db-explorer', icon: Database },
 		{ title: 'Settings', url: '/settings', icon: Settings }
 	];
 </script>
