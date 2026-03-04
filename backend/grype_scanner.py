@@ -181,7 +181,13 @@ class GrypeScanner:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            # Grype emits the Go zero time (0001-01-01T00:00:00Z) when the DB
+            # is not yet initialised.  Treat it as absent rather than storing a
+            # nonsensical date that the frontend renders as "Dec 31, 0001".
+            if dt.year == 1:
+                return None
+            return dt
         except ValueError:
             return None
 

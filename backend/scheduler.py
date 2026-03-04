@@ -158,7 +158,14 @@ class ContainerScheduler:
             for line in db_result.stdout.splitlines():
                 if line.startswith("Built:"):
                     built_str = line.split(":", 1)[1].strip()
-                    db_built = datetime.fromisoformat(built_str.replace("Z", "+00:00"))
+                    # grype db status emits Go time format: "2024-01-15 00:00:00 +0000 UTC"
+                    # Strip the trailing " UTC" so fromisoformat can parse it.
+                    if built_str.endswith(" UTC"):
+                        built_str = built_str[:-4].strip()
+                    dt = datetime.fromisoformat(built_str.replace("Z", "+00:00"))
+                    # Ignore the Go zero time (0001-01-01) which means DB not initialised.
+                    if dt.year > 1:
+                        db_built = dt
                     break
         except Exception as e:
             logger.warning("Could not determine grype DB built date: %s", e)

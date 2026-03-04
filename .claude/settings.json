@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest -v)",
+      "Bash(uv run pytest -v tests/test_grype_scanner.py tests/test_scheduler.py)"
+    ]
+  }
+}
