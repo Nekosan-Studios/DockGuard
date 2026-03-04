@@ -44,3 +44,9 @@ class Vulnerability(SQLModel, table=True):
     purl: Optional[str] = None
 
     scan: Optional[Scan] = Relationship(back_populates="vulnerabilities")
+
+
+class AppState(SQLModel, table=True):
+    """Single-row table (id=1) for app-wide persistent state."""
+    id: int = Field(default=1, primary_key=True)
+    last_db_checked_at: Optional[datetime] = None
