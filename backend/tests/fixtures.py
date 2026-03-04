@@ -41,6 +41,10 @@ GRYPE_JSON_NGINX = {
                 "type": "deb",
                 "language": "",
                 "purl": "pkg:deb/debian/libssl@1.1.1",
+                "locations": [
+                    {"path": "/usr/lib/x86_64-linux-gnu/libssl.so.1.1", "layerID": "sha256:aaaa01"},
+                    {"path": "/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1", "layerID": "sha256:aaaa01"},
+                ],
             },
         },
         {
@@ -63,6 +67,9 @@ GRYPE_JSON_NGINX = {
                 "type": "deb",
                 "language": "",
                 "purl": "pkg:deb/debian/curl@7.88.0",
+                "locations": [
+                    {"path": "/usr/bin/curl", "layerID": "sha256:aaaa02"},
+                ],
             },
         },
         {
@@ -85,6 +92,11 @@ GRYPE_JSON_NGINX = {
                 "type": "deb",
                 "language": "",
                 "purl": "pkg:deb/debian/zlib@1.2.11",
+                "locations": [
+                    {"path": "/lib/x86_64-linux-gnu/libz.so.1.2.11", "layerID": "sha256:aaaa03"},
+                    {"path": "/lib/x86_64-linux-gnu/libz.so.1", "layerID": "sha256:aaaa03"},
+                    {"path": "/usr/lib/x86_64-linux-gnu/libz.a", "layerID": "sha256:aaaa03"},
+                ],
             },
         },
     ],
@@ -142,6 +154,9 @@ GRYPE_JSON_REDIS = {
                 "type": "deb",
                 "language": "",
                 "purl": "pkg:deb/debian/redis-server@7.0.11",
+                "locations": [
+                    {"path": "/usr/bin/redis-server", "layerID": "sha256:cccc01"},
+                ],
             },
         },
         {
@@ -164,6 +179,9 @@ GRYPE_JSON_REDIS = {
                 "type": "deb",
                 "language": "",
                 "purl": "pkg:deb/debian/redis-server@7.0.11",
+                "locations": [
+                    {"path": "/usr/bin/redis-server", "layerID": "sha256:cccc02"},
+                ],
             },
         },
     ],

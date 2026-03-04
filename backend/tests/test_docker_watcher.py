@@ -89,8 +89,9 @@ def test_list_images_not_running(mock_from_env):
     assert images[0]["running"] is False
 
 
+@patch("docker.DockerClient", side_effect=docker.errors.DockerException("connection refused"))
 @patch("docker.from_env", side_effect=docker.errors.DockerException("connection refused"))
-def test_list_images_docker_unavailable(mock_from_env):
+def test_list_images_docker_unavailable(mock_from_env, mock_client):
     watcher = DockerWatcher()
     assert watcher.client is None
     assert watcher.list_images() == []
@@ -170,7 +171,8 @@ def test_list_running_containers_strips_leading_slash(mock_from_env):
     assert containers[0]["container_name"] == "my-app"
 
 
+@patch("docker.DockerClient", side_effect=docker.errors.DockerException("connection refused"))
 @patch("docker.from_env", side_effect=docker.errors.DockerException("connection refused"))
-def test_list_running_containers_docker_unavailable(mock_from_env):
+def test_list_running_containers_docker_unavailable(mock_from_env, mock_client):
     watcher = DockerWatcher()
     assert watcher.list_running_containers() == []

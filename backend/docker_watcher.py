@@ -1,15 +1,43 @@
 import logging
+import os
 
 import docker
 
 logger = logging.getLogger(__name__)
+
+# Common Docker socket locations to try when DOCKER_HOST is not set
+_CANDIDATE_SOCKETS = [
+    "/var/run/docker.sock",
+    os.path.expanduser("~/.docker/run/docker.sock"),  # Docker Desktop on macOS
+    os.path.expanduser("~/.orbstack/run/docker.sock"),  # OrbStack
+]
+
+
+def _connect_to_docker() -> docker.DockerClient:
+    """Connect to Docker, trying common socket locations as a fallback."""
+    try:
+        return docker.from_env()
+    except docker.errors.DockerException:
+        pass
+
+    for sock_path in _CANDIDATE_SOCKETS:
+        if os.path.exists(sock_path):
+            try:
+                client = docker.DockerClient(base_url=f"unix://{sock_path}")
+                client.ping()
+                logger.debug("Connected to Docker via %s", sock_path)
+                return client
+            except Exception:
+                continue
+
+    raise docker.errors.DockerException("Could not find a running Docker daemon at any known socket path")
 
 
 class DockerWatcher:
 
     def __init__(self):
         try:
-            self.client = docker.from_env()
+            self.client = _connect_to_docker()
         except docker.errors.DockerException as e:
             logger.warning("Could not connect to Docker (is Docker Desktop running?): %s", e)
             self.client = None

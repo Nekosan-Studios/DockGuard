@@ -27,6 +27,9 @@
 		package_name: string;
 		installed_version: string;
 		fixed_version: string | null;
+		package_type: string | null;
+		locations: string | null;
+		epss_percentile: number | null;
 	}
 
 	const SEVERITY_ORDER = ['Critical', 'High', 'Medium', 'Low', 'Negligible', 'Unknown'];
@@ -397,13 +400,13 @@
 															<colgroup>
 																<col style="width:13%" />
 																<col style="width:7%" />
-																<col style="width:11%" />
+																<col style="width:14%" />
 																<col style="width:9%" />
 																<col style="width:9%" />
 																<col style="width:6%" />
 																<col style="width:7%" />
 																<col style="width:5%" />
-																<col style="width:33%" />
+																<col style="width:30%" />
 															</colgroup>
 															<Table.Header>
 																<Table.Row class="bg-muted/30">
@@ -516,7 +519,36 @@
 																				{vuln.severity}
 																			</span>
 																		</Table.Cell>
-																		<Table.Cell class="font-mono">{vuln.package_name}</Table.Cell>
+																		<Table.Cell class="font-mono">
+																			<Tooltip.Root>
+																				<Tooltip.Trigger class="cursor-default text-left">
+																					<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+																						<span>{vuln.package_name}</span>
+																						{#if vuln.package_type}
+																							<span class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+																								{vuln.package_type}
+																							</span>
+																						{/if}
+																					</div>
+																				</Tooltip.Trigger>
+																				<Tooltip.Content class="max-w-sm">
+																					{@const paths = vuln.locations ? vuln.locations.split('\n') : []}
+																					<p class="mb-1 font-semibold">{paths.length === 1 ? 'Location:' : 'Locations:'}</p>
+																					{#if paths.length > 0}
+																						<ul class="space-y-0.5">
+																							{#each paths as path (path)}
+																								<li class="flex items-start gap-1 font-mono text-xs">
+																									<span class="shrink-0">•</span>
+																									<span class="break-all">{path}</span>
+																								</li>
+																							{/each}
+																						</ul>
+																					{:else}
+																						<p class="text-xs text-muted-foreground">No locations noted.</p>
+																					{/if}
+																				</Tooltip.Content>
+																			</Tooltip.Root>
+																		</Table.Cell>
 																		<Table.Cell class="text-center font-mono text-muted-foreground"
 																			>{vuln.installed_version}</Table.Cell
 																		>
@@ -545,7 +577,19 @@
 																					<Tooltip.Trigger class="cursor-default">
 																						{(vuln.epss_score * 100).toFixed(2)}%
 																					</Tooltip.Trigger>
-																					<Tooltip.Content>{epssTooltip(vuln.epss_score)}</Tooltip.Content>
+																					<Tooltip.Content>
+																						<p>{epssTooltip(vuln.epss_score)}</p>
+																						{#if vuln.epss_percentile != null}
+																							{@const pct = Math.round(vuln.epss_percentile * 100)}
+																							<p class="mt-1 {pct >= 90 ? 'font-semibold text-red-400' : pct >= 70 ? 'text-orange-400' : ''}">
+																								{#if pct >= 50}
+																									More likely to be exploited than {pct}% of all other vulnerabilities.
+																								{:else}
+																									{100 - pct}% of all other vulnerabilities are more likely to be exploited.
+																								{/if}
+																							</p>
+																						{/if}
+																					</Tooltip.Content>
 																				</Tooltip.Root>
 																			{:else}
 																				—

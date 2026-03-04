@@ -42,6 +42,7 @@ class Vulnerability(SQLModel, table=True):
     package_type: Optional[str] = None
     package_language: Optional[str] = None
     purl: Optional[str] = None
+    locations: Optional[str] = None  # newline-separated file paths
 
     scan: Optional[Scan] = Relationship(back_populates="vulnerabilities")
 

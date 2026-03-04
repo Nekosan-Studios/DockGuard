@@ -131,6 +131,9 @@ class GrypeScanner:
                 package_type=artifact.get("type") or None,
                 package_language=artifact.get("language") or None,
                 purl=artifact.get("purl") or None,
+                locations="\n".join(
+                    loc["path"] for loc in artifact.get("locations", []) if loc.get("path")
+                ) or None,
             ))
 
         with Session(self.db.engine) as session:
