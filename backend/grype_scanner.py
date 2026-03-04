@@ -3,7 +3,7 @@ import logging
 import subprocess
 from datetime import datetime, timezone
 
-from sqlmodel import Session
+from sqlmodel import Session, func, select
 
 from .database import Database, db
 from .docker_watcher import DockerWatcher
@@ -72,71 +72,103 @@ class GrypeScanner:
         distro = grype_json.get("distro", {})
         descriptor = grype_json.get("descriptor", {})
         db_info = descriptor.get("db", {})
+        # Grype v6+ nests the built date under db.status; fall back to db.built for older versions.
+        db_status = db_info.get("status", db_info)
+
+        image_repository = _parse_image_repository(image_name)
+        scanned_at = datetime.now(timezone.utc)
 
         scan = Scan(
-            scanned_at=datetime.now(timezone.utc),
+            scanned_at=scanned_at,
             image_name=image_name,
-            image_repository=_parse_image_repository(image_name),
+            image_repository=image_repository,
             image_digest=target.get("imageID", ""),
             grype_version=descriptor.get("version", ""),
-            db_built=self._parse_datetime(db_info.get("built")),
+            db_built=self._parse_datetime(db_status.get("built")),
             distro_name=distro.get("name") or None,
             distro_version=distro.get("version") or None,
             container_name=container_name,
         )
 
-        vulnerabilities = []
-        for match in grype_json.get("matches", []):
-            vuln = match.get("vulnerability", {})
-            artifact = match.get("artifact", {})
-            fix = vuln.get("fix", {})
-
-            cvss_list = vuln.get("cvss", [])
-            cvss_base_score = None
-            if cvss_list:
-                cvss_base_score = cvss_list[0].get("metrics", {}).get("baseScore")
-
-            epss_list = vuln.get("epss", [])
-            epss_score = None
-            epss_percentile = None
-            if epss_list:
-                epss_score = epss_list[0].get("epss")
-                epss_percentile = epss_list[0].get("percentile")
-
-            cwes_list = vuln.get("cwes", [])
-            cwes = ",".join(c.get("cwe", "") for c in cwes_list) if cwes_list else None
-
-            urls_list = vuln.get("urls", [])
-            urls = ",".join(urls_list) if urls_list else None
-
-            fix_versions = fix.get("versions", [])
-            fixed_version = fix_versions[0] if fix_versions else None
-
-            vulnerabilities.append(Vulnerability(
-                vuln_id=vuln.get("id", ""),
-                severity=vuln.get("severity", ""),
-                description=vuln.get("description") or None,
-                data_source=vuln.get("dataSource") or None,
-                urls=urls,
-                cvss_base_score=cvss_base_score,
-                epss_score=epss_score,
-                epss_percentile=epss_percentile,
-                is_kev=bool(vuln.get("knownExploited")),
-                risk_score=vuln.get("risk"),
-                cwes=cwes,
-                package_name=artifact.get("name", ""),
-                installed_version=artifact.get("version", ""),
-                fixed_version=fixed_version,
-                fix_state=fix.get("state") or None,
-                package_type=artifact.get("type") or None,
-                package_language=artifact.get("language") or None,
-                purl=artifact.get("purl") or None,
-                locations="\n".join(
-                    loc["path"] for loc in artifact.get("locations", []) if loc.get("path")
-                ) or None,
-            ))
-
         with Session(self.db.engine) as session:
+            # Build lookup: (vuln_id, package_name, installed_version) -> earliest first_seen_at
+            # scoped to this image_repository so "new" is per-repo not per-tag.
+            existing_rows = session.exec(
+                select(
+                    Vulnerability.vuln_id,
+                    Vulnerability.package_name,
+                    Vulnerability.installed_version,
+                    func.min(Vulnerability.first_seen_at),
+                )
+                .join(Scan, Vulnerability.scan_id == Scan.id)
+                .where(Scan.image_repository == image_repository)
+                .group_by(
+                    Vulnerability.vuln_id,
+                    Vulnerability.package_name,
+                    Vulnerability.installed_version,
+                )
+            ).all()
+            first_seen_map: dict[tuple[str, str, str], datetime] = {
+                (r[0], r[1], r[2]): r[3] for r in existing_rows if r[3] is not None
+            }
+
+            vulnerabilities = []
+            for match in grype_json.get("matches", []):
+                vuln = match.get("vulnerability", {})
+                artifact = match.get("artifact", {})
+                fix = vuln.get("fix", {})
+
+                cvss_list = vuln.get("cvss", [])
+                cvss_base_score = None
+                if cvss_list:
+                    cvss_base_score = cvss_list[0].get("metrics", {}).get("baseScore")
+
+                epss_list = vuln.get("epss", [])
+                epss_score = None
+                epss_percentile = None
+                if epss_list:
+                    epss_score = epss_list[0].get("epss")
+                    epss_percentile = epss_list[0].get("percentile")
+
+                cwes_list = vuln.get("cwes", [])
+                cwes = ",".join(c.get("cwe", "") for c in cwes_list) if cwes_list else None
+
+                urls_list = vuln.get("urls", [])
+                urls = ",".join(urls_list) if urls_list else None
+
+                fix_versions = fix.get("versions", [])
+                fixed_version = fix_versions[0] if fix_versions else None
+
+                vuln_id = vuln.get("id", "")
+                package_name = artifact.get("name", "")
+                installed_version = artifact.get("version", "")
+                key = (vuln_id, package_name, installed_version)
+
+                vulnerabilities.append(Vulnerability(
+                    vuln_id=vuln_id,
+                    severity=vuln.get("severity", ""),
+                    description=vuln.get("description") or None,
+                    data_source=vuln.get("dataSource") or None,
+                    urls=urls,
+                    cvss_base_score=cvss_base_score,
+                    epss_score=epss_score,
+                    epss_percentile=epss_percentile,
+                    is_kev=bool(vuln.get("knownExploited")),
+                    risk_score=vuln.get("risk"),
+                    cwes=cwes,
+                    package_name=package_name,
+                    installed_version=installed_version,
+                    fixed_version=fixed_version,
+                    fix_state=fix.get("state") or None,
+                    package_type=artifact.get("type") or None,
+                    package_language=artifact.get("language") or None,
+                    purl=artifact.get("purl") or None,
+                    locations="\n".join(
+                        loc["path"] for loc in artifact.get("locations", []) if loc.get("path")
+                    ) or None,
+                    first_seen_at=first_seen_map.get(key, scanned_at),
+                ))
+
             session.add(scan)
             session.flush()
             for v in vulnerabilities:

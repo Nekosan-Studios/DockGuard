@@ -30,6 +30,7 @@
 		package_type: string | null;
 		locations: string | null;
 		epss_percentile: number | null;
+		first_seen_at: string | null;
 	}
 
 	const SEVERITY_ORDER = ['Critical', 'High', 'Medium', 'Low', 'Negligible', 'Unknown'];
@@ -88,13 +89,64 @@
 	// ── Expandable row state ───────────────────────────────────────────────────
 	let expandedContainers = new SvelteSet<string>();
 	let containerVulns = new SvelteMap<string, Vulnerability[]>();
+	let containerScanTimes = new SvelteMap<string, string>(); // imageName -> scanned_at ISO
 	let loadingContainers = new SvelteSet<string>();
 	let activeFilters = new SvelteMap<string, SvelteSet<string>>();
+
+	// ── Progressive rendering state ────────────────────────────────────────────
+	const BATCH_SIZE = 50;
+	let pendingVulns = new SvelteMap<string, Vulnerability[]>(); // remaining items not yet rendered
+	let pendingCallbacks = new Map<string, number>(); // idle/timeout handle per container (not reactive)
+
+	function scheduleNextBatch(imageName: string) {
+		const remaining = pendingVulns.get(imageName);
+		if (!remaining || remaining.length === 0) {
+			pendingVulns.delete(imageName);
+			return;
+		}
+		const batch = remaining.slice(0, BATCH_SIZE);
+		const rest = remaining.slice(BATCH_SIZE);
+		const id =
+			typeof requestIdleCallback !== 'undefined'
+				? requestIdleCallback(
+						() => {
+							containerVulns.set(imageName, [...(containerVulns.get(imageName) ?? []), ...batch]);
+							pendingCallbacks.delete(imageName);
+							if (rest.length > 0) {
+								pendingVulns.set(imageName, rest);
+								scheduleNextBatch(imageName);
+							} else {
+								pendingVulns.delete(imageName);
+							}
+						},
+						{ timeout: 2000 }
+					)
+				: (setTimeout(() => {
+						containerVulns.set(imageName, [...(containerVulns.get(imageName) ?? []), ...batch]);
+						pendingCallbacks.delete(imageName);
+						if (rest.length > 0) {
+							pendingVulns.set(imageName, rest);
+							scheduleNextBatch(imageName);
+						} else {
+							pendingVulns.delete(imageName);
+						}
+					}, 0) as unknown as number);
+		pendingCallbacks.set(imageName, id);
+	}
+
+	function cancelPendingBatch(imageName: string) {
+		const id = pendingCallbacks.get(imageName);
+		if (id !== undefined) {
+			if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(id);
+			else clearTimeout(id);
+			pendingCallbacks.delete(imageName);
+		}
+	}
 
 	// ── Sub-table sort (per-container, three-way: none → asc → desc → none) ──
 	type VulnSortCol =
 		| 'vuln_id' | 'severity' | 'package_name'
-		| 'cvss_base_score' | 'epss_score' | 'is_kev';
+		| 'cvss_base_score' | 'epss_score' | 'is_kev' | 'first_seen_at';
 	interface VulnSort { col: VulnSortCol | null; dir: 'asc' | 'desc' }
 	let vulnSortStates = new SvelteMap<string, VulnSort>();
 
@@ -145,12 +197,24 @@
 				}
 				case 'is_kev':
 					return m * ((b.is_kev ? 1 : 0) - (a.is_kev ? 1 : 0));
+				case 'first_seen_at': {
+					if (!a.first_seen_at && !b.first_seen_at) return 0;
+					if (!a.first_seen_at) return 1;
+					if (!b.first_seen_at) return -1;
+					return m * (a.first_seen_at < b.first_seen_at ? -1 : a.first_seen_at > b.first_seen_at ? 1 : 0);
+				}
 			}
 		});
 	}
 
+	function toUtcDate(iso: string): Date {
+		// SQLite stores UTC datetimes without a timezone suffix; append Z so the
+		// browser treats them as UTC rather than local time.
+		return new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
+	}
+
 	function timeAgo(iso: string): string {
-		return formatDistanceToNow(new Date(iso), { addSuffix: true });
+		return formatDistanceToNow(toUtcDate(iso), { addSuffix: true });
 	}
 
 	function activeSeverities(vulnsBySeverity: Record<string, number>) {
@@ -166,13 +230,19 @@
 			const raw: Vulnerability[] = Array.isArray(payload)
 				? payload
 				: (payload.vulnerabilities ?? []);
+			if (payload.scanned_at) containerScanTimes.set(imageName, payload.scanned_at);
 			const sorted = raw.slice().sort((a, b) => {
 				const si = SEVERITY_ORDER.indexOf(a.severity);
 				const sj = SEVERITY_ORDER.indexOf(b.severity);
 				if (si !== sj) return si - sj;
 				return (b.cvss_base_score ?? 0) - (a.cvss_base_score ?? 0);
 			});
-			containerVulns.set(imageName, sorted);
+			// Render first batch immediately; schedule the rest via idle callbacks.
+			containerVulns.set(imageName, sorted.slice(0, BATCH_SIZE));
+			if (sorted.length > BATCH_SIZE) {
+				pendingVulns.set(imageName, sorted.slice(BATCH_SIZE));
+				scheduleNextBatch(imageName);
+			}
 		} catch (err) {
 			console.error('Failed to fetch vulns for', imageName, err);
 			containerVulns.set(imageName, []);
@@ -187,6 +257,7 @@
 		if (!hasScan) return;
 		if (expandedContainers.has(imageName)) {
 			expandedContainers.delete(imageName);
+			cancelPendingBatch(imageName);
 		} else {
 			const isFirstOpen = !containerVulns.has(imageName);
 			expandedContainers.add(imageName);
@@ -199,6 +270,9 @@
 						activeFilters.set(imageName, new SvelteSet([topSeverity]));
 					}
 				}
+			} else if (pendingVulns.has(imageName) && !pendingCallbacks.has(imageName)) {
+				// Re-expanded mid-load after collapse — resume batch rendering
+				scheduleNextBatch(imageName);
 			}
 		}
 	}
@@ -255,6 +329,16 @@
 		if (score >= 0.1) return 'font-semibold text-orange-600 dark:text-orange-400';
 		if (score >= 0.01) return 'text-amber-600 dark:text-amber-400';
 		return 'text-muted-foreground';
+	}
+
+	function isNew(vuln: Vulnerability, scannedAt: string | undefined): boolean {
+		if (!vuln.first_seen_at || !scannedAt) return false;
+		// Compare as UTC timestamps to avoid timezone-skewed mismatches
+		return toUtcDate(vuln.first_seen_at).getTime() === toUtcDate(scannedAt).getTime();
+	}
+
+	function formatDate(iso: string): string {
+		return toUtcDate(iso).toLocaleString();
 	}
 </script>
 
@@ -398,15 +482,16 @@
 													<div class="overflow-x-auto">
 														<Table.Root class="w-full table-fixed text-xs">
 															<colgroup>
-																<col style="width:13%" />
+																<col style="width:12%" />
 																<col style="width:7%" />
-																<col style="width:14%" />
-																<col style="width:9%" />
-																<col style="width:9%" />
-																<col style="width:6%" />
-																<col style="width:7%" />
+																<col style="width:12%" />
+																<col style="width:8%" />
+																<col style="width:8%" />
 																<col style="width:5%" />
-																<col style="width:30%" />
+																<col style="width:6%" />
+																<col style="width:4%" />
+																<col style="width:10%" />
+																<col style="width:28%" />
 															</colgroup>
 															<Table.Header>
 																<Table.Row class="bg-muted/30">
@@ -491,6 +576,14 @@
 																			</Tooltip.Content>
 																		</Tooltip.Root>
 																	</Table.Head>
+																	<Table.Head class="text-center">
+																		<SortButton
+																			label="First Seen"
+																			size="sm"
+																			sortDirection={vulnSortDir(container.image_name, 'first_seen_at')}
+																			onclick={(e) => toggleVulnSort(container.image_name, 'first_seen_at', e)}
+																		/>
+																	</Table.Head>
 																	<Table.Head class="pr-6">Description</Table.Head>
 																</Table.Row>
 															</Table.Header>
@@ -498,17 +591,24 @@
 																{#each vulns as vuln (vuln.vuln_id + vuln.package_name + vuln.installed_version)}
 																	<Table.Row class="hover:bg-muted/30">
 																		<Table.Cell class="pl-2 font-mono">
-																			<a
-																				href={vuln.data_source ??
-																					`https://nvd.nist.gov/vuln/detail/${vuln.vuln_id}`}
-																				target="_blank"
-																				rel="noopener noreferrer"
-																				onclick={(e) => e.stopPropagation()}
-																				class="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
-																			>
-																				{vuln.vuln_id}
-																				<ExternalLink class="h-3 w-3 shrink-0" />
-																			</a>
+																			<div class="flex flex-wrap items-center gap-1">
+																				<a
+																					href={vuln.data_source ??
+																						`https://nvd.nist.gov/vuln/detail/${vuln.vuln_id}`}
+																					target="_blank"
+																					rel="noopener noreferrer"
+																					onclick={(e) => e.stopPropagation()}
+																					class="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+																				>
+																					{vuln.vuln_id}
+																					<ExternalLink class="h-3 w-3 shrink-0" />
+																				</a>
+																				{#if isNew(vuln, containerScanTimes.get(container.image_name))}
+																					<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+																						NEW
+																					</span>
+																				{/if}
+																			</div>
 																		</Table.Cell>
 																		<Table.Cell class="text-center">
 																			<span
@@ -612,6 +712,18 @@
 																				</Tooltip.Root>
 																			{/if}
 																		</Table.Cell>
+																		<Table.Cell class="text-center">
+																			{#if vuln.first_seen_at}
+																				<Tooltip.Root>
+																					<Tooltip.Trigger class="cursor-default text-xs text-muted-foreground">
+																						{timeAgo(vuln.first_seen_at)}
+																					</Tooltip.Trigger>
+																					<Tooltip.Content>{formatDate(vuln.first_seen_at)}</Tooltip.Content>
+																				</Tooltip.Root>
+																			{:else}
+																				<span class="text-muted-foreground">—</span>
+																			{/if}
+																		</Table.Cell>
 																		<Table.Cell class="text-muted-foreground pr-6">
 																			<span title={vuln.description ?? undefined}>
 																				{truncate(vuln.description)}
@@ -624,9 +736,15 @@
 													</div>
 												{/if}
 											{/if}
-										</div>
-									</Table.Cell>
-								</Table.Row>
+										{#if pendingVulns.has(container.image_name)}
+											<div class="flex items-center gap-2 border-t px-6 py-2 text-xs text-muted-foreground">
+												<Loader2 class="h-3 w-3 animate-spin" />
+												<span>Loading {pendingVulns.get(container.image_name)?.length ?? 0} more vulnerabilities…</span>
+											</div>
+										{/if}
+									</div>
+								</Table.Cell>
+							</Table.Row>
 							{/if}
 						{/each}
 					</Table.Body>
