@@ -7,6 +7,9 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
+# Patch transitive dependency vulnerabilities (|| true: remaining unfixable ones require breaking changes)
+RUN npm audit fix || true
+
 # Copy source and build
 COPY frontend/ .
 RUN npm run check
@@ -18,14 +21,13 @@ RUN npm prune --omit=dev
 # ── Stage 2: Backend & Base Image ──────────────────────────────────────
 FROM python:3.14.3-alpine
 
-# Install system dependencies
+# Install system dependencies (npm intentionally omitted: not needed at runtime, reduces attack surface)
 RUN apk add --no-cache \
     curl \
     ca-certificates \
     tzdata \
     supervisor \
-    nodejs \
-    npm
+    nodejs
 
 # Install grype
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
@@ -41,6 +43,9 @@ COPY pyproject.toml uv.lock ./
 
 # Install Python dependencies
 RUN uv sync --no-dev --frozen
+
+# Patch Python tooling vulnerabilities (pip, wheel, jaraco-context)
+RUN pip install --upgrade pip wheel 'jaraco-context>=6.1.0'
 
 # Copy application source
 COPY backend/ ./backend/

@@ -12,6 +12,7 @@
 	import SortButton from './sort-button.svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { formatDistanceToNow } from 'date-fns';
+	import { slide } from 'svelte/transition';
 
 	let { data }: { data: PageData } = $props();
 
@@ -183,7 +184,9 @@
 		}
 	}
 
-	function toggleExpanded(imageName: string, hasScan: boolean, vulnsBySeverity: Record<string, number> = {}) {
+	const AUTO_FILTER_THRESHOLD = 15;
+
+	function toggleExpanded(imageName: string, hasScan: boolean, vulnsBySeverity: Record<string, number> = {}, total = 0) {
 		if (!hasScan) return;
 		if (expandedContainers.has(imageName)) {
 			expandedContainers.delete(imageName);
@@ -192,9 +195,12 @@
 			expandedContainers.add(imageName);
 			if (isFirstOpen) {
 				fetchVulns(imageName);
-				// Auto-filter High on first open if any High vulns exist
-				if ((vulnsBySeverity['High'] ?? 0) > 0) {
-					activeFilters.set(imageName, new SvelteSet(['High']));
+				// Auto-filter to highest severity on first open, but only if there are enough vulns
+				if (total >= AUTO_FILTER_THRESHOLD) {
+					const topSeverity = SEVERITY_ORDER.find((s) => (vulnsBySeverity[s] ?? 0) > 0);
+					if (topSeverity) {
+						activeFilters.set(imageName, new SvelteSet([topSeverity]));
+					}
 				}
 			}
 		}
@@ -225,18 +231,17 @@
 	}
 
 	function cvssTooltip(score: number): string {
-		if (score >= 9.0) return `Critical severity — CVSS ${score.toFixed(1)} (9.0–10.0 range)`;
-		if (score >= 7.0) return `High severity — CVSS ${score.toFixed(1)} (7.0–8.9 range)`;
-		if (score >= 4.0) return `Medium severity — CVSS ${score.toFixed(1)} (4.0–6.9 range)`;
-		return `Low severity — CVSS ${score.toFixed(1)} (below 4.0)`;
+		if (score >= 9.0) return 'Critical severity';
+		if (score >= 7.0) return 'High severity';
+		if (score >= 4.0) return 'Medium severity';
+		return 'Low severity';
 	}
 
 	function epssTooltip(score: number): string {
-		const pct = (score * 100).toFixed(2);
-		if (score >= 0.5) return `Very high exploitation risk — ${pct}% probability of exploit in the next 30 days`;
-		if (score >= 0.1) return `Elevated exploitation risk — ${pct}% probability of exploit in the next 30 days`;
-		if (score >= 0.01) return `Moderate exploitation risk — ${pct}% probability of exploit in the next 30 days`;
-		return `Low exploitation risk — ${pct}% probability of exploit in the next 30 days`;
+		if (score >= 0.5) return 'Very high exploitation risk';
+		if (score >= 0.1) return 'Elevated exploitation risk';
+		if (score >= 0.01) return 'Moderate exploitation risk';
+		return 'Low exploitation risk';
 	}
 
 	function cvssClass(score: number | null): string {
@@ -315,7 +320,7 @@
 							<!-- Parent row -->
 							<Table.Row
 								class={container.has_scan ? 'cursor-pointer hover:bg-muted/50' : ''}
-								onclick={() => toggleExpanded(container.image_name, container.has_scan, container.vulns_by_severity)}
+								onclick={() => toggleExpanded(container.image_name, container.has_scan, container.vulns_by_severity, container.total ?? 0)}
 							>
 								<Table.Cell>
 									<div class="flex items-center gap-2">
@@ -392,7 +397,7 @@
 							{#if expandedContainers.has(container.image_name)}
 								<Table.Row>
 									<Table.Cell colspan={4} class="p-0">
-										<div class="bg-muted/20 border-muted border-l-4">
+										<div transition:slide={{ duration: 200 }} class="bg-muted/20 border-muted border-l-4 overflow-hidden">
 											{#if loadingContainers.has(container.image_name)}
 												<div class="flex items-center gap-2 px-6 py-4 text-sm">
 													<Loader2 class="text-muted-foreground h-4 w-4 animate-spin" />
@@ -456,8 +461,8 @@
 																						label="CVSS"
 																						size="sm"
 																						sortDirection={vulnSortDir(container.image_name, 'cvss_base_score')}
-																						onclick={(e) => toggleVulnSort(container.image_name, 'cvss_base_score', e)}
 																						{...props}
+																						onclick={(e) => toggleVulnSort(container.image_name, 'cvss_base_score', e)}
 																					/>
 																				{/snippet}
 																			</Tooltip.Trigger>
@@ -475,8 +480,8 @@
 																						label="EPSS %"
 																						size="sm"
 																						sortDirection={vulnSortDir(container.image_name, 'epss_score')}
-																						onclick={(e) => toggleVulnSort(container.image_name, 'epss_score', e)}
 																						{...props}
+																						onclick={(e) => toggleVulnSort(container.image_name, 'epss_score', e)}
 																					/>
 																				{/snippet}
 																			</Tooltip.Trigger>
@@ -493,8 +498,8 @@
 																						label="KEV"
 																						size="sm"
 																						sortDirection={vulnSortDir(container.image_name, 'is_kev')}
-																						onclick={(e) => toggleVulnSort(container.image_name, 'is_kev', e)}
 																						{...props}
+																						onclick={(e) => toggleVulnSort(container.image_name, 'is_kev', e)}
 																					/>
 																				{/snippet}
 																			</Tooltip.Trigger>
