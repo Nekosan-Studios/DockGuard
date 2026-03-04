@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import Image from '@lucide/svelte/icons/image';
+	import Cylinder from '@lucide/svelte/icons/cylinder';
 </script>
 
 <div class="flex flex-col gap-6">
@@ -13,7 +13,7 @@
 	<Card.Root>
 		<Card.Content>
 			<div class="flex flex-col items-center justify-center gap-3 py-16 text-center">
-				<Image class="text-muted-foreground h-12 w-12" />
+				<Cylinder class="text-muted-foreground h-12 w-12" />
 				<div>
 					<p class="font-semibold">Images</p>
 					<p class="text-muted-foreground mt-1 text-sm">

@@ -45,7 +45,7 @@
 	};
 
 	// ── Parent table sort ──────────────────────────────────────────────────────
-	type ParentSortCol = 'container_name' | 'vulns' | 'total' | 'scanned_at';
+	type ParentSortCol = 'container_name' | 'vulns' | 'scanned_at';
 	let parentSortCol = $state<ParentSortCol>('container_name');
 	let parentSortDir = $state<'asc' | 'desc'>('asc');
 
@@ -71,12 +71,6 @@
 						if (diff !== 0) return dir * diff;
 					}
 					return 0;
-				}
-				case 'total': {
-					if (!a.has_scan && !b.has_scan) return 0;
-					if (!a.has_scan) return 1;
-					if (!b.has_scan) return -1;
-					return dir * ((a.total ?? 0) - (b.total ?? 0));
 				}
 				case 'scanned_at': {
 					if (!a.scanned_at && !b.scanned_at) return 0;
@@ -299,13 +293,6 @@
 									onclick={() => toggleParentSort('vulns')}
 								/>
 							</Table.Head>
-							<Table.Head class="w-[100px] text-center">
-								<SortButton
-									label="Total"
-									sortDirection={parentSortCol === 'total' ? parentSortDir : false}
-									onclick={() => toggleParentSort('total')}
-								/>
-							</Table.Head>
 							<Table.Head class="w-[180px] text-center">
 								<SortButton
 									label="Last Scanned"
@@ -373,13 +360,6 @@
 										<span class="text-muted-foreground text-xs">—</span>
 									{/if}
 								</Table.Cell>
-								<Table.Cell class="text-center text-muted-foreground text-sm">
-									{#if container.has_scan}
-										{container.total}
-									{:else}
-										—
-									{/if}
-								</Table.Cell>
 								<Table.Cell class="text-center text-xs">
 									{#if container.has_scan}
 										<span class="text-muted-foreground">{timeAgo(container.scanned_at)}</span>
@@ -396,7 +376,7 @@
 							<!-- Expanded detail row -->
 							{#if expandedContainers.has(container.image_name)}
 								<Table.Row>
-									<Table.Cell colspan={4} class="p-0">
+									<Table.Cell colspan={3} class="p-0">
 										<div transition:slide={{ duration: 200 }} class="bg-muted/20 border-muted border-l-4 overflow-hidden">
 											{#if loadingContainers.has(container.image_name)}
 												<div class="flex items-center gap-2 px-6 py-4 text-sm">

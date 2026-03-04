@@ -4,12 +4,17 @@ import type { PageServerLoad } from './$types';
 const API_URL = env.API_URL ?? 'http://localhost:8765';
 
 export const load: PageServerLoad = async ({ fetch }) => {
-	try {
-		const res = await fetch(`${API_URL}/activity/recent`);
-		if (!res.ok) return { activities: [] };
-		const data = await res.json();
-		return { activities: data.activities ?? [] };
-	} catch {
-		return { activities: [] };
-	}
+	const [summaryRes, activityRes] = await Promise.all([
+		fetch(`${API_URL}/dashboard/summary`).catch(() => null),
+		fetch(`${API_URL}/activity/recent`).catch(() => null)
+	]);
+
+	const summary =
+		summaryRes?.ok
+			? await summaryRes.json()
+			: { running_containers: null, images_scanned: null, critical_count: null, kev_count: null, trend: [], docker_connected: false, grype_version: null, db_built: null, last_db_checked_at: null };
+
+	const activities = activityRes?.ok ? (await activityRes.json()).activities ?? [] : [];
+
+	return { summary, activities };
 };

@@ -6,12 +6,12 @@ import subprocess
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlmodel import Session, select
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .database import Database
 from .docker_watcher import DockerWatcher
 from .grype_scanner import GrypeScanner
-from .models import Scan
+from .models import AppState, Scan
 
 
 logger = logging.getLogger(__name__)
@@ -92,7 +92,11 @@ class ContainerScheduler:
           0   → DB is current, nothing to do
           100 → update available, clear _seen_digests so all images are rescanned
           other → unexpected error, log and take no action
+
+        Always persists the check timestamp to AppState regardless of outcome.
         """
+        now = datetime.now(timezone.utc)
+
         try:
             result = await asyncio.to_thread(
                 subprocess.run,
@@ -102,19 +106,28 @@ class ContainerScheduler:
             )
         except Exception as e:
             logger.error("grype db check failed: %s", e)
-            return
-
-        if result.returncode == 0:
-            logger.info("Grype DB is current — no rescan needed")
-        elif result.returncode == 100:
-            logger.info("New grype DB available — clearing seen digests to trigger full rescan")
-            self._seen_digests.clear()
         else:
-            logger.error(
-                "grype db check returned unexpected exit code %d: %s",
-                result.returncode,
-                result.stderr.strip(),
-            )
+            if result.returncode == 0:
+                logger.info("Grype DB is current — no rescan needed")
+            elif result.returncode == 100:
+                logger.info("New grype DB available — clearing seen digests to trigger full rescan")
+                self._seen_digests.clear()
+            else:
+                logger.error(
+                    "grype db check returned unexpected exit code %d: %s",
+                    result.returncode,
+                    result.stderr.strip(),
+                )
+
+        with Session(self.db.engine) as session:
+            state = session.get(AppState, 1)
+            if state is None:
+                session.add(AppState(id=1, last_db_checked_at=now))
+            else:
+                state.last_db_checked_at = now
+                session.add(state)
+            session.commit()
+        logger.debug("Persisted last_db_checked_at = %s", now)
 
     async def _scan_image_async(self, image_name: str, grype_ref: str, container_name: str | None = None) -> None:
         """Run a Grype scan in a thread so the event loop is not blocked.
