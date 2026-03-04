@@ -92,6 +92,9 @@
 	let containerScanTimes = new SvelteMap<string, string>(); // imageName -> scanned_at ISO
 	let loadingContainers = new SvelteSet<string>();
 	let activeFilters = new SvelteMap<string, SvelteSet<string>>();
+	// Maps imageName → the single severity that was fetched (e.g. 'Critical').
+	// Not reactive — only read inside event handlers.
+	const partiallyLoadedSeverity = new Map<string, string>();
 
 	// ── Progressive rendering state ────────────────────────────────────────────
 	const BATCH_SIZE = 50;
@@ -221,12 +224,23 @@
 		return SEVERITY_ORDER.filter((s) => (vulnsBySeverity[s] ?? 0) > 0);
 	}
 
-	async function fetchVulns(imageName: string) {
+	async function fetchVulns(imageName: string, severity?: string) {
 		loadingContainers.add(imageName);
 		try {
-			const res = await fetch(`/api/vulnerabilities?image_ref=${encodeURIComponent(imageName)}`);
+			const t0 = performance.now();
+			let qs = `/api/vulnerabilities?image_ref=${encodeURIComponent(imageName)}`;
+			if (severity) qs += `&severity=${encodeURIComponent(severity)}`;
+			const res = await fetch(qs);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const payload = await res.json();
+			const text = await res.text();
+			const fetchMs = (performance.now() - t0).toFixed(0);
+			const t1 = performance.now();
+			const payload = JSON.parse(text);
+			const parseMs = (performance.now() - t1).toFixed(0);
+			console.log(
+				`[DSW] vuln fetch ${imageName}${severity ? ` (${severity})` : ''}: ` +
+				`${text.length} bytes, fetch=${fetchMs}ms, parse=${parseMs}ms`
+			);
 			const raw: Vulnerability[] = Array.isArray(payload)
 				? payload
 				: (payload.vulnerabilities ?? []);
@@ -242,6 +256,11 @@
 			if (sorted.length > BATCH_SIZE) {
 				pendingVulns.set(imageName, sorted.slice(BATCH_SIZE));
 				scheduleNextBatch(imageName);
+			}
+			if (severity) {
+				partiallyLoadedSeverity.set(imageName, severity);
+			} else {
+				partiallyLoadedSeverity.delete(imageName);
 			}
 		} catch (err) {
 			console.error('Failed to fetch vulns for', imageName, err);
@@ -262,13 +281,16 @@
 			const isFirstOpen = !containerVulns.has(imageName);
 			expandedContainers.add(imageName);
 			if (isFirstOpen) {
-				fetchVulns(imageName);
-				// Auto-filter to highest severity on first open, but only if there are enough vulns
-				if (total >= AUTO_FILTER_THRESHOLD) {
-					const topSeverity = SEVERITY_ORDER.find((s) => (vulnsBySeverity[s] ?? 0) > 0);
-					if (topSeverity) {
-						activeFilters.set(imageName, new SvelteSet([topSeverity]));
-					}
+				// Auto-filter to highest severity on first open when there are many vulns,
+				// and fetch only that severity initially (avoids large payload hang).
+				const topSeverity = total >= AUTO_FILTER_THRESHOLD
+					? SEVERITY_ORDER.find((s) => (vulnsBySeverity[s] ?? 0) > 0)
+					: undefined;
+				if (topSeverity) {
+					activeFilters.set(imageName, new SvelteSet([topSeverity]));
+					fetchVulns(imageName, topSeverity);
+				} else {
+					fetchVulns(imageName);
 				}
 			} else if (pendingVulns.has(imageName) && !pendingCallbacks.has(imageName)) {
 				// Re-expanded mid-load after collapse — resume batch rendering
@@ -283,6 +305,13 @@
 		const filters = activeFilters.get(imageName)!;
 		if (filters.has(severity)) filters.delete(severity);
 		else filters.add(severity);
+		// If we only fetched one severity, check whether the new filter state
+		// requires data we don't have, and if so re-fetch everything.
+		const fetchedSev = partiallyLoadedSeverity.get(imageName);
+		if (fetchedSev) {
+			const needsFull = filters.size === 0 || [...filters].some((s) => s !== fetchedSev);
+			if (needsFull) fetchVulns(imageName);
+		}
 	}
 
 	function isFilterActive(imageName: string, severity: string): boolean {
