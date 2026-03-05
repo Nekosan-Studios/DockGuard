@@ -14,8 +14,9 @@ from pydantic import BaseModel
 
 from .database import db
 from .docker_watcher import DockerWatcher
-from .models import AppState, Scan, Vulnerability
-from .scheduler import ContainerScheduler, _active_scheduler
+from .models import AppState, Scan, Vulnerability, SystemTask
+from . import scheduler as b_scheduler
+from .scheduler import ContainerScheduler
 from .config import ConfigManager
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,53 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 router = app.router
+
+
+# ---------------------------------------------------------------------------
+# Tasks endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/tasks")
+def get_recent_tasks(
+    limit: int = Query(default=100, le=500),
+    session: Session = Depends(db.get_session)
+):
+    """Get the recent history of background tasks (scheduled jobs, scans)."""
+    tasks = session.exec(
+        select(SystemTask).order_by(SystemTask.created_at.desc()).limit(limit)
+    ).all()
+    
+    # Return as-is, just making sure datetimes are formatted nicely by FastAPI
+    # SQLite datetimes are naive, attach UTC like we do for Scans.
+    result = []
+    for t in tasks:
+        tdict = t.model_dump()
+        tdict["created_at"] = _as_utc(t.created_at)
+        tdict["started_at"] = _as_utc(t.started_at)
+        tdict["finished_at"] = _as_utc(t.finished_at)
+        result.append(tdict)
+        
+    return {"tasks": result}
+
+
+@app.get("/tasks/scheduled")
+def get_scheduled_tasks():
+    """Get the currently scheduled periodic jobs."""
+    if b_scheduler._active_scheduler is None:
+        return {"jobs": []}
+        
+    jobs = b_scheduler._active_scheduler.get_jobs()
+    result = []
+    for job in jobs:
+        result.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run_time": _as_utc(job.next_run_time),
+            # Extract interval in seconds from the trigger if it's an IntervalTrigger
+            "interval_seconds": getattr(job.trigger, "interval", timedelta()).total_seconds() if hasattr(job.trigger, "interval") else None
+        })
+        
+    return {"jobs": result}
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +178,8 @@ def update_settings(
             raise HTTPException(status_code=400, detail=f"Unknown setting: '{key}'")
 
     # If the active scheduler is running, tell it to pick up the new intervals.
-    if _active_scheduler is not None:
-        _active_scheduler.update_job_intervals()
+    if b_scheduler._active_scheduler is not None:
+        b_scheduler._active_scheduler.update_job_intervals()
 
     return {"status": "success"}
 

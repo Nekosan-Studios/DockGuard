@@ -59,3 +59,14 @@ class Setting(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class SystemTask(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_type: str       # e.g., "scan", "scheduled_check_containers", "scheduled_db_update"
+    task_name: str       # e.g., "Scan nginx:latest", "Monitor Containers"
+    status: str          # "queued", "running", "completed", "failed"
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    result_details: Optional[str] = None  # Generic info (e.g. "Found 3 new containers")
