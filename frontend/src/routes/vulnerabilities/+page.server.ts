@@ -33,12 +33,12 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
     const data = await res.json();
 
     return {
-        report: data.report,
+        report: data.report || report,
         sort_by,
         sort_dir,
-        vulnerabilities: data.vulnerabilities ?? [],
-        count: data.count ?? 0,
-        total_count: data.total_count ?? 0,
-        has_more: data.has_more ?? false,
+        vulnerabilities: (data.vulnerabilities ?? []) as any[],
+        count: (data.count ?? 0) as number,
+        total_count: (data.total_count ?? 0) as number,
+        has_more: (data.has_more ?? false) as boolean,
     };
 };

@@ -638,7 +638,7 @@
 											transition:slide={{ duration: 200 }}
 											class="bg-muted/20 border-muted border-l-4 overflow-hidden"
 										>
-											{#if loadingContainers.has(container.image_name)}
+											{#if loadingContainers.has(container.image_name) && !getMeta(container.image_name).loadingMore}
 												<div
 													class="flex items-center gap-2 px-6 py-4 text-sm"
 												>

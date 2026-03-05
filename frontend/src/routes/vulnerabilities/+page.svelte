@@ -71,15 +71,17 @@
         currentOffset = data.vulnerabilities?.length ?? 0;
     });
 
+    const MAX_ROWS = 600;
+
     async function loadNextPage() {
-        if (loadingMore || !hasMore) return;
+        if (loadingMore || !hasMore || currentOffset >= MAX_ROWS) return;
         loadingMore = true;
         try {
             const params = new URLSearchParams({
                 report: reportValue,
                 sort_by: sortByValue,
                 sort_dir: sortDirValue,
-                limit: String(PAGE_SIZE),
+                limit: "100", // PAGE_SIZE
                 offset: String(currentOffset),
             });
             const res = await fetch(`/api/vulnerabilities-paged?${params}`);
@@ -88,7 +90,7 @@
             const newRows: Vulnerability[] = payload.vulnerabilities ?? [];
             rows = [...rows, ...newRows];
             currentOffset += newRows.length;
-            hasMore = payload.has_more ?? false;
+            hasMore = (payload.has_more ?? false) && currentOffset < MAX_ROWS;
             totalCount = payload.total_count ?? totalCount;
         } catch (err) {
             console.error("[DG] Failed to load next vulnerability page", err);
@@ -266,7 +268,8 @@
                 </div>
                 <Card.Description>
                     {#if totalCount > 0}
-                        Showing {rows.length.toLocaleString()} of {totalCount.toLocaleString()} vulnerabilities across running containers.
+                        Showing {rows.length.toLocaleString()} of {totalCount.toLocaleString()}
+                        vulnerabilities across running containers.
                     {:else}
                         No vulnerabilities found for this report.
                     {/if}
@@ -347,7 +350,9 @@
                                     <SortButton
                                         label="Severity"
                                         size="sm"
-                                        sortDirection={activeSortDir("severity")}
+                                        sortDirection={activeSortDir(
+                                            "severity",
+                                        )}
                                         onclick={() => toggleSort("severity")}
                                     />
                                 </Table.Head>
@@ -404,7 +409,9 @@
                                                     )}
                                                     {...props}
                                                     onclick={() =>
-                                                        toggleSort("epss_score")}
+                                                        toggleSort(
+                                                            "epss_score",
+                                                        )}
                                                 />
                                             {/snippet}
                                         </Tooltip.Trigger>
@@ -730,8 +737,18 @@
                                 <Loader2 class="h-4 w-4 animate-spin" />
                                 <span>Loading more…</span>
                             {:else}
-                                <span class="text-xs text-muted-foreground/60">Scroll for more</span>
+                                <span class="text-xs text-muted-foreground/60"
+                                    >Scroll for more</span
+                                >
                             {/if}
+                        </div>
+                    {:else if totalCount > MAX_ROWS && currentOffset >= MAX_ROWS}
+                        <div
+                            class="border-t px-6 py-3 text-xs text-muted-foreground/80 bg-muted/20 text-center"
+                        >
+                            Showing {MAX_ROWS} of {totalCount.toLocaleString()} vulnerabilities
+                            — use the report filters above or sort by CVSS / EPSS
+                            to prioritize.
                         </div>
                     {/if}
                 </div>
