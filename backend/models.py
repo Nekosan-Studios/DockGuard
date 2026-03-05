@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -54,3 +54,8 @@ class AppState(SQLModel, table=True):
     last_db_checked_at: Optional[datetime] = None
     grype_version: Optional[str] = None
     db_built: Optional[datetime] = None
+
+class Setting(SQLModel, table=True):
+    key: str = Field(primary_key=True)
+    value: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

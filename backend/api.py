@@ -9,10 +9,14 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import case as sa_case, text as sa_text
 from sqlmodel import Session, func, select
 
+from typing import Dict, Any
+from pydantic import BaseModel
+
 from .database import db
 from .docker_watcher import DockerWatcher
 from .models import AppState, Scan, Vulnerability
-from .scheduler import ContainerScheduler
+from .scheduler import ContainerScheduler, _active_scheduler
+from .config import ConfigManager
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +103,38 @@ def _parse_image_query(image: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+class SettingsUpdate(BaseModel):
+    settings: Dict[str, str]
+
+@app.get("/settings")
+def get_settings(session: Session = Depends(db.get_session)):
+    """Get all configurable settings."""
+    return ConfigManager.get_all_settings(session)
+
+@app.patch("/settings")
+def update_settings(
+    update_data: SettingsUpdate,
+    session: Session = Depends(db.get_session),
+):
+    """Update one or more settings."""
+    for key, value in update_data.settings.items():
+        try:
+            success = ConfigManager.set_setting(key, value, session)
+            if not success:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Setting '{key}' is overridden by an environment variable and cannot be modified via the API."
+                )
+        except KeyError:
+            raise HTTPException(status_code=400, detail=f"Unknown setting: '{key}'")
+
+    # If the active scheduler is running, tell it to pick up the new intervals.
+    if _active_scheduler is not None:
+        _active_scheduler.update_job_intervals()
+
+    return {"status": "success"}
+
 
 @app.get("/images/vulnerabilities")
 def get_vulnerabilities(

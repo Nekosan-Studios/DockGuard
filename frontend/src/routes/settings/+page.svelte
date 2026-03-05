@@ -1,27 +1,252 @@
 <script lang="ts">
-	import * as Card from '$lib/components/ui/card/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import Settings from '@lucide/svelte/icons/settings';
+	import { onMount, getContext } from "svelte";
+	import type { Writable } from "svelte/store";
+	import { slide } from "svelte/transition";
+	import * as Card from "$lib/components/ui/card";
+	import { Label } from "$lib/components/ui/label";
+	import { Input } from "$lib/components/ui/input";
+	import { Button } from "$lib/components/ui/button";
+	import { Badge } from "$lib/components/ui/badge";
+	import Loader2 from "@lucide/svelte/icons/loader-2";
+	import Lock from "@lucide/svelte/icons/lock";
+	import SaveIcon from "@lucide/svelte/icons/save";
+	import AlertCircle from "@lucide/svelte/icons/alert-circle";
+	import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
+
+	import { settings } from "$lib/stores/settings";
+
+	// The `pageTitle` store is provided by `+layout.svelte`.
+	const pageTitle = getContext<Writable<string>>("pageTitle");
+	if (pageTitle) {
+		$pageTitle = "Settings";
+	}
+
+	let isSaving = false;
+	let saveMessage: { type: "success" | "error"; text: string } | null = null;
+	let hasChanges = false;
+
+	// Local state to track editable fields
+	let localValues: Record<string, string> = {};
+
+	onMount(async () => {
+		await settings.fetch();
+	});
+
+	// Reactivity to update localValues when settings fetch
+	$: if ($settings && Object.keys($settings).length > 0) {
+		// Only initialize localValues if they are empty
+		if (Object.keys(localValues).length === 0) {
+			for (const [key, conf] of Object.entries($settings)) {
+				localValues[key] = conf.value;
+			}
+		} else {
+			// Check if any local values differ from store meaning we have unsaved changes
+			let changed = false;
+			for (const [key, conf] of Object.entries($settings)) {
+				if (localValues[key] !== conf.value) {
+					changed = true;
+				}
+			}
+			hasChanges = changed;
+		}
+	}
+
+	async function handleSave() {
+		if (!hasChanges) return;
+
+		isSaving = true;
+		saveMessage = null;
+
+		const updates: Record<string, string> = {};
+		for (const [key, conf] of Object.entries($settings)) {
+			// Only send updates for editable fields that changed
+			if (
+				conf.editable &&
+				String(localValues[key]) !== String(conf.value)
+			) {
+				updates[key] = String(localValues[key]);
+			}
+		}
+
+		if (Object.keys(updates).length === 0) {
+			isSaving = false;
+			hasChanges = false;
+			return;
+		}
+
+		try {
+			await settings.updateSettings(updates);
+			saveMessage = {
+				type: "success",
+				text: "Settings saved successfully.",
+			};
+			hasChanges = false;
+
+			// Auto clear success message
+			setTimeout(() => {
+				saveMessage = null;
+			}, 3000);
+		} catch (error: any) {
+			saveMessage = {
+				type: "error",
+				text: error.message || "Error saving settings.",
+			};
+		} finally {
+			isSaving = false;
+		}
+	}
+
+	function handleInputChange() {
+		hasChanges = true;
+		saveMessage = null;
+	}
+
+	// Setting descriptions for friendlier UI labels
+	const settingMeta: Record<
+		string,
+		{ label: string; desc: string; group: string }
+	> = {
+		SCAN_INTERVAL_SECONDS: {
+			label: "Docker Poll Interval",
+			desc: "How often (in seconds) to check the Docker daemon for new or updated running containers.",
+			group: "Scanning",
+		},
+		MAX_CONCURRENT_SCANS: {
+			label: "Max Concurrent Scans",
+			desc: "Maximum number of Grype processes to run simultaneously. Set higher if you have resources, lower to save CPU.",
+			group: "Scanning",
+		},
+		DB_CHECK_INTERVAL_SECONDS: {
+			label: "Grype DB Check Interval",
+			desc: "How often (in seconds) to check for a new Grype vulnerability database update.",
+			group: "Updates",
+		},
+	};
+
+	// Group settings
+	$: groups = (() => {
+		const result: Record<string, string[]> = {};
+		for (const key of Object.keys($settings)) {
+			const group = settingMeta[key]?.group || "Other";
+			if (!result[group]) result[group] = [];
+			result[group].push(key);
+		}
+		return result;
+	})();
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="space-y-6">
 	<div>
-		<h1 class="text-2xl font-bold tracking-tight">Settings</h1>
-		<p class="text-muted-foreground">Configure scan intervals, notifications, and integrations.</p>
+		<h3 class="text-lg font-medium">Application Configuration</h3>
+		<p class="text-sm text-muted-foreground">
+			Manage how DockerSecurityWatch behaves. Settings configured via
+			`docker-compose.yml` or environment variables cannot be modified
+			here.
+		</p>
 	</div>
 
-	<Card.Root>
-		<Card.Content>
-			<div class="flex flex-col items-center justify-center gap-3 py-16 text-center">
-				<Settings class="text-muted-foreground h-12 w-12" />
-				<div>
-					<p class="font-semibold">Settings</p>
-					<p class="text-muted-foreground mt-1 text-sm">
-						Adjust scan frequency, set alert thresholds, and manage notification channels.
-					</p>
-				</div>
-				<Badge variant="outline">Coming Soon</Badge>
+	{#if Object.keys($settings).length === 0}
+		<div
+			class="flex items-center justify-center p-12 text-muted-foreground"
+		>
+			<Loader2 class="h-6 w-6 animate-spin mr-2" />
+			Loading settings...
+		</div>
+	{:else}
+		<form on:submit|preventDefault={handleSave} class="space-y-8">
+			{#each Object.entries(groups) as [groupName, keys]}
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>{groupName}</Card.Title>
+					</Card.Header>
+					<Card.Content class="space-y-6">
+						{#each keys as key}
+							{@const conf = $settings[key]}
+							{@const meta = settingMeta[key] || {
+								label: key,
+								desc: "",
+							}}
+
+							<div class="flex flex-col space-y-2 max-w-2xl">
+								<div class="flex items-center justify-between">
+									<Label for={key}>{meta.label}</Label>
+									{#if !conf.editable}
+										<div
+											class="flex items-center text-xs text-muted-foreground"
+											title="Configured via environment variable"
+											tabindex="0"
+											role="status"
+										>
+											<Lock class="h-3 w-3 mr-1" />
+											<span class="sr-only">Locked</span>
+											Env Var
+										</div>
+									{:else if conf.source === "default"}
+										<Badge
+											variant="outline"
+											class="font-normal text-xs py-0 h-5"
+											>Default</Badge
+										>
+									{/if}
+								</div>
+
+								<div class="flex max-w-md">
+									{#if !conf.editable}
+										<Input
+											id={key}
+											type="text"
+											value={conf.value}
+											disabled
+											class="bg-muted text-muted-foreground"
+										/>
+									{:else}
+										<Input
+											id={key}
+											type="number"
+											bind:value={localValues[key]}
+											on:input={handleInputChange}
+										/>
+									{/if}
+								</div>
+
+								<p class="text-[0.8rem] text-muted-foreground">
+									<code
+										class="text-[0.7rem] bg-muted px-1 py-0.5 rounded mr-1 font-mono"
+										>{key}</code
+									>
+									{meta.desc}
+								</p>
+							</div>
+						{/each}
+					</Card.Content>
+				</Card.Root>
+			{/each}
+
+			<div class="flex items-center gap-4">
+				<Button type="submit" disabled={!hasChanges || isSaving}>
+					{#if isSaving}
+						<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+						Saving...
+					{:else}
+						<SaveIcon class="mr-2 h-4 w-4" />
+						Save Changes
+					{/if}
+				</Button>
+
+				{#if saveMessage}
+					<div
+						transition:slide={{ duration: 200, axis: "x" }}
+						class={`flex items-center text-sm ${saveMessage.type === "success" ? "text-green-600 dark:text-green-500" : "text-destructive"}`}
+					>
+						{#if saveMessage.type === "success"}
+							<CheckCircle2 class="mr-2 h-4 w-4" />
+						{:else}
+							<AlertCircle class="mr-2 h-4 w-4" />
+						{/if}
+						{saveMessage.text}
+					</div>
+				{/if}
 			</div>
-		</Card.Content>
-	</Card.Root>
+		</form>
+	{/if}
 </div>

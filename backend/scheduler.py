@@ -16,9 +16,7 @@ from .models import AppState, Scan
 
 logger = logging.getLogger(__name__)
 
-SCAN_INTERVAL_SECONDS = int(os.environ.get("SCAN_INTERVAL_SECONDS", "60"))
-MAX_CONCURRENT_SCANS = int(os.environ.get("MAX_CONCURRENT_SCANS", "1"))
-DB_CHECK_INTERVAL_SECONDS = int(os.environ.get("DB_CHECK_INTERVAL_SECONDS", "3600"))
+from .config import ConfigManager
 
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
 _active_scheduler: "ContainerScheduler | None" = None
@@ -31,12 +29,17 @@ class ContainerScheduler:
         global _active_scheduler
         self.db = db
         self._seen_digests: set[str] = set()
-        self._scan_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
+        with Session(self.db.engine) as session:
+            self.scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
+            self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
+            self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
+
+        self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
         self._scheduler = AsyncIOScheduler()
         self._bootstrap_seen_digests()
         self._scheduler.add_job(
             self._check_running_containers,
-            IntervalTrigger(seconds=SCAN_INTERVAL_SECONDS),
+            IntervalTrigger(seconds=self.scan_interval),
             id="check_running_containers",
             name="Monitor running containers for new/updated images",
             next_run_time=datetime.now(),
@@ -44,20 +47,38 @@ class ContainerScheduler:
         )
         self._scheduler.add_job(
             self._check_db_update,
-            IntervalTrigger(seconds=DB_CHECK_INTERVAL_SECONDS),
+            IntervalTrigger(seconds=self.db_check_interval),
             id="check_db_update",
             name="Check for grype DB updates and trigger rescan if available",
             next_run_time=datetime.now(),
             replace_existing=True,
         )
         _active_scheduler = self
-        logger.info("Scheduler: max concurrent Grype scans = %d", MAX_CONCURRENT_SCANS)
+        logger.info("Scheduler: max concurrent Grype scans = %d", self.max_concurrent_scans)
 
     def start(self) -> None:
         self._scheduler.start()
 
     def shutdown(self) -> None:
         self._scheduler.shutdown()
+
+    def update_job_intervals(self) -> None:
+        """Called dynamically if settings are changed via the API."""
+        with Session(self.db.engine) as session:
+            scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
+            db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
+            
+            # The semaphore for concurrency can't easily be resized cleanly while tasks are running,
+            # so we only update the polling intervals dynamically.
+            if scan_interval != self.scan_interval:
+                self.scan_interval = scan_interval
+                self._scheduler.reschedule_job("check_running_containers", trigger=IntervalTrigger(seconds=self.scan_interval))
+                logger.info("Scheduler updated check_running_containers interval to %ds", self.scan_interval)
+                
+            if db_check_interval != self.db_check_interval:
+                self.db_check_interval = db_check_interval
+                self._scheduler.reschedule_job("check_db_update", trigger=IntervalTrigger(seconds=self.db_check_interval))
+                logger.info("Scheduler updated check_db_update interval to %ds", self.db_check_interval)
 
     def get_jobs(self):
         return self._scheduler.get_jobs()
