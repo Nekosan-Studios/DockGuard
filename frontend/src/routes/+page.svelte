@@ -190,10 +190,20 @@
 								? ""
 								: "s"} scanned
 						</p>
-						{#if data.summary.active_tasks > 0 || data.summary.queued_tasks > 0}
+						{#if data.summary.active_tasks > 0 || data.summary.queued_tasks > 0 || data.summary.eol_count > 0}
 							<div
 								class="flex flex-wrap items-center gap-1.5 mt-auto pt-1"
 							>
+								{#if data.summary.eol_count > 0}
+									<Badge
+										class="bg-orange-100/50 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800 hover:bg-orange-100/80 pointer-events-none"
+									>
+										{data.summary.eol_count} EOL system{data
+											.summary.eol_count === 1
+											? ""
+											: "s"}
+									</Badge>
+								{/if}
 								{#if data.summary.active_tasks > 0}
 									<Badge
 										class="bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 hover:bg-blue-100/80 pointer-events-none"

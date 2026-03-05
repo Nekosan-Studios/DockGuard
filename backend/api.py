@@ -53,7 +53,12 @@ def _serialise_vuln(v: Vulnerability) -> dict:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    t_start = time.perf_counter()
+    logger.info("Startup: beginning lifespan init")
+
     db.init()
+    logger.info("Startup: db.init() done (%.2fs)", time.perf_counter() - t_start)
+
     # alembic.ini's fileConfig sets root logger to WARNING; restore to INFO
     # so app loggers (scheduler, grype_scanner, docker_watcher) are visible.
     colorlog.basicConfig(
@@ -61,8 +66,12 @@ async def lifespan(_: FastAPI):
         format="%(asctime)s %(log_color)s%(levelname)-8s%(reset)s %(name)s - %(message)s",
         force=True,
     )
+
     scheduler = ContainerScheduler(db)
+    logger.info("Startup: ContainerScheduler created (%.2fs)", time.perf_counter() - t_start)
+
     scheduler.start()
+    logger.info("Startup: scheduler started — ready in %.2fs total", time.perf_counter() - t_start)
     yield
     scheduler.shutdown()
 
@@ -262,6 +271,7 @@ def get_vulnerabilities(
     return {
         "scan_id": scan.id,
         "scanned_at": _as_utc(scan.scanned_at),
+        "is_distro_eol": scan.is_distro_eol,
         "total_count": total_count,
         "count": len(serialised),
         "has_more": has_more,
@@ -340,7 +350,7 @@ def get_vulnerabilities_across_running(
     watcher = DockerWatcher()
     running = watcher.list_running_containers()
     if not running:
-        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "vulnerabilities": []}
+        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "eol_images": [], "vulnerabilities": []}
 
     image_names = {img["image_name"] for img in running}
 
@@ -353,9 +363,10 @@ def get_vulnerabilities_across_running(
     scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
 
     scan_id_to_images = {s.id: s.image_name for s in scans}
+    eol_images = [s.image_name for s in scans if s.is_distro_eol]
 
     if not scan_id_to_images:
-        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "vulnerabilities": []}
+        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "eol_images": [], "vulnerabilities": []}
 
     # Map image_name -> list of container names
     image_to_containers = defaultdict(list)
@@ -458,6 +469,7 @@ def get_vulnerabilities_across_running(
         "total_count": total_count,
         "count": len(page_vulns),
         "has_more": has_more,
+        "eol_images": eol_images,
         "vulnerabilities": page_vulns,
     }
 
@@ -552,6 +564,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                 "image_digest": None,
                 "scan_id": None,
                 "scanned_at": None,
+                "is_distro_eol": False,
                 "vulns_by_severity": {},
                 "total": 0,
                 "has_scan": False,
@@ -566,6 +579,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
             "image_digest": scan.image_digest,
             "scan_id": scan.id,
             "scanned_at": _as_utc(scan.scanned_at),
+            "is_distro_eol": scan.is_distro_eol,
             "vulns_by_severity": vulns_by_severity,
             "total": sum(vulns_by_severity.values()),
             "has_scan": True,
@@ -604,8 +618,14 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
             ).where(Vulnerability.scan_id.in_(latest_scan_id_subq))
         ).one()
         critical_count, kev_count = int(row[0]), int(row[1])
+
+        eol_count = session.exec(
+            select(func.count(Scan.id))
+            .where(Scan.id.in_(latest_scan_id_subq))
+            .where(Scan.is_distro_eol == True)  # noqa: E712
+        ).one()
     else:
-        critical_count, kev_count = 0, 0
+        critical_count, kev_count, eol_count = 0, 0, 0
 
     # 30-day trend: critical vulns per day, deduped to latest scan per image per day
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
@@ -677,6 +697,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "last_db_checked_at": last_db_checked_at,
         "active_tasks": int(active_tasks),
         "queued_tasks": int(queued_tasks),
+        "eol_count": int(eol_count),
     }
 
 

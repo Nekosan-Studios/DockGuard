@@ -501,8 +501,18 @@
 												: ''}"
 										/>
 										<div>
-											<div class="font-medium">
+											<div
+												class="font-medium flex items-center gap-2"
+											>
 												{container.container_name}
+												{#if container.is_distro_eol}
+													<Badge
+														variant="outline"
+														class="bg-orange-100/50 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800"
+													>
+														EOL OS
+													</Badge>
+												{/if}
 											</div>
 											<div
 												class="text-muted-foreground font-mono text-xs"
@@ -606,6 +616,24 @@
 													>
 												</div>
 											{:else}
+												{#if container.is_distro_eol}
+													<div
+														class="mx-6 mt-4 mb-2 rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex gap-3 text-sm"
+													>
+														<span
+															class="font-medium"
+															>End-of-Life OS:</span
+														>
+														<span
+															>This image uses an
+															end-of-life
+															operating system.
+															Vulnerability data
+															may be incomplete or
+															outdated.</span
+														>
+													</div>
+												{/if}
 												{@const vulns = visibleVulns(
 													container.image_name,
 												)}

@@ -214,6 +214,24 @@
         </div>
     </div>
 
+    {#if data.eol_images && data.eol_images.length > 0}
+        <div
+            class="rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex items-start gap-4"
+        >
+            <ShieldAlert class="mt-0.5 h-5 w-5 shrink-0" />
+            <div class="flex flex-col gap-1 text-sm">
+                <span class="font-medium">End-of-Life Systems Detected</span>
+                <span class="opacity-90">
+                    One or more running containers ({data.eol_images.join(
+                        ", ",
+                    )}) are using an end-of-life operating system. Vulnerability
+                    data for these systems may be incomplete, outdated, or
+                    inaccurate.
+                </span>
+            </div>
+        </div>
+    {/if}
+
     <Card.Root>
         <Card.Header class="flex flex-row items-center justify-between pb-3">
             <div class="space-y-1.5">
