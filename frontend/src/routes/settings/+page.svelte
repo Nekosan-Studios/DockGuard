@@ -174,7 +174,6 @@
 										<div
 											class="flex items-center text-xs text-muted-foreground"
 											title="Configured via environment variable"
-											tabindex="0"
 											role="status"
 										>
 											<Lock class="h-3 w-3 mr-1" />
@@ -204,7 +203,7 @@
 											id={key}
 											type="number"
 											bind:value={localValues[key]}
-											on:input={handleInputChange}
+											oninput={handleInputChange}
 										/>
 									{/if}
 								</div>
