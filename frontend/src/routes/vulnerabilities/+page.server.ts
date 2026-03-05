@@ -40,5 +40,6 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
         count: (data.count ?? 0) as number,
         total_count: (data.total_count ?? 0) as number,
         has_more: (data.has_more ?? false) as boolean,
+        eol_images: (data.eol_images ?? []) as string[],
     };
 };

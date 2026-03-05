@@ -14,6 +14,11 @@
 	import { formatDistanceToNow } from "date-fns";
 	import { slide } from "svelte/transition";
 	import { onMount, onDestroy } from "svelte";
+	import CvssCell from "$lib/components/vuln/CvssCell.svelte";
+	import EpssCell from "$lib/components/vuln/EpssCell.svelte";
+	import KevCell from "$lib/components/vuln/KevCell.svelte";
+	import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
+	import { SEVERITY_CLASSES, toUtcDate } from "$lib/components/vuln/utils.js";
 
 	let { data }: { data: PageData } = $props();
 
@@ -42,18 +47,6 @@
 		"Negligible",
 		"Unknown",
 	];
-
-	const SEVERITY_CLASSES: Record<string, string> = {
-		Critical:
-			"bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800",
-		High: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800",
-		Medium: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800",
-		Low: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800",
-		Negligible:
-			"bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600",
-		Unknown:
-			"bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-500 dark:border-gray-600",
-	};
 
 	// ── Parent table sort ──────────────────────────────────────────────────────
 	type ParentSortCol = "container_name" | "vulns" | "scanned_at";
@@ -169,7 +162,7 @@
 		subviewObservers.clear();
 	});
 
-	let expandedContainers = new SvelteSet<string>();
+	let expandedContainer = $state<string | null>(null);
 	let containerVulns = new SvelteMap<string, Vulnerability[]>();
 	let containerScanTimes = new SvelteMap<string, string>(); // imageName -> scanned_at ISO
 	let loadingContainers = new SvelteSet<string>();
@@ -180,7 +173,7 @@
 
 	// ── Pagination state ────────────────────────────────────────────────────────
 	// Soft cap: stop loading more rows once this many are accumulated.
-	const SUBVIEW_MAX_ROWS = 600;
+	const SUBVIEW_MAX_ROWS = 400;
 	const SUBVIEW_PAGE_SIZE = 200;
 
 	interface VulnMeta {
@@ -261,14 +254,6 @@
 		fetchVulns(imageName, fetchedSev, 0, newCol, newDir);
 	}
 
-	function toUtcDate(iso: string): Date {
-		// SQLite stores UTC datetimes without a timezone suffix; append Z so the
-		// browser treats them as UTC rather than local time.
-		return new Date(
-			iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z",
-		);
-	}
-
 	function timeAgo(iso: string): string {
 		return formatDistanceToNow(toUtcDate(iso), { addSuffix: true });
 	}
@@ -343,16 +328,17 @@
 	const AUTO_FILTER_THRESHOLD = 15;
 
 	function toggleExpanded(
+		containerName: string,
 		imageName: string,
 		hasScan: boolean,
 		vulnsBySeverity: Record<string, number> = {},
 		total = 0,
 	) {
 		if (!hasScan) return;
-		if (expandedContainers.has(imageName)) {
-			expandedContainers.delete(imageName);
+		if (expandedContainer === containerName) {
+			expandedContainer = null;
 		} else {
-			expandedContainers.add(imageName);
+			expandedContainer = containerName;
 			if (!containerVulns.has(imageName)) {
 				// First open: auto-filter to highest severity when there are many vulns.
 				const topSeverity =
@@ -405,38 +391,6 @@
 	function truncate(text: string | null, max = 120): string {
 		if (!text) return "";
 		return text.length > max ? text.slice(0, max) + "…" : text;
-	}
-
-	function cvssTooltip(score: number): string {
-		if (score >= 9.0) return "Critical severity";
-		if (score >= 7.0) return "High severity";
-		if (score >= 4.0) return "Medium severity";
-		return "Low severity";
-	}
-
-	function epssTooltip(score: number): string {
-		if (score >= 0.5) return "Very high exploitation risk";
-		if (score >= 0.1) return "Elevated exploitation risk";
-		if (score >= 0.01) return "Moderate exploitation risk";
-		return "Low exploitation risk";
-	}
-
-	function cvssClass(score: number | null): string {
-		if (score === null) return "text-muted-foreground";
-		if (score >= 9.0) return "font-bold text-red-700 dark:text-red-400";
-		if (score >= 7.0)
-			return "font-semibold text-orange-600 dark:text-orange-400";
-		if (score >= 4.0) return "text-amber-600 dark:text-amber-400";
-		return "text-muted-foreground";
-	}
-
-	function epssClass(score: number | null): string {
-		if (score === null) return "text-muted-foreground";
-		if (score >= 0.5) return "font-bold text-red-700 dark:text-red-400";
-		if (score >= 0.1)
-			return "font-semibold text-orange-600 dark:text-orange-400";
-		if (score >= 0.01) return "text-amber-600 dark:text-amber-400";
-		return "text-muted-foreground";
 	}
 
 	function isNew(
@@ -521,7 +475,7 @@
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
-						{#each sortedContainers as container (container.image_name)}
+						{#each sortedContainers as container (container.container_name)}
 							<!-- Parent row -->
 							<Table.Row
 								class={container.has_scan
@@ -529,6 +483,7 @@
 									: ""}
 								onclick={() =>
 									toggleExpanded(
+										container.container_name,
 										container.image_name,
 										container.has_scan,
 										container.vulns_by_severity,
@@ -538,17 +493,26 @@
 								<Table.Cell>
 									<div class="flex items-center gap-2">
 										<ChevronRight
-											class="text-muted-foreground h-4 w-4 shrink-0 transition-transform duration-200 {expandedContainers.has(
-												container.image_name,
-											)
+											class="text-muted-foreground h-4 w-4 shrink-0 transition-transform duration-200 {expandedContainer ===
+											container.container_name
 												? 'rotate-90'
 												: ''} {!container.has_scan
 												? 'opacity-0'
 												: ''}"
 										/>
 										<div>
-											<div class="font-medium">
+											<div
+												class="font-medium flex items-center gap-2"
+											>
 												{container.container_name}
+												{#if container.is_distro_eol}
+													<Badge
+														variant="outline"
+														class="bg-orange-100/50 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800"
+													>
+														EOL OS
+													</Badge>
+												{/if}
 											</div>
 											<div
 												class="text-muted-foreground font-mono text-xs"
@@ -562,7 +526,7 @@
 									{#if container.has_scan}
 										<div class="flex flex-wrap gap-1">
 											{#each activeSeverities(container.vulns_by_severity) as sev (sev)}
-												{#if expandedContainers.has(container.image_name)}
+												{#if expandedContainer === container.container_name}
 													<button
 														onclick={(e) =>
 															toggleFilter(
@@ -631,7 +595,7 @@
 							</Table.Row>
 
 							<!-- Expanded detail row -->
-							{#if expandedContainers.has(container.image_name)}
+							{#if expandedContainer === container.container_name}
 								<Table.Row>
 									<Table.Cell colspan={3} class="p-0">
 										<div
@@ -652,6 +616,24 @@
 													>
 												</div>
 											{:else}
+												{#if container.is_distro_eol}
+													<div
+														class="mx-6 mt-4 mb-2 rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex gap-3 text-sm"
+													>
+														<span
+															class="font-medium"
+															>End-of-Life OS:</span
+														>
+														<span
+															>This image uses an
+															end-of-life
+															operating system.
+															Vulnerability data
+															may be incomplete or
+															outdated.</span
+														>
+													</div>
+												{/if}
 												{@const vulns = visibleVulns(
 													container.image_name,
 												)}
@@ -677,7 +659,7 @@
 														>
 															<colgroup>
 																<col
-																	style="width:12%"
+																	style="width:14%"
 																/>
 																<col
 																	style="width:7%"
@@ -704,7 +686,7 @@
 																	style="width:10%"
 																/>
 																<col
-																	style="width:28%"
+																	style="width:26%"
 																/>
 															</colgroup>
 															<Table.Header>
@@ -982,6 +964,13 @@
 																			<div
 																				class="flex flex-wrap items-center gap-1"
 																			>
+																				{#if isNew(vuln, containerScanTimes.get(container.image_name))}
+																					<span
+																						class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+																					>
+																						NEW
+																					</span>
+																				{/if}
 																				<a
 																					href={vuln.data_source ??
 																						`https://nvd.nist.gov/vuln/detail/${vuln.vuln_id}`}
@@ -998,30 +987,11 @@
 																						class="h-3 w-3 shrink-0"
 																					/>
 																				</a>
-																				{#if isNew(vuln, containerScanTimes.get(container.image_name))}
-																					<span
-																						class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-																					>
-																						NEW
-																					</span>
-																				{/if}
 																			</div>
 																		</Table.Cell>
-																		<Table.Cell
-																			class="text-center"
-																		>
-																			<span
-																				class="inline-flex items-center rounded-full border px-1.5 py-0.5 font-medium {SEVERITY_CLASSES[
-																					vuln
-																						.severity
-																				] ??
-																					SEVERITY_CLASSES[
-																						'Unknown'
-																					]}"
-																			>
-																				{vuln.severity}
-																			</span>
-																		</Table.Cell>
+																		<SeverityCell
+																			severity={vuln.severity}
+																		/>
 																		<Table.Cell
 																			class="font-mono"
 																		>
@@ -1110,169 +1080,16 @@
 																				>
 																			{/if}
 																		</Table.Cell>
-																		<Table.Cell
-																			class="text-center {cvssClass(
-																				vuln.cvss_base_score,
-																			)}"
-																		>
-																			{#if vuln.cvss_base_score != null}
-																				<Tooltip.Root
-																				>
-																					<Tooltip.Trigger
-																						class="cursor-default"
-																					>
-																						{vuln.cvss_base_score.toFixed(
-																							1,
-																						)}
-																					</Tooltip.Trigger>
-																					<Tooltip.Content
-																						>{cvssTooltip(
-																							vuln.cvss_base_score,
-																						)}</Tooltip.Content
-																					>
-																				</Tooltip.Root>
-																			{:else}
-																				—
-																			{/if}
-																		</Table.Cell>
-																		<Table.Cell
-																			class="text-center {epssClass(
-																				vuln.epss_score,
-																			)}"
-																		>
-																			{#if vuln.epss_score != null}
-																				<Tooltip.Root
-																				>
-																					<Tooltip.Trigger
-																						class="cursor-default"
-																					>
-																						{(
-																							vuln.epss_score *
-																							100
-																						).toFixed(
-																							2,
-																						)}%
-																					</Tooltip.Trigger>
-																					<Tooltip.Content
-																					>
-																						<p
-																						>
-																							{epssTooltip(
-																								vuln.epss_score,
-																							)}
-																						</p>
-																						{#if vuln.epss_percentile != null}
-																							{@const pct =
-																								Math.round(
-																									vuln.epss_percentile *
-																										100,
-																								)}
-																							<p
-																								class="mt-1 {pct >=
-																								90
-																									? 'font-semibold text-red-400'
-																									: pct >=
-																										  70
-																										? 'text-orange-400'
-																										: ''}"
-																							>
-																								{#if pct >= 50}
-																									More
-																									likely
-																									to
-																									be
-																									exploited
-																									than
-																									{pct}%
-																									of
-																									all
-																									other
-																									vulnerabilities.
-																								{:else}
-																									{100 -
-																										pct}%
-																									of
-																									all
-																									other
-																									vulnerabilities
-																									are
-																									more
-																									likely
-																									to
-																									be
-																									exploited.
-																								{/if}
-																							</p>
-																						{/if}
-																					</Tooltip.Content>
-																				</Tooltip.Root>
-																			{:else}
-																				—
-																			{/if}
-																		</Table.Cell>
-																		<Table.Cell
-																			class="text-center"
-																		>
-																			{#if vuln.is_kev}
-																				<Tooltip.Root
-																				>
-																					<Tooltip.Trigger
-																						class="cursor-default"
-																					>
-																						<CircleCheck
-																							class="mx-auto h-4 w-4 text-red-600 dark:text-red-400"
-																						/>
-																					</Tooltip.Trigger>
-																					<Tooltip.Content
-																						>Known
-																						Exploited
-																						Vulnerability
-																						—
-																						this
-																						CVE
-																						is
-																						confirmed
-																						to
-																						be
-																						actively
-																						exploited
-																						in
-																						the
-																						wild
-																						by
-																						CISA.</Tooltip.Content
-																					>
-																				</Tooltip.Root>
-																			{:else}
-																				<Tooltip.Root
-																				>
-																					<Tooltip.Trigger
-																						class="cursor-default"
-																					>
-																						<span
-																							class="text-muted-foreground"
-																							>—</span
-																						>
-																					</Tooltip.Trigger>
-																					<Tooltip.Content
-																						>No
-																						confirmed
-																						exploit
-																						in
-																						the
-																						wild
-																						—
-																						not
-																						listed
-																						in
-																						the
-																						CISA
-																						KEV
-																						catalog.</Tooltip.Content
-																					>
-																				</Tooltip.Root>
-																			{/if}
-																		</Table.Cell>
+																		<CvssCell
+																			score={vuln.cvss_base_score}
+																		/>
+																		<EpssCell
+																			score={vuln.epss_score}
+																			percentile={vuln.epss_percentile}
+																		/>
+																		<KevCell
+																			isKev={vuln.is_kev}
+																		/>
 																		<Table.Cell
 																			class="text-center"
 																		>

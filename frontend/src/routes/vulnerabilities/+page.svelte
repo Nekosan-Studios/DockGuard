@@ -14,6 +14,11 @@
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
     import { formatDistanceToNow } from "date-fns";
     import { goto } from "$app/navigation";
+    import CvssCell from "$lib/components/vuln/CvssCell.svelte";
+    import EpssCell from "$lib/components/vuln/EpssCell.svelte";
+    import KevCell from "$lib/components/vuln/KevCell.svelte";
+    import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
+    import { SEVERITY_CLASSES, toUtcDate } from "$lib/components/vuln/utils.js";
     import { page } from "$app/stores";
     import { onMount, onDestroy } from "svelte";
 
@@ -42,25 +47,13 @@
         containers: ContainerInfo[];
     }
 
-    const SEVERITY_CLASSES: Record<string, string> = {
-        Critical:
-            "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800",
-        High: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800",
-        Medium: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800",
-        Low: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800",
-        Negligible:
-            "bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600",
-        Unknown:
-            "bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-500 dark:border-gray-600",
-    };
-
     // ── Infinite scroll state ─────────────────────────────────────────────────
     const PAGE_SIZE = 100;
 
-    let rows = $state<Vulnerability[]>(data.vulnerabilities || []);
-    let totalCount = $state(data.total_count ?? 0);
-    let hasMore = $state(data.has_more ?? false);
-    let currentOffset = $state(data.vulnerabilities?.length ?? 0);
+    let rows = $state<Vulnerability[]>([]);
+    let totalCount = $state(0);
+    let hasMore = $state(false);
+    let currentOffset = $state(0);
     let loadingMore = $state(false);
 
     // Reset when server data changes (report or sort navigates)
@@ -71,7 +64,7 @@
         currentOffset = data.vulnerabilities?.length ?? 0;
     });
 
-    const MAX_ROWS = 600;
+    const MAX_ROWS = 400;
 
     async function loadNextPage() {
         if (loadingMore || !hasMore || currentOffset >= MAX_ROWS) return;
@@ -190,12 +183,6 @@
     }
 
     // ── Utility functions ─────────────────────────────────────────────────────
-    function toUtcDate(iso: string): Date {
-        return new Date(
-            iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z",
-        );
-    }
-
     function timeAgo(iso: string): string {
         return formatDistanceToNow(toUtcDate(iso), { addSuffix: true });
     }
@@ -215,38 +202,6 @@
         const hours = (Date.now() - date.getTime()) / (1000 * 60 * 60);
         return hours <= 24;
     }
-
-    function cvssTooltip(score: number): string {
-        if (score >= 9.0) return "Critical severity";
-        if (score >= 7.0) return "High severity";
-        if (score >= 4.0) return "Medium severity";
-        return "Low severity";
-    }
-
-    function epssTooltip(score: number): string {
-        if (score >= 0.5) return "Very high exploitation risk";
-        if (score >= 0.1) return "Elevated exploitation risk";
-        if (score >= 0.01) return "Moderate exploitation risk";
-        return "Low exploitation risk";
-    }
-
-    function cvssClass(score: number | null): string {
-        if (score === null) return "text-muted-foreground";
-        if (score >= 9.0) return "font-bold text-red-700 dark:text-red-400";
-        if (score >= 7.0)
-            return "font-semibold text-orange-600 dark:text-orange-400";
-        if (score >= 4.0) return "text-amber-600 dark:text-amber-400";
-        return "text-muted-foreground";
-    }
-
-    function epssClass(score: number | null): string {
-        if (score === null) return "text-muted-foreground";
-        if (score >= 0.5) return "font-bold text-red-700 dark:text-red-400";
-        if (score >= 0.1)
-            return "font-semibold text-orange-600 dark:text-orange-400";
-        if (score >= 0.01) return "text-amber-600 dark:text-amber-400";
-        return "text-muted-foreground";
-    }
 </script>
 
 <div class="flex flex-col gap-6">
@@ -258,6 +213,24 @@
             </p>
         </div>
     </div>
+
+    {#if data.eol_images && data.eol_images.length > 0}
+        <div
+            class="rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex items-start gap-4"
+        >
+            <ShieldAlert class="mt-0.5 h-5 w-5 shrink-0" />
+            <div class="flex flex-col gap-1 text-sm">
+                <span class="font-medium">End-of-Life Systems Detected</span>
+                <span class="opacity-90">
+                    One or more running containers ({data.eol_images.join(
+                        ", ",
+                    )}) are using an end-of-life operating system. Vulnerability
+                    data for these systems may be incomplete, outdated, or
+                    inaccurate.
+                </span>
+            </div>
+        </div>
+    {/if}
 
     <Card.Root>
         <Card.Header class="flex flex-row items-center justify-between pb-3">
@@ -317,7 +290,7 @@
                 <div class="overflow-x-auto rounded-md border">
                     <Table.Root class="w-full table-fixed text-xs">
                         <colgroup>
-                            <col style="width:12%" />
+                            <col style="width:14%" />
                             <col style="width:15%" />
                             <col style="width:7%" />
                             <col style="width:10%" />
@@ -327,7 +300,7 @@
                             <col style="width:5%" />
                             <col style="width:4%" />
                             <col style="width:8%" />
-                            <col style="width:20%" />
+                            <col style="width:18%" />
                         </colgroup>
                         <Table.Header>
                             <Table.Row class="bg-muted/50">
@@ -464,6 +437,13 @@
                                         <div
                                             class="flex flex-wrap items-center gap-1"
                                         >
+                                            {#if isNew(vuln.first_seen_at)}
+                                                <span
+                                                    class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                                                >
+                                                    NEW
+                                                </span>
+                                            {/if}
                                             <a
                                                 href={vuln.data_source ??
                                                     `https://nvd.nist.gov/vuln/detail/${vuln.vuln_id}`}
@@ -476,13 +456,6 @@
                                                     class="h-3 w-3 shrink-0"
                                                 />
                                             </a>
-                                            {#if isNew(vuln.first_seen_at)}
-                                                <span
-                                                    class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                                                >
-                                                    NEW
-                                                </span>
-                                            {/if}
                                         </div>
                                     </Table.Cell>
                                     <Table.Cell class="align-top py-2">
@@ -521,15 +494,7 @@
                                             >
                                         {/if}
                                     </Table.Cell>
-                                    <Table.Cell class="text-center">
-                                        <span
-                                            class="inline-flex items-center rounded-full border px-1.5 py-0.5 font-medium {SEVERITY_CLASSES[
-                                                vuln.severity
-                                            ] ?? SEVERITY_CLASSES['Unknown']}"
-                                        >
-                                            {vuln.severity}
-                                        </span>
-                                    </Table.Cell>
+                                    <SeverityCell severity={vuln.severity} />
                                     <Table.Cell class="font-mono">
                                         <Tooltip.Root>
                                             <Tooltip.Trigger
@@ -599,96 +564,12 @@
                                             >
                                         {/if}
                                     </Table.Cell>
-                                    <Table.Cell
-                                        class="text-center {cvssClass(
-                                            vuln.cvss_base_score,
-                                        )}"
-                                    >
-                                        {#if vuln.cvss_base_score != null}
-                                            <Tooltip.Root>
-                                                <Tooltip.Trigger
-                                                    class="cursor-default"
-                                                >
-                                                    {vuln.cvss_base_score.toFixed(
-                                                        1,
-                                                    )}
-                                                </Tooltip.Trigger>
-                                                <Tooltip.Content
-                                                    >{cvssTooltip(
-                                                        vuln.cvss_base_score,
-                                                    )}</Tooltip.Content
-                                                >
-                                            </Tooltip.Root>
-                                        {:else}
-                                            —
-                                        {/if}
-                                    </Table.Cell>
-                                    <Table.Cell
-                                        class="text-center {epssClass(
-                                            vuln.epss_score,
-                                        )}"
-                                    >
-                                        {#if vuln.epss_score != null}
-                                            <Tooltip.Root>
-                                                <Tooltip.Trigger
-                                                    class="cursor-default"
-                                                >
-                                                    {(
-                                                        vuln.epss_score * 100
-                                                    ).toFixed(1)}%
-                                                </Tooltip.Trigger>
-                                                <Tooltip.Content>
-                                                    <p>
-                                                        {epssTooltip(
-                                                            vuln.epss_score,
-                                                        )}
-                                                    </p>
-                                                    {#if vuln.epss_percentile != null}
-                                                        {@const pct =
-                                                            Math.round(
-                                                                vuln.epss_percentile *
-                                                                    100,
-                                                            )}
-                                                        <p
-                                                            class="mt-1 {pct >=
-                                                            90
-                                                                ? 'font-semibold text-red-400'
-                                                                : pct >= 70
-                                                                  ? 'text-orange-400'
-                                                                  : ''}"
-                                                        >
-                                                            In {pct}th
-                                                            percentile of
-                                                            exploit likelihood.
-                                                        </p>
-                                                    {/if}
-                                                </Tooltip.Content>
-                                            </Tooltip.Root>
-                                        {:else}
-                                            —
-                                        {/if}
-                                    </Table.Cell>
-                                    <Table.Cell class="text-center">
-                                        {#if vuln.is_kev}
-                                            <Tooltip.Root>
-                                                <Tooltip.Trigger
-                                                    class="cursor-default"
-                                                >
-                                                    <CircleCheck
-                                                        class="mx-auto h-4 w-4 text-red-600 dark:text-red-400"
-                                                    />
-                                                </Tooltip.Trigger>
-                                                <Tooltip.Content
-                                                    >Known Exploited
-                                                    Vulnerability</Tooltip.Content
-                                                >
-                                            </Tooltip.Root>
-                                        {:else}
-                                            <span class="text-muted-foreground"
-                                                >—</span
-                                            >
-                                        {/if}
-                                    </Table.Cell>
+                                    <CvssCell score={vuln.cvss_base_score} />
+                                    <EpssCell
+                                        score={vuln.epss_score}
+                                        percentile={vuln.epss_percentile}
+                                    />
+                                    <KevCell isKev={vuln.is_kev} />
                                     <Table.Cell class="text-center">
                                         {#if vuln.first_seen_at}
                                             <Tooltip.Root>

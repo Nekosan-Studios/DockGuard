@@ -14,6 +14,7 @@ export type ContainerRow = {
     image_digest: string | null;
     scan_id: number | null;
     scanned_at: string | null;
+    is_distro_eol: boolean;
     vulns_by_severity: Record<string, number>;
     total: number;
     has_scan: boolean;

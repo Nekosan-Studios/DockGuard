@@ -4,7 +4,7 @@
 	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 	import ListTodo from "@lucide/svelte/icons/list-todo";
 	import Settings from "@lucide/svelte/icons/settings";
-	import Shield from "@lucide/svelte/icons/shield";
+
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 
 	const items = [
@@ -26,9 +26,13 @@
 			<Sidebar.MenuItem>
 				<Sidebar.MenuButton size="lg" class="pointer-events-none">
 					<div
-						class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+						class="flex aspect-square size-8 items-center justify-center rounded-lg"
 					>
-						<Shield class="size-4" />
+						<img
+							src="/logo.png"
+							alt="DockGuard Logo"
+							class="size-8"
+						/>
 					</div>
 					<div class="flex flex-col gap-0.5 leading-none">
 						<span class="font-semibold">DockGuard</span>

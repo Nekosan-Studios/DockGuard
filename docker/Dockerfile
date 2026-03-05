@@ -19,15 +19,15 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: Backend & Base Image ──────────────────────────────────────
-FROM python:3.14.3-alpine
+FROM python:3.13-slim
 
-# Install system dependencies (npm intentionally omitted: not needed at runtime, reduces attack surface)
-RUN apk add --no-cache \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
-    tzdata \
     supervisor \
-    nodejs
+    nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install grype
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
@@ -41,8 +41,8 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies
-RUN uv sync --no-dev --frozen
+# Install Python dependencies & pre-compile bytecode so first startup is fast
+RUN uv sync --no-dev --frozen --compile-bytecode
 
 # Patch Python tooling vulnerabilities (pip, wheel, jaraco-context)
 RUN pip install --upgrade pip wheel 'jaraco-context>=6.1.0'

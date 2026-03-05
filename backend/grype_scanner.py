@@ -77,6 +77,12 @@ class GrypeScanner:
 
         image_repository = _parse_image_repository(image_name)
         scanned_at = datetime.now(timezone.utc)
+        
+        # Check if any package has a distro-eol alert
+        distro_eol = any(
+            any(alert.get("type") == "distro-eol" for alert in pkg.get("alerts", []))
+            for pkg in grype_json.get("alertsByPackage", [])
+        )
 
         scan = Scan(
             scanned_at=scanned_at,
@@ -87,6 +93,7 @@ class GrypeScanner:
             db_built=self._parse_datetime(db_status.get("built")),
             distro_name=distro.get("name") or None,
             distro_version=distro.get("version") or None,
+            is_distro_eol=distro_eol,
             container_name=container_name,
         )
 
