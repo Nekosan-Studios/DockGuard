@@ -139,7 +139,7 @@
 	<div>
 		<h3 class="text-lg font-medium">Application Configuration</h3>
 		<p class="text-sm text-muted-foreground">
-			Manage how DockerSecurityWatch behaves. Settings configured via
+			Manage how DockGuard behaves. Settings configured via
 			`docker-compose.yml` or environment variables cannot be modified
 			here.
 		</p>

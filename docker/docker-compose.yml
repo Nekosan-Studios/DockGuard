@@ -1,5 +1,5 @@
 services:
-  docker-security-watch:
+  dockguard:
     build:
       context: ..
       dockerfile: docker/Dockerfile

@@ -2,7 +2,7 @@ import os
 
 from sqlmodel import Session, create_engine
 
-DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/docker_security_watch.db")
+DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/dockguard.db")
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 

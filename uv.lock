@@ -139,7 +139,7 @@ wheels = [
 ]
 
 [[package]]
-name = "docker-security-watch"
+name = "dockguard"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

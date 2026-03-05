@@ -1,6 +1,6 @@
 # Settings Management Implementation
 
-I have successfully implemented the new Settings management flow, bringing UI-controlled configuration to DockerSecurityWatch while retaining strict environment variable precedence for container environments.
+I have successfully implemented the new Settings management flow, bringing UI-controlled configuration to DockGuard while retaining strict environment variable precedence for container environments.
 
 ## Features Added
 

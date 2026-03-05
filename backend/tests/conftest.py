@@ -170,14 +170,14 @@ def require_grype():
 def test_container(require_docker):
     """Ensure a known small container is running for E2E tests.
 
-    1. If the 'dsw-test' container is already running → use it, leave it running.
+    1. If the 'dg-test' container is already running → use it, leave it running.
     2. Otherwise → start alpine:latest with 'sleep 300', stop it after the test.
 
     Yields dict: {"image_ref": "alpine:latest", "started_by_fixture": bool}
     """
     client = docker_sdk.from_env()
     test_image = "alpine:latest"
-    test_name = "dsw-test"
+    test_name = "dg-test"
 
     for container in client.containers.list():
         if container.name == test_name:

@@ -28,7 +28,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ─── dependency checks ──────────────────────────────────────────────────────────
-echo "${BOLD}DockerSecurityWatch — dev${NC}"
+echo "${BOLD}DockGuard — dev${NC}"
 echo
 
 MISSING=0

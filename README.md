@@ -1,4 +1,4 @@
-# DockerSecurityWatch
+# DockGuard
 
 A tool for home labbers to understand the security vulnerabilities present in the Docker images they run. It automatically scans running containers with Grype, persists results to SQLite, and surfaces them through a SvelteKit web dashboard.
 
@@ -63,13 +63,13 @@ This starts a unified container running both the backend and frontend.
 
 | Service | Ports | Description |
 |---|---|---|
-| `docker-security-watch` | 3000, 8765 | SvelteKit Frontend + FastAPI Backend + Grype |
+| `dockguard` | 3000, 8765 | SvelteKit Frontend + FastAPI Backend + Grype |
 
 The compose file handles everything:
 - Builds a single multi-stage image (see `docker/Dockerfile`)
 - Uses `supervisord` to manage both the Node.js and Python processes
 - Mounts `/var/run/docker.sock` so the backend can introspect the host Docker daemon
-- Creates a named volume `dsw-data` at `/app/data` for database persistence
+- Creates a named volume `dg-data` at `/app/data` for database persistence
 - Sets `SCAN_INTERVAL_SECONDS` and `MAX_CONCURRENT_SCANS` on the backend
 - Sets `API_URL=http://localhost:8765` so the frontend can reach the backend locally
 
@@ -86,7 +86,7 @@ docker compose -f docker/docker-compose.yml down           # stop (data volume i
 ### Notes
 
 - **Docker socket**: The backend must be able to reach the host Docker daemon. On Linux this is `/var/run/docker.sock`. Docker Desktop for Mac/Windows exposes the same path via the VM.
-- **Database persistence**: The SQLite file is written to `data/docker_security_watch.db` (relative to the project root on the host). Removing or recreating containers does not delete scan history. To wipe the database, delete that file.
+- **Database persistence**: The SQLite file is written to `data/dockguard.db` (relative to the project root on the host). Removing or recreating containers does not delete scan history. To wipe the database, delete that file.
 
 Starting the API server also starts the background scheduler. Every 60 seconds it checks which Docker containers are running. If a new image appears, or an existing image has been re-pulled to a new digest (e.g. `latest` was updated), a Grype scan is automatically queued and run in the background. Results are persisted to the database as scans complete.
 
@@ -98,7 +98,7 @@ Every hour the scheduler also runs `grype db check`. If a newer Grype vulnerabil
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_PATH` | `data/docker_security_watch.db` | Path to the SQLite database file. The default writes to a `data/` subdirectory relative to the working directory. When running in Docker, the compose file volume-mounts this directory for persistence. |
+| `DATABASE_PATH` | `data/dockguard.db` | Path to the SQLite database file. The default writes to a `data/` subdirectory relative to the working directory. When running in Docker, the compose file volume-mounts this directory for persistence. |
 | `SCAN_INTERVAL_SECONDS` | `60` | How often (in seconds) the scheduler polls Docker for new/updated containers. |
 | `MAX_CONCURRENT_SCANS` | `1` | Maximum number of Grype scans to run in parallel. |
 | `DB_CHECK_INTERVAL_SECONDS` | `3600` | How often (in seconds) to check for Grype vulnerability database updates. |
@@ -106,7 +106,7 @@ Every hour the scheduler also runs `grype db check`. If a newer Grype vulnerabil
 
 ## Database
 
-SQLite file: `data/docker_security_watch.db` (created automatically on first run, or at `DATABASE_PATH` if set).
+SQLite file: `data/dockguard.db` (created automatically on first run, or at `DATABASE_PATH` if set).
 
 Schema: `Scan` (one row per image scan) → `Vulnerability` (one row per finding).
 `image_digest` on `Scan` is how version changes are tracked over time for the same image name.

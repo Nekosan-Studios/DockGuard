@@ -299,7 +299,7 @@
 			const payload = JSON.parse(text);
 			const parseMs = (performance.now() - t1).toFixed(0);
 			console.log(
-				`[DSW] vuln fetch ${imageName}${severity ? ` (${severity})` : ""}: ` +
+				`[DG] vuln fetch ${imageName}${severity ? ` (${severity})` : ""}: ` +
 					`${text.length} bytes, fetch=${fetchMs}ms, parse=${parseMs}ms`,
 			);
 			const raw: Vulnerability[] = Array.isArray(payload)

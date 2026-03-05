@@ -1,18 +1,22 @@
 <script lang="ts">
-	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
-	import Container from '@lucide/svelte/icons/container';
-	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
-	import ListTodo from '@lucide/svelte/icons/list-todo';
-	import Settings from '@lucide/svelte/icons/settings';
-	import Shield from '@lucide/svelte/icons/shield';
-	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
+	import Container from "@lucide/svelte/icons/container";
+	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
+	import ListTodo from "@lucide/svelte/icons/list-todo";
+	import Settings from "@lucide/svelte/icons/settings";
+	import Shield from "@lucide/svelte/icons/shield";
+	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 
 	const items = [
-		{ title: 'Dashboard', url: '/', icon: LayoutDashboard },
-		{ title: 'Containers', url: '/containers', icon: Container },
-		{ title: 'Vulnerabilities', url: '/vulnerabilities', icon: ShieldAlert },
-		{ title: 'Tasks', url: '/tasks', icon: ListTodo },
-		{ title: 'Settings', url: '/settings', icon: Settings }
+		{ title: "Dashboard", url: "/", icon: LayoutDashboard },
+		{ title: "Containers", url: "/containers", icon: Container },
+		{
+			title: "Vulnerabilities",
+			url: "/vulnerabilities",
+			icon: ShieldAlert,
+		},
+		{ title: "Tasks", url: "/tasks", icon: ListTodo },
+		{ title: "Settings", url: "/settings", icon: Settings },
 	];
 </script>
 
@@ -27,8 +31,10 @@
 						<Shield class="size-4" />
 					</div>
 					<div class="flex flex-col gap-0.5 leading-none">
-						<span class="font-semibold">DockerWatch</span>
-						<span class="text-xs text-muted-foreground">Security Monitor</span>
+						<span class="font-semibold">DockGuard</span>
+						<span class="text-xs text-muted-foreground"
+							>Security Monitor</span
+						>
 					</div>
 				</Sidebar.MenuButton>
 			</Sidebar.MenuItem>
