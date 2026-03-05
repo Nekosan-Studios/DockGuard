@@ -14,6 +14,7 @@ export const load: PageServerLoad = async ({ fetch }) => {
 
     return {
         tasks: tasksData.tasks ?? [],
-        scheduledJobs: scheduledData.jobs ?? []
+        scheduledJobs: scheduledData.jobs ?? [],
+        apiError: !tasksRes?.ok,
     };
 };

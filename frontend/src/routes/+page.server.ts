@@ -9,12 +9,13 @@ export const load: PageServerLoad = async ({ fetch }) => {
 		fetch(`${API_URL}/activity/recent`).catch(() => null)
 	]);
 
+	const summaryOk = summaryRes?.ok;
 	const summary =
-		summaryRes?.ok
-			? await summaryRes.json()
+		summaryOk
+			? await summaryRes!.json()
 			: { running_containers: null, images_scanned: null, critical_count: null, kev_count: null, new_vulns_24h: 0, trend: [], docker_connected: false, grype_version: null, db_built: null, last_db_checked_at: null };
 
 	const activities = activityRes?.ok ? (await activityRes.json()).activities ?? [] : [];
 
-	return { summary, activities };
+	return { summary, activities, apiError: !summaryOk };
 };

@@ -217,7 +217,17 @@ class ContainerScheduler:
                 logger.info("Grype DB is current — no rescan needed")
                 result_msg = "DB is current."
             elif result.returncode == 100:
-                logger.info("New grype DB available — clearing seen digests to trigger full rescan")
+                logger.info("New grype DB available — downloading update before rescan")
+                try:
+                    await asyncio.to_thread(
+                        subprocess.run,
+                        ["grype", "db", "update"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    logger.info("grype db update completed — clearing seen digests to trigger full rescan")
+                except Exception as upd_exc:
+                    logger.warning("grype db update failed (will still rescan): %s", upd_exc)
                 self._seen_digests.clear()
                 result_msg = "New DB available. Triggered full rescan."
             else:

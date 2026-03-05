@@ -27,6 +27,8 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
             count: 0,
             total_count: 0,
             has_more: false,
+            eol_images: [],
+            apiError: true,
         };
     }
 
@@ -41,5 +43,6 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
         total_count: (data.total_count ?? 0) as number,
         has_more: (data.has_more ?? false) as boolean,
         eol_images: (data.eol_images ?? []) as string[],
+        apiError: false,
     };
 };

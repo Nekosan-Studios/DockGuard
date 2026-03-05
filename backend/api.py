@@ -441,9 +441,11 @@ def get_vulnerabilities_across_running(
             kev_val = 0 if vd.get("is_kev") else 1
             return (kev_val if not desc else -kev_val, 0)
         if sort_by == "first_seen_at":
-            ts = vd.get("first_seen_at") or ""
+            ts_raw = vd.get("first_seen_at")
+            # model_dump() returns datetime objects; convert to ISO string for comparison
+            ts = ts_raw.isoformat() if hasattr(ts_raw, "isoformat") else (ts_raw or "")
             null_last = 1 if not ts else 0
-            return (null_last, ts if not desc else ("" if not ts else "".join(chr(0xFFFF - ord(c)) for c in ts[:20])))
+            return (null_last, ts if not desc else ("" if not ts else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in ts[:20])))
         if sort_by == "vuln_id":
             s = vd.get("vuln_id", "")
             return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
