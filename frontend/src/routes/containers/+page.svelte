@@ -162,7 +162,7 @@
 		subviewObservers.clear();
 	});
 
-	let expandedContainers = new SvelteSet<string>();
+	let expandedContainer = $state<string | null>(null);
 	let containerVulns = new SvelteMap<string, Vulnerability[]>();
 	let containerScanTimes = new SvelteMap<string, string>(); // imageName -> scanned_at ISO
 	let loadingContainers = new SvelteSet<string>();
@@ -173,7 +173,7 @@
 
 	// ── Pagination state ────────────────────────────────────────────────────────
 	// Soft cap: stop loading more rows once this many are accumulated.
-	const SUBVIEW_MAX_ROWS = 600;
+	const SUBVIEW_MAX_ROWS = 400;
 	const SUBVIEW_PAGE_SIZE = 200;
 
 	interface VulnMeta {
@@ -328,16 +328,17 @@
 	const AUTO_FILTER_THRESHOLD = 15;
 
 	function toggleExpanded(
+		containerName: string,
 		imageName: string,
 		hasScan: boolean,
 		vulnsBySeverity: Record<string, number> = {},
 		total = 0,
 	) {
 		if (!hasScan) return;
-		if (expandedContainers.has(imageName)) {
-			expandedContainers.delete(imageName);
+		if (expandedContainer === containerName) {
+			expandedContainer = null;
 		} else {
-			expandedContainers.add(imageName);
+			expandedContainer = containerName;
 			if (!containerVulns.has(imageName)) {
 				// First open: auto-filter to highest severity when there are many vulns.
 				const topSeverity =
@@ -474,7 +475,7 @@
 						</Table.Row>
 					</Table.Header>
 					<Table.Body>
-						{#each sortedContainers as container (container.image_name)}
+						{#each sortedContainers as container (container.container_name)}
 							<!-- Parent row -->
 							<Table.Row
 								class={container.has_scan
@@ -482,6 +483,7 @@
 									: ""}
 								onclick={() =>
 									toggleExpanded(
+										container.container_name,
 										container.image_name,
 										container.has_scan,
 										container.vulns_by_severity,
@@ -491,9 +493,8 @@
 								<Table.Cell>
 									<div class="flex items-center gap-2">
 										<ChevronRight
-											class="text-muted-foreground h-4 w-4 shrink-0 transition-transform duration-200 {expandedContainers.has(
-												container.image_name,
-											)
+											class="text-muted-foreground h-4 w-4 shrink-0 transition-transform duration-200 {expandedContainer ===
+											container.container_name
 												? 'rotate-90'
 												: ''} {!container.has_scan
 												? 'opacity-0'
@@ -515,7 +516,7 @@
 									{#if container.has_scan}
 										<div class="flex flex-wrap gap-1">
 											{#each activeSeverities(container.vulns_by_severity) as sev (sev)}
-												{#if expandedContainers.has(container.image_name)}
+												{#if expandedContainer === container.container_name}
 													<button
 														onclick={(e) =>
 															toggleFilter(
@@ -584,7 +585,7 @@
 							</Table.Row>
 
 							<!-- Expanded detail row -->
-							{#if expandedContainers.has(container.image_name)}
+							{#if expandedContainer === container.container_name}
 								<Table.Row>
 									<Table.Cell colspan={3} class="p-0">
 										<div

@@ -50,10 +50,10 @@
     // ── Infinite scroll state ─────────────────────────────────────────────────
     const PAGE_SIZE = 100;
 
-    let rows = $state<Vulnerability[]>(data.vulnerabilities || []);
-    let totalCount = $state(data.total_count ?? 0);
-    let hasMore = $state(data.has_more ?? false);
-    let currentOffset = $state(data.vulnerabilities?.length ?? 0);
+    let rows = $state<Vulnerability[]>([]);
+    let totalCount = $state(0);
+    let hasMore = $state(false);
+    let currentOffset = $state(0);
     let loadingMore = $state(false);
 
     // Reset when server data changes (report or sort navigates)
@@ -64,7 +64,7 @@
         currentOffset = data.vulnerabilities?.length ?? 0;
     });
 
-    const MAX_ROWS = 600;
+    const MAX_ROWS = 400;
 
     async function loadNextPage() {
         if (loadingMore || !hasMore || currentOffset >= MAX_ROWS) return;

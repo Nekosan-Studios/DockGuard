@@ -13,6 +13,7 @@ class Scan(SQLModel, table=True):
     db_built: Optional[datetime] = None
     distro_name: Optional[str] = None
     distro_version: Optional[str] = None
+    is_distro_eol: bool = Field(default=False)
     container_name: Optional[str] = None
 
     vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
