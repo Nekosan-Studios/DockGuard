@@ -174,6 +174,114 @@ def get_total_vulnerability_count(session: Session = Depends(db.get_session)):
     return {"total_vulnerability_count": count}
 
 
+@app.get("/vulnerabilities")
+def get_vulnerabilities_across_running(
+    report: str = Query(
+        "all", 
+        description="Filter report type. Options: 'critical', 'kev', 'new', 'all'"
+    ),
+    session: Session = Depends(db.get_session)
+):
+    """Vulnerabilities across all running containers, grouped by vulnerability."""
+    watcher = DockerWatcher()
+    running = watcher.list_running_containers()
+    if not running:
+        return {"report": report, "count": 0, "vulnerabilities": []}
+
+    image_names = {img["image_name"] for img in running}
+    
+    # Get the latest scan for each running image
+    latest_scan_id_subq = (
+        select(func.max(Scan.id))
+        .where(Scan.image_name.in_(image_names))
+        .group_by(Scan.image_name)
+    )
+    scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
+    
+    scan_id_to_images = {s.id: s.image_name for s in scans}
+    
+    if not scan_id_to_images:
+        return {"report": report, "count": 0, "vulnerabilities": []}
+
+    # Map image_name -> list of container names
+    image_to_containers = defaultdict(list)
+    for c in running:
+        image_to_containers[c["image_name"]].append(c["container_name"])
+
+    # Base query for vulnerabilities
+    q = select(Vulnerability).where(Vulnerability.scan_id.in_(scan_id_to_images.keys()))
+
+    # Apply report filters
+    if report == "critical":
+        q = q.where(Vulnerability.severity == "Critical")
+    elif report == "kev":
+        q = q.where(Vulnerability.is_kev == True)
+    elif report == "new":
+        cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+        q = q.where(Vulnerability.first_seen_at >= cutoff_24h)
+        
+    vulns = session.exec(q).all()
+
+    # Group identical vulnerabilities across different containers
+    # Grouping key: vuln_id + package_name + installed_version
+    grouped_vulns = {}
+    
+    for v in vulns:
+        img_name = scan_id_to_images[v.scan_id]
+        containers_for_img = image_to_containers[img_name]
+        
+        # Unique key for a specific vulnerability in a specific package version
+        key = f"{v.vuln_id}|{v.package_name}|{v.installed_version}"
+        
+        if key not in grouped_vulns:
+            # First time seeing this vuln, initialize its data
+            vd = _serialise_vuln(v)
+            vd["containers"] = [{"image_name": img_name, "container_name": c} for c in containers_for_img]
+            grouped_vulns[key] = vd
+        else:
+            # We've seen this vuln before, just add the new containers to the list
+            existing_containers = grouped_vulns[key]["containers"]
+            # To avoid duplicates if multiple scans report the same vuln for the same image
+            for c in containers_for_img:
+                c_data = {"image_name": img_name, "container_name": c}
+                if c_data not in existing_containers:
+                    existing_containers.append(c_data)
+                    
+            # Merge locations if they differ
+            if v.locations and grouped_vulns[key].get("locations"):
+                if v.locations not in grouped_vulns[key]["locations"]:
+                    grouped_vulns[key]["locations"] += f"\n{v.locations}"
+                    # Re-apply the truncation logic from _serialise_vuln
+                    paths = grouped_vulns[key]["locations"].split("\n")
+                    if len(paths) > _LOC_LIMIT:
+                        grouped_vulns[key]["locations"] = "\n".join(paths[:_LOC_LIMIT])
+            elif v.locations and not grouped_vulns[key].get("locations"):
+                grouped_vulns[key]["locations"] = v.locations
+
+    # Sort results to match container view: Severity then CVSS
+    severity_order = {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Negligible': 4, 'Unknown': 5}
+    
+    sorted_vulns = sorted(
+        grouped_vulns.values(), 
+        key=lambda x: (
+            severity_order.get(x["severity"], 99),
+            -(x.get("cvss_base_score") or 0)
+        )
+    )
+
+    # Re-apply _DESC_LIMIT and _LOC_LIMIT as needed if we merged strings
+    for vd in sorted_vulns:
+        if vd.get("description") and len(vd["description"]) > _DESC_LIMIT:
+            if not vd["description"].endswith("…"):
+                vd["description"] = vd["description"][:_DESC_LIMIT] + "…"
+
+    return {
+        "report": report,
+        "count": len(sorted_vulns), 
+        "vulnerabilities": sorted_vulns
+    }
+
+
 @app.get("/images/vulnerabilities/history")
 def get_vulnerability_count_history(
     image: str = Query(
