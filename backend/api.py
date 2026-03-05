@@ -654,6 +654,16 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         .where(Vulnerability.first_seen_at >= cutoff_24h)
     ).one()
 
+    active_tasks = session.exec(
+        select(func.count(SystemTask.id))
+        .where(SystemTask.status == "running")
+    ).one()
+
+    queued_tasks = session.exec(
+        select(func.count(SystemTask.id))
+        .where(SystemTask.status == "queued")
+    ).one()
+
     return {
         "running_containers": len(running),
         "images_scanned": images_scanned,
@@ -665,6 +675,8 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "grype_version": grype_version,
         "db_built": db_built,
         "last_db_checked_at": last_db_checked_at,
+        "active_tasks": int(active_tasks),
+        "queued_tasks": int(queued_tasks),
     }
 
 

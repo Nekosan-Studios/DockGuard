@@ -10,6 +10,24 @@
 
 	let { data } = $props();
 
+	let sortedTasks = $derived(
+		[...(data.tasks || [])].sort((a, b) => {
+			const order: Record<string, number> = {
+				running: 0,
+				queued: 1,
+				failed: 2,
+				completed: 3,
+			};
+			const aRank = order[a.status] ?? 4;
+			const bRank = order[b.status] ?? 4;
+			if (aRank !== bRank) return aRank - bRank;
+
+			const aDate = new Date(a.finished_at || a.created_at).getTime();
+			const bDate = new Date(b.finished_at || b.created_at).getTime();
+			return bDate - aDate;
+		}),
+	);
+
 	function formatDate(dateStr: string | null | undefined) {
 		if (!dateStr) return "-";
 		const d = new Date(dateStr);
@@ -39,16 +57,23 @@
 
 	function getStatusVariant(status: string) {
 		switch (status) {
-			case "queued":
-				return "secondary";
 			case "running":
 				return "default";
-			case "completed":
-				return "outline";
 			case "failed":
 				return "destructive";
 			default:
 				return "outline";
+		}
+	}
+
+	function getStatusClass(status: string) {
+		switch (status) {
+			case "queued":
+				return "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800";
+			case "completed":
+				return "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800";
+			default:
+				return "";
 		}
 	}
 </script>
@@ -140,20 +165,20 @@
 							<Table.Row>
 								<Table.Head>Status</Table.Head>
 								<Table.Head>Task Name</Table.Head>
-								<Table.Head>Type</Table.Head>
 								<Table.Head>Created</Table.Head>
 								<Table.Head>Finished</Table.Head>
 								<Table.Head>Results / Errors</Table.Head>
 							</Table.Row>
 						</Table.Header>
 						<Table.Body>
-							{#each data.tasks as task (task.id)}
+							{#each sortedTasks as task (task.id)}
 								<Table.Row>
 									<Table.Cell>
 										<Badge
 											variant={getStatusVariant(
 												task.status,
 											)}
+											class={getStatusClass(task.status)}
 										>
 											{task.status}
 										</Badge>
@@ -161,13 +186,6 @@
 									<Table.Cell class="font-medium"
 										>{task.task_name}</Table.Cell
 									>
-									<Table.Cell>
-										<span
-											class="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md"
-										>
-											{task.task_type}
-										</span>
-									</Table.Cell>
 									<Table.Cell
 										>{formatDate(
 											task.created_at,
@@ -187,7 +205,7 @@
 											>
 										{:else if task.result_details}
 											<span
-												class="text-sm truncate max-w-[300px] inline-block"
+												class="text-sm truncate max-w-[500px] inline-block"
 												title={task.result_details}
 												>{task.result_details}</span
 											>
