@@ -5,6 +5,7 @@
 	import * as Table from "$lib/components/ui/table/index.js";
 	import { SvelteSet, SvelteMap } from "svelte/reactivity";
 	import Container from "@lucide/svelte/icons/container";
+	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
 	import ExternalLink from "@lucide/svelte/icons/external-link";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
@@ -427,7 +428,20 @@
 			>
 		</Card.Header>
 		<Card.Content>
-			{#if data.containers.length === 0}
+			{#if data.apiError}
+				<div
+					class="rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10 text-red-800 dark:text-red-300 flex items-start gap-4"
+				>
+					<ShieldAlert class="mt-0.5 h-5 w-5 shrink-0" />
+					<div class="flex flex-col gap-1 text-sm">
+						<span class="font-medium">Unexpected Error</span>
+						<span class="opacity-90"
+							>An unexpected error occurred while loading
+							container data. Please try again shortly.</span
+						>
+					</div>
+				</div>
+			{:else if data.containers.length === 0}
 				<div
 					class="flex flex-col items-center justify-center gap-2 py-8 text-center"
 				>
