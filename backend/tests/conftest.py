@@ -211,7 +211,8 @@ def e2e_client(tmp_path, require_docker, require_grype):
     app.dependency_overrides[production_db.get_session] = temp_db.get_session
     with patch("backend.database.DATABASE_PATH", str(db_file)):
         with patch("backend.api.db", temp_db):
-            with patch("backend.scheduler.SCAN_INTERVAL_SECONDS", 5):
+            with patch("backend.scheduler.ConfigManager.get_setting") as mock_get:
+                mock_get.side_effect = lambda k, s: {"value": "5"} if k == "SCAN_INTERVAL_SECONDS" else {"value": "86400"}
                 with TestClient(app, raise_server_exceptions=True) as client:
                     yield client, temp_db
     app.dependency_overrides.clear()
