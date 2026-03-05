@@ -5,7 +5,6 @@
     import * as Table from "$lib/components/ui/table/index.js";
     import * as Select from "$lib/components/ui/select/index.js";
     import { Label } from "$lib/components/ui/label/index.js";
-    import { SvelteSet, SvelteMap } from "svelte/reactivity";
     import Shield from "@lucide/svelte/icons/shield";
     import ShieldAlert from "@lucide/svelte/icons/shield-alert";
     import ExternalLink from "@lucide/svelte/icons/external-link";
@@ -16,7 +15,7 @@
     import { formatDistanceToNow } from "date-fns";
     import { goto } from "$app/navigation";
     import { page } from "$app/stores";
-    import { onMount, untrack } from "svelte";
+    import { onMount, onDestroy } from "svelte";
 
     let { data }: { data: PageData } = $props();
 
@@ -43,15 +42,6 @@
         containers: ContainerInfo[];
     }
 
-    const SEVERITY_ORDER = [
-        "Critical",
-        "High",
-        "Medium",
-        "Low",
-        "Negligible",
-        "Unknown",
-    ];
-
     const SEVERITY_CLASSES: Record<string, string> = {
         Critical:
             "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800",
@@ -64,64 +54,107 @@
             "bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-500 dark:border-gray-600",
     };
 
-    // ── Progressive rendering state ────────────────────────────────────────────
-    const BATCH_SIZE = 50;
-    let renderedVulns = $state<Vulnerability[]>([]);
-    let pendingVulns = $state<Vulnerability[]>([]);
-    let pendingCallback: number | undefined;
+    // ── Infinite scroll state ─────────────────────────────────────────────────
+    const PAGE_SIZE = 100;
 
-    let sortedRaw = $derived(sortedVulnsList(data.vulnerabilities || []));
+    let rows = $state<Vulnerability[]>(data.vulnerabilities || []);
+    let totalCount = $state(data.total_count ?? 0);
+    let hasMore = $state(data.has_more ?? false);
+    let currentOffset = $state(data.vulnerabilities?.length ?? 0);
+    let loadingMore = $state(false);
 
-    // Reset rendering when data or sort changes
+    // Reset when server data changes (report or sort navigates)
     $effect(() => {
-        // Only track sortedRaw. Do not track pendingVulns or renderedVulns!
-        const raw = sortedRaw;
-
-        untrack(() => {
-            cancelPendingBatch();
-
-            renderedVulns = raw.slice(0, BATCH_SIZE);
-            pendingVulns = raw.slice(BATCH_SIZE);
-
-            if (pendingVulns.length > 0) {
-                scheduleNextBatch();
-            }
-        });
+        rows = data.vulnerabilities || [];
+        totalCount = data.total_count ?? 0;
+        hasMore = data.has_more ?? false;
+        currentOffset = data.vulnerabilities?.length ?? 0;
     });
 
-    function scheduleNextBatch() {
-        if (pendingVulns.length === 0) return;
+    const MAX_ROWS = 600;
 
-        const batch = pendingVulns.slice(0, BATCH_SIZE);
-        const rest = pendingVulns.slice(BATCH_SIZE);
-
-        pendingCallback =
-            typeof requestIdleCallback !== "undefined"
-                ? requestIdleCallback(
-                      () => {
-                          renderedVulns = [...renderedVulns, ...batch];
-                          pendingVulns = rest;
-                          if (rest.length > 0) scheduleNextBatch();
-                      },
-                      { timeout: 2000 },
-                  )
-                : (setTimeout(() => {
-                      renderedVulns = [...renderedVulns, ...batch];
-                      pendingVulns = rest;
-                      if (rest.length > 0) scheduleNextBatch();
-                  }, 0) as unknown as number);
-    }
-
-    function cancelPendingBatch() {
-        if (pendingCallback !== undefined) {
-            if (typeof cancelIdleCallback !== "undefined")
-                cancelIdleCallback(pendingCallback);
-            else clearTimeout(pendingCallback);
-            pendingCallback = undefined;
+    async function loadNextPage() {
+        if (loadingMore || !hasMore || currentOffset >= MAX_ROWS) return;
+        loadingMore = true;
+        try {
+            const params = new URLSearchParams({
+                report: reportValue,
+                sort_by: sortByValue,
+                sort_dir: sortDirValue,
+                limit: "100", // PAGE_SIZE
+                offset: String(currentOffset),
+            });
+            const res = await fetch(`/api/vulnerabilities-paged?${params}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const payload = await res.json();
+            const newRows: Vulnerability[] = payload.vulnerabilities ?? [];
+            rows = [...rows, ...newRows];
+            currentOffset += newRows.length;
+            hasMore = (payload.has_more ?? false) && currentOffset < MAX_ROWS;
+            totalCount = payload.total_count ?? totalCount;
+        } catch (err) {
+            console.error("[DG] Failed to load next vulnerability page", err);
+        } finally {
+            loadingMore = false;
         }
     }
 
-    // ── Table filtering and sorting ────────────────────────────────────────────
+    // ── IntersectionObserver sentinel ─────────────────────────────────────────
+    let sentinel: HTMLElement | null = $state(null);
+    let observer: IntersectionObserver | null = null;
+
+    $effect(() => {
+        if (observer) {
+            observer.disconnect();
+            observer = null;
+        }
+        if (sentinel && hasMore) {
+            observer = new IntersectionObserver(
+                (entries) => {
+                    if (entries[0].isIntersecting) loadNextPage();
+                },
+                { rootMargin: "200px" },
+            );
+            observer.observe(sentinel);
+        }
+        return () => {
+            observer?.disconnect();
+            observer = null;
+        };
+    });
+
+    onDestroy(() => observer?.disconnect());
+
+    // ── Reports & sort URL params ─────────────────────────────────────────────
+    const reports = [
+        { value: "all", label: "All Vulnerabilities" },
+        { value: "critical", label: "Critical Vulnerabilities" },
+        { value: "kev", label: "Actively Exploited (KEV)" },
+        { value: "new", label: "Newly Found (Last 24h)" },
+    ];
+
+    let reportValue = $derived(
+        $page.url.searchParams.get("report") || "critical",
+    );
+    let sortByValue = $derived(
+        $page.url.searchParams.get("sort_by") || "severity",
+    );
+    let sortDirValue = $derived(
+        ($page.url.searchParams.get("sort_dir") as "asc" | "desc") || "asc",
+    );
+    let reportLabel = $derived(
+        reports.find((r) => r.value === reportValue)?.label ||
+            "Critical Vulnerabilities",
+    );
+
+    function handleReportChange(v: string) {
+        const u = new URL($page.url);
+        u.searchParams.set("report", v);
+        u.searchParams.delete("sort_by");
+        u.searchParams.delete("sort_dir");
+        goto(u.toString());
+    }
+
     type VulnSortCol =
         | "vuln_id"
         | "severity"
@@ -132,81 +165,31 @@
         | "is_kev"
         | "first_seen_at";
 
-    let sortCol = $state<VulnSortCol | null>(null);
-    let sortDir = $state<"asc" | "desc">("asc");
-
     function toggleSort(col: VulnSortCol) {
-        if (sortCol !== col) {
-            sortCol = col;
-            sortDir = "asc";
-        } else if (sortDir === "asc") {
-            sortDir = "desc";
-        } else {
-            sortCol = null;
-            sortDir = "asc";
-        }
-    }
-
-    function sortedVulnsList(vulns: Vulnerability[]): Vulnerability[] {
-        if (!sortCol) return vulns; // Default sort from backend
-
-        const m = sortDir === "asc" ? 1 : -1;
-        return [...vulns].sort((a, b) => {
-            switch (sortCol) {
-                case "vuln_id":
-                    return m * a.vuln_id.localeCompare(b.vuln_id);
-                case "severity":
-                    return (
-                        m *
-                        (SEVERITY_ORDER.indexOf(a.severity) -
-                            SEVERITY_ORDER.indexOf(b.severity))
-                    );
-                case "package_name":
-                    return m * a.package_name.localeCompare(b.package_name);
-                case "containers":
-                    return (
-                        m *
-                        ((a.containers?.length || 0) -
-                            (b.containers?.length || 0))
-                    );
-                case "cvss_base_score": {
-                    if (
-                        a.cvss_base_score === null &&
-                        b.cvss_base_score === null
-                    )
-                        return 0;
-                    if (a.cvss_base_score === null) return 1;
-                    if (b.cvss_base_score === null) return -1;
-                    return m * (a.cvss_base_score - b.cvss_base_score);
-                }
-                case "epss_score": {
-                    if (a.epss_score === null && b.epss_score === null)
-                        return 0;
-                    if (a.epss_score === null) return 1;
-                    if (b.epss_score === null) return -1;
-                    return m * (a.epss_score - b.epss_score);
-                }
-                case "is_kev":
-                    return m * ((b.is_kev ? 1 : 0) - (a.is_kev ? 1 : 0));
-                case "first_seen_at": {
-                    if (!a.first_seen_at && !b.first_seen_at) return 0;
-                    if (!a.first_seen_at) return 1;
-                    if (!b.first_seen_at) return -1;
-                    return (
-                        m *
-                        (a.first_seen_at < b.first_seen_at
-                            ? -1
-                            : a.first_seen_at > b.first_seen_at
-                              ? 1
-                              : 0)
-                    );
-                }
-                default:
-                    return 0;
+        if (col === "containers") return; // computed client-side, not server-sortable
+        const u = new URL($page.url);
+        const currentCol = u.searchParams.get("sort_by") || "severity";
+        const currentDir = u.searchParams.get("sort_dir") || "asc";
+        if (currentCol === col) {
+            if (currentDir === "asc") {
+                u.searchParams.set("sort_dir", "desc");
+            } else {
+                u.searchParams.delete("sort_by");
+                u.searchParams.delete("sort_dir");
             }
-        });
+        } else {
+            u.searchParams.set("sort_by", col);
+            u.searchParams.set("sort_dir", "asc");
+        }
+        goto(u.toString());
     }
 
+    function activeSortDir(col: VulnSortCol): "asc" | "desc" | false {
+        if (col === "containers") return false;
+        return sortByValue === col ? sortDirValue : false;
+    }
+
+    // ── Utility functions ─────────────────────────────────────────────────────
     function toUtcDate(iso: string): Date {
         return new Date(
             iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z",
@@ -264,26 +247,6 @@
         if (score >= 0.01) return "text-amber-600 dark:text-amber-400";
         return "text-muted-foreground";
     }
-
-    // ── Reports selector ───────────────────────────────────────────────────────
-    const reports = [
-        { value: "all", label: "All Vulnerabilities" },
-        { value: "critical", label: "Critical Vulnerabilities" },
-        { value: "kev", label: "Actively Exploited (KEV)" },
-        { value: "new", label: "Newly Found (Last 24h)" },
-    ];
-
-    let reportValue = $derived(
-        $page.url.searchParams.get("report") || "critical",
-    );
-    let reportLabel = $derived(
-        reports.find((r) => r.value === reportValue)?.label ||
-            "Critical Vulnerabilities",
-    );
-
-    function handleReportChange(v: string) {
-        goto(`?report=${v}`);
-    }
 </script>
 
 <div class="flex flex-col gap-6">
@@ -304,8 +267,12 @@
                     <Card.Title>{reportLabel}</Card.Title>
                 </div>
                 <Card.Description>
-                    Showing {data.count} grouped vulnerabilities found in currently
-                    running containers.
+                    {#if totalCount > 0}
+                        Showing {rows.length.toLocaleString()} of {totalCount.toLocaleString()}
+                        vulnerabilities across running containers.
+                    {:else}
+                        No vulnerabilities found for this report.
+                    {/if}
                 </Card.Description>
             </div>
 
@@ -337,7 +304,7 @@
             </div>
         </Card.Header>
         <Card.Content class="p-0 sm:p-6 sm:pt-0">
-            {#if renderedVulns.length === 0 && pendingVulns.length === 0}
+            {#if rows.length === 0 && !loadingMore}
                 <div
                     class="flex flex-col items-center justify-center gap-2 py-8 text-center rounded-md border border-dashed border-muted-foreground/30 mx-6 mb-6"
                 >
@@ -368,9 +335,7 @@
                                     <SortButton
                                         label="CVE ID"
                                         size="sm"
-                                        sortDirection={sortCol === "vuln_id"
-                                            ? sortDir
-                                            : false}
+                                        sortDirection={activeSortDir("vuln_id")}
                                         onclick={() => toggleSort("vuln_id")}
                                     />
                                 </Table.Head>
@@ -378,19 +343,16 @@
                                     <SortButton
                                         label="Containers"
                                         size="sm"
-                                        sortDirection={sortCol === "containers"
-                                            ? sortDir
-                                            : false}
-                                        onclick={() => toggleSort("containers")}
+                                        sortDirection={false}
                                     />
                                 </Table.Head>
                                 <Table.Head class="text-center">
                                     <SortButton
                                         label="Severity"
                                         size="sm"
-                                        sortDirection={sortCol === "severity"
-                                            ? sortDir
-                                            : false}
+                                        sortDirection={activeSortDir(
+                                            "severity",
+                                        )}
                                         onclick={() => toggleSort("severity")}
                                     />
                                 </Table.Head>
@@ -398,10 +360,9 @@
                                     <SortButton
                                         label="Package"
                                         size="sm"
-                                        sortDirection={sortCol ===
-                                        "package_name"
-                                            ? sortDir
-                                            : false}
+                                        sortDirection={activeSortDir(
+                                            "package_name",
+                                        )}
                                         onclick={() =>
                                             toggleSort("package_name")}
                                     />
@@ -419,10 +380,9 @@
                                                 <SortButton
                                                     label="CVSS"
                                                     size="sm"
-                                                    sortDirection={sortCol ===
-                                                    "cvss_base_score"
-                                                        ? sortDir
-                                                        : false}
+                                                    sortDirection={activeSortDir(
+                                                        "cvss_base_score",
+                                                    )}
                                                     {...props}
                                                     onclick={() =>
                                                         toggleSort(
@@ -444,10 +404,9 @@
                                                 <SortButton
                                                     label="EPSS"
                                                     size="sm"
-                                                    sortDirection={sortCol ===
-                                                    "epss_score"
-                                                        ? sortDir
-                                                        : false}
+                                                    sortDirection={activeSortDir(
+                                                        "epss_score",
+                                                    )}
                                                     {...props}
                                                     onclick={() =>
                                                         toggleSort(
@@ -468,10 +427,9 @@
                                                 <SortButton
                                                     label="KEV"
                                                     size="sm"
-                                                    sortDirection={sortCol ===
-                                                    "is_kev"
-                                                        ? sortDir
-                                                        : false}
+                                                    sortDirection={activeSortDir(
+                                                        "is_kev",
+                                                    )}
                                                     {...props}
                                                     onclick={() =>
                                                         toggleSort("is_kev")}
@@ -488,10 +446,9 @@
                                     <SortButton
                                         label="First Seen"
                                         size="sm"
-                                        sortDirection={sortCol ===
-                                        "first_seen_at"
-                                            ? sortDir
-                                            : false}
+                                        sortDirection={activeSortDir(
+                                            "first_seen_at",
+                                        )}
                                         onclick={() =>
                                             toggleSort("first_seen_at")}
                                     />
@@ -501,7 +458,7 @@
                             </Table.Row>
                         </Table.Header>
                         <Table.Body>
-                            {#each renderedVulns as vuln (vuln.vuln_id + vuln.package_name + vuln.installed_version)}
+                            {#each rows as vuln (vuln.vuln_id + vuln.package_name + vuln.installed_version)}
                                 <Table.Row class="hover:bg-muted/30">
                                     <Table.Cell class="pl-4 font-mono">
                                         <div
@@ -770,14 +727,28 @@
                         </Table.Body>
                     </Table.Root>
 
-                    {#if pendingVulns.length > 0}
+                    <!-- Infinite scroll sentinel / loading indicator -->
+                    {#if hasMore}
                         <div
+                            bind:this={sentinel}
                             class="flex items-center justify-center gap-2 border-t px-6 py-4 text-sm text-muted-foreground bg-muted/20"
                         >
-                            <Loader2 class="h-4 w-4 animate-spin" />
-                            <span
-                                >Loading {pendingVulns.length} more vulnerabilities…</span
-                            >
+                            {#if loadingMore}
+                                <Loader2 class="h-4 w-4 animate-spin" />
+                                <span>Loading more…</span>
+                            {:else}
+                                <span class="text-xs text-muted-foreground/60"
+                                    >Scroll for more</span
+                                >
+                            {/if}
+                        </div>
+                    {:else if totalCount > MAX_ROWS && currentOffset >= MAX_ROWS}
+                        <div
+                            class="border-t px-6 py-3 text-xs text-muted-foreground/80 bg-muted/20 text-center"
+                        >
+                            Showing {MAX_ROWS} of {totalCount.toLocaleString()} vulnerabilities
+                            — use the report filters above or sort by CVSS / EPSS
+                            to prioritize.
                         </div>
                     {/if}
                 </div>

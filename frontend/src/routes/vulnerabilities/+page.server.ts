@@ -5,22 +5,40 @@ const API_URL = env.API_URL ?? 'http://localhost:8765';
 
 export const load: PageServerLoad = async ({ fetch, url }) => {
     const report = url.searchParams.get('report') || 'critical';
+    const sort_by = url.searchParams.get('sort_by') || 'severity';
+    const sort_dir = url.searchParams.get('sort_dir') || 'asc';
 
-    const res = await fetch(`${API_URL}/vulnerabilities?report=${encodeURIComponent(report)}`).catch(() => null);
+    const params = new URLSearchParams({
+        report,
+        sort_by,
+        sort_dir,
+        limit: '100',
+        offset: '0',
+    });
+
+    const res = await fetch(`${API_URL}/vulnerabilities?${params}`).catch(() => null);
 
     if (!res?.ok) {
         return {
             report,
+            sort_by,
+            sort_dir,
             vulnerabilities: [],
-            count: 0
+            count: 0,
+            total_count: 0,
+            has_more: false,
         };
     }
 
     const data = await res.json();
 
     return {
-        report: data.report,
-        vulnerabilities: data.vulnerabilities ?? [],
-        count: data.count ?? 0
+        report: data.report || report,
+        sort_by,
+        sort_dir,
+        vulnerabilities: (data.vulnerabilities ?? []) as any[],
+        count: (data.count ?? 0) as number,
+        total_count: (data.total_count ?? 0) as number,
+        has_more: (data.has_more ?? false) as boolean,
     };
 };

@@ -13,6 +13,7 @@
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import { formatDistanceToNow } from "date-fns";
 	import { slide } from "svelte/transition";
+	import { onMount, onDestroy } from "svelte";
 
 	let { data }: { data: PageData } = $props();
 
@@ -103,7 +104,71 @@
 		});
 	});
 
-	// ── Expandable row state ───────────────────────────────────────────────────
+	// ── IntersectionObserver for sub-view sentinel divs ───────────────────────
+	// We use a MutationObserver on the document body to detect when sentinel
+	// divs (data-sentinel="imageName") appear in the DOM after Svelte renders them.
+	// When a sentinel enters the viewport, we load the next page for that image.
+	let subviewObservers = new Map<Element, IntersectionObserver>();
+	let mutObs: MutationObserver | null = null;
+
+	function attachSentinelIfNeeded(el: Element) {
+		const imageName = (el as HTMLElement).dataset.sentinel;
+		if (!imageName || subviewObservers.has(el)) return;
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (!entries[0].isIntersecting) return;
+				const meta = getMeta(imageName);
+				if (meta.hasMore && !meta.loadingMore) {
+					const fetchedSev = partiallyLoadedSeverity.get(imageName);
+					fetchVulns(
+						imageName,
+						fetchedSev,
+						meta.offset,
+						meta.sortCol,
+						meta.sortDir,
+					);
+				}
+			},
+			{ rootMargin: "100px" },
+		);
+		io.observe(el);
+		subviewObservers.set(el, io);
+	}
+
+	onMount(() => {
+		// Observe existing and future sentinel divs.
+		mutObs = new MutationObserver((mutations) => {
+			for (const mut of mutations) {
+				for (const node of mut.addedNodes) {
+					if (node instanceof Element) {
+						if ((node as HTMLElement).dataset.sentinel)
+							attachSentinelIfNeeded(node);
+						for (const el of node.querySelectorAll(
+							"[data-sentinel]",
+						))
+							attachSentinelIfNeeded(el);
+					}
+				}
+				for (const node of mut.removedNodes) {
+					if (node instanceof Element) {
+						const io = subviewObservers.get(node);
+						if (io) {
+							io.disconnect();
+							subviewObservers.delete(node);
+						}
+					}
+				}
+			}
+		});
+		mutObs.observe(document.body, { childList: true, subtree: true });
+	});
+
+	onDestroy(() => {
+		mutObs?.disconnect();
+		for (const io of subviewObservers.values()) io.disconnect();
+		subviewObservers.clear();
+	});
+
 	let expandedContainers = new SvelteSet<string>();
 	let containerVulns = new SvelteMap<string, Vulnerability[]>();
 	let containerScanTimes = new SvelteMap<string, string>(); // imageName -> scanned_at ISO
@@ -113,64 +178,35 @@
 	// Not reactive — only read inside event handlers.
 	const partiallyLoadedSeverity = new Map<string, string>();
 
-	// ── Progressive rendering state ────────────────────────────────────────────
-	const BATCH_SIZE = 50;
-	let pendingVulns = new SvelteMap<string, Vulnerability[]>(); // remaining items not yet rendered
-	let pendingCallbacks = new Map<string, number>(); // idle/timeout handle per container (not reactive)
+	// ── Pagination state ────────────────────────────────────────────────────────
+	// Soft cap: stop loading more rows once this many are accumulated.
+	const SUBVIEW_MAX_ROWS = 600;
+	const SUBVIEW_PAGE_SIZE = 200;
 
-	function scheduleNextBatch(imageName: string) {
-		const remaining = pendingVulns.get(imageName);
-		if (!remaining || remaining.length === 0) {
-			pendingVulns.delete(imageName);
-			return;
-		}
-		const batch = remaining.slice(0, BATCH_SIZE);
-		const rest = remaining.slice(BATCH_SIZE);
-		const id =
-			typeof requestIdleCallback !== "undefined"
-				? requestIdleCallback(
-						() => {
-							containerVulns.set(imageName, [
-								...(containerVulns.get(imageName) ?? []),
-								...batch,
-							]);
-							pendingCallbacks.delete(imageName);
-							if (rest.length > 0) {
-								pendingVulns.set(imageName, rest);
-								scheduleNextBatch(imageName);
-							} else {
-								pendingVulns.delete(imageName);
-							}
-						},
-						{ timeout: 2000 },
-					)
-				: (setTimeout(() => {
-						containerVulns.set(imageName, [
-							...(containerVulns.get(imageName) ?? []),
-							...batch,
-						]);
-						pendingCallbacks.delete(imageName);
-						if (rest.length > 0) {
-							pendingVulns.set(imageName, rest);
-							scheduleNextBatch(imageName);
-						} else {
-							pendingVulns.delete(imageName);
-						}
-					}, 0) as unknown as number);
-		pendingCallbacks.set(imageName, id);
+	interface VulnMeta {
+		totalCount: number;
+		offset: number;
+		hasMore: boolean;
+		loadingMore: boolean;
+		sortCol: VulnSortCol | null;
+		sortDir: "asc" | "desc";
+	}
+	let containerVulnsMeta = new SvelteMap<string, VulnMeta>();
+
+	function getMeta(imageName: string): VulnMeta {
+		return (
+			containerVulnsMeta.get(imageName) ?? {
+				totalCount: 0,
+				offset: 0,
+				hasMore: false,
+				loadingMore: false,
+				sortCol: null,
+				sortDir: "asc",
+			}
+		);
 	}
 
-	function cancelPendingBatch(imageName: string) {
-		const id = pendingCallbacks.get(imageName);
-		if (id !== undefined) {
-			if (typeof cancelIdleCallback !== "undefined")
-				cancelIdleCallback(id);
-			else clearTimeout(id);
-			pendingCallbacks.delete(imageName);
-		}
-	}
-
-	// ── Sub-table sort (per-container, three-way: none → asc → desc → none) ──
+	// ── Sub-table sort (per-container) ─────────────────────────────────────────
 	type VulnSortCol =
 		| "vuln_id"
 		| "severity"
@@ -179,14 +215,21 @@
 		| "epss_score"
 		| "is_kev"
 		| "first_seen_at";
-	interface VulnSort {
-		col: VulnSortCol | null;
-		dir: "asc" | "desc";
-	}
-	let vulnSortStates = new SvelteMap<string, VulnSort>();
 
-	function getVulnSort(imageName: string): VulnSort {
-		return vulnSortStates.get(imageName) ?? { col: null, dir: "asc" };
+	function getVulnSortCol(imageName: string): VulnSortCol | null {
+		return getMeta(imageName).sortCol;
+	}
+
+	function getVulnSortDir(imageName: string): "asc" | "desc" {
+		return getMeta(imageName).sortDir;
+	}
+
+	function vulnSortDir(
+		imageName: string,
+		col: VulnSortCol,
+	): "asc" | "desc" | false {
+		const meta = getMeta(imageName);
+		return meta.sortCol === col ? meta.sortDir : false;
 	}
 
 	function toggleVulnSort(
@@ -195,77 +238,27 @@
 		e: MouseEvent,
 	) {
 		e.stopPropagation();
-		const current = getVulnSort(imageName);
-		if (current.col !== col) {
-			vulnSortStates.set(imageName, { col, dir: "asc" });
-		} else if (current.dir === "asc") {
-			vulnSortStates.set(imageName, { col, dir: "desc" });
+		const meta = getMeta(imageName);
+		let newCol: VulnSortCol | null;
+		let newDir: "asc" | "desc";
+		if (meta.sortCol !== col) {
+			newCol = col;
+			newDir = "asc";
+		} else if (meta.sortDir === "asc") {
+			newCol = col;
+			newDir = "desc";
 		} else {
-			vulnSortStates.set(imageName, { col: null, dir: "asc" }); // back to default
+			newCol = null;
+			newDir = "asc";
 		}
-	}
-
-	function vulnSortDir(
-		imageName: string,
-		col: VulnSortCol,
-	): "asc" | "desc" | false {
-		const s = getVulnSort(imageName);
-		return s.col === col ? s.dir : false;
-	}
-
-	function sortedVulns(
-		imageName: string,
-		vulns: Vulnerability[],
-	): Vulnerability[] {
-		const { col, dir } = getVulnSort(imageName);
-		if (!col) return vulns; // default: severity → CVSS desc from fetchVulns
-		const m = dir === "asc" ? 1 : -1;
-		return [...vulns].sort((a, b) => {
-			switch (col) {
-				case "vuln_id":
-					return m * a.vuln_id.localeCompare(b.vuln_id);
-				case "severity":
-					return (
-						m *
-						(SEVERITY_ORDER.indexOf(a.severity) -
-							SEVERITY_ORDER.indexOf(b.severity))
-					);
-				case "package_name":
-					return m * a.package_name.localeCompare(b.package_name);
-				case "cvss_base_score": {
-					if (
-						a.cvss_base_score === null &&
-						b.cvss_base_score === null
-					)
-						return 0;
-					if (a.cvss_base_score === null) return 1;
-					if (b.cvss_base_score === null) return -1;
-					return m * (a.cvss_base_score - b.cvss_base_score);
-				}
-				case "epss_score": {
-					if (a.epss_score === null && b.epss_score === null)
-						return 0;
-					if (a.epss_score === null) return 1;
-					if (b.epss_score === null) return -1;
-					return m * (a.epss_score - b.epss_score);
-				}
-				case "is_kev":
-					return m * ((b.is_kev ? 1 : 0) - (a.is_kev ? 1 : 0));
-				case "first_seen_at": {
-					if (!a.first_seen_at && !b.first_seen_at) return 0;
-					if (!a.first_seen_at) return 1;
-					if (!b.first_seen_at) return -1;
-					return (
-						m *
-						(a.first_seen_at < b.first_seen_at
-							? -1
-							: a.first_seen_at > b.first_seen_at
-								? 1
-								: 0)
-					);
-				}
-			}
+		containerVulnsMeta.set(imageName, {
+			...meta,
+			sortCol: newCol,
+			sortDir: newDir,
 		});
+		// Re-fetch from offset 0 with new sort
+		const fetchedSev = partiallyLoadedSeverity.get(imageName);
+		fetchVulns(imageName, fetchedSev, 0, newCol, newDir);
 	}
 
 	function toUtcDate(iso: string): Date {
@@ -284,63 +277,50 @@
 		return SEVERITY_ORDER.filter((s) => (vulnsBySeverity[s] ?? 0) > 0);
 	}
 
-	async function fetchVulns(imageName: string, severity?: string) {
+	async function fetchVulns(
+		imageName: string,
+		severity?: string,
+		offset = 0,
+		sortCol: VulnSortCol | null = null,
+		sortDir: "asc" | "desc" = "asc",
+	) {
 		loadingContainers.add(imageName);
+		const prevMeta = getMeta(imageName);
+		containerVulnsMeta.set(imageName, { ...prevMeta, loadingMore: true });
 		document.body.style.cursor = "wait";
 		try {
+			const params = new URLSearchParams({
+				image_ref: imageName,
+				limit: String(SUBVIEW_PAGE_SIZE),
+				offset: String(offset),
+				sort_by: sortCol ?? "severity",
+				sort_dir: sortDir,
+			});
+			if (severity) params.set("severity", severity);
 			const t0 = performance.now();
-			let qs = `/api/vulnerabilities?image_ref=${encodeURIComponent(imageName)}`;
-			if (severity) qs += `&severity=${encodeURIComponent(severity)}`;
-			const res = await fetch(qs);
+			const res = await fetch(`/api/vulnerabilities?${params}`);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const text = await res.text();
-			const fetchMs = (performance.now() - t0).toFixed(0);
-			const t1 = performance.now();
-			const payload = JSON.parse(text);
-			const parseMs = (performance.now() - t1).toFixed(0);
+			const payload = await res.json();
 			console.log(
-				`[DG] vuln fetch ${imageName}${severity ? ` (${severity})` : ""}: ` +
-					`${text.length} bytes, fetch=${fetchMs}ms, parse=${parseMs}ms`,
+				`[DG] vuln fetch ${imageName}${severity ? ` (${severity})` : ""} offset=${offset}: ` +
+					`${payload.count}/${payload.total_count} rows, ${(performance.now() - t0).toFixed(0)}ms`,
 			);
-			const raw: Vulnerability[] = Array.isArray(payload)
-				? payload
-				: (payload.vulnerabilities ?? []);
 			if (payload.scanned_at)
 				containerScanTimes.set(imageName, payload.scanned_at);
-			// Grype reports the same CVE+package+version as multiple matches when the
-			// package is installed in different paths (common in Node/npm images).
-			// Merge duplicates so the {#each} key is unique and no rows are lost.
-			const deduped = new Map<string, Vulnerability>();
-			for (const v of raw) {
-				const key = `${v.vuln_id}|${v.package_name}|${v.installed_version}`;
-				if (deduped.has(key)) {
-					const existing = deduped.get(key)!;
-					if (
-						v.locations &&
-						existing.locations &&
-						v.locations !== existing.locations
-					) {
-						existing.locations =
-							existing.locations + "\n" + v.locations;
-					} else if (v.locations && !existing.locations) {
-						existing.locations = v.locations;
-					}
-				} else {
-					deduped.set(key, { ...v });
-				}
-			}
-			const sorted = [...deduped.values()].sort((a, b) => {
-				const si = SEVERITY_ORDER.indexOf(a.severity);
-				const sj = SEVERITY_ORDER.indexOf(b.severity);
-				if (si !== sj) return si - sj;
-				return (b.cvss_base_score ?? 0) - (a.cvss_base_score ?? 0);
+			const newRows: Vulnerability[] = payload.vulnerabilities ?? [];
+			const existing =
+				offset === 0 ? [] : (containerVulns.get(imageName) ?? []);
+			containerVulns.set(imageName, [...existing, ...newRows]);
+			const totalLoaded = existing.length + newRows.length;
+			const atSoftCap = totalLoaded >= SUBVIEW_MAX_ROWS;
+			containerVulnsMeta.set(imageName, {
+				totalCount: payload.total_count ?? newRows.length,
+				offset: totalLoaded,
+				hasMore: (payload.has_more ?? false) && !atSoftCap,
+				loadingMore: false,
+				sortCol,
+				sortDir,
 			});
-			// Render first batch immediately; schedule the rest via idle callbacks.
-			containerVulns.set(imageName, sorted.slice(0, BATCH_SIZE));
-			if (sorted.length > BATCH_SIZE) {
-				pendingVulns.set(imageName, sorted.slice(BATCH_SIZE));
-				scheduleNextBatch(imageName);
-			}
 			if (severity) {
 				partiallyLoadedSeverity.set(imageName, severity);
 			} else {
@@ -348,7 +328,12 @@
 			}
 		} catch (err) {
 			console.error("Failed to fetch vulns for", imageName, err);
-			containerVulns.set(imageName, []);
+			if (offset === 0) containerVulns.set(imageName, []);
+			containerVulnsMeta.set(imageName, {
+				...getMeta(imageName),
+				loadingMore: false,
+				hasMore: false,
+			});
 		} finally {
 			loadingContainers.delete(imageName);
 			if (loadingContainers.size === 0) document.body.style.cursor = "";
@@ -366,13 +351,10 @@
 		if (!hasScan) return;
 		if (expandedContainers.has(imageName)) {
 			expandedContainers.delete(imageName);
-			cancelPendingBatch(imageName);
 		} else {
-			const isFirstOpen = !containerVulns.has(imageName);
 			expandedContainers.add(imageName);
-			if (isFirstOpen) {
-				// Auto-filter to highest severity on first open when there are many vulns,
-				// and fetch only that severity initially (avoids large payload hang).
+			if (!containerVulns.has(imageName)) {
+				// First open: auto-filter to highest severity when there are many vulns.
 				const topSeverity =
 					total >= AUTO_FILTER_THRESHOLD
 						? SEVERITY_ORDER.find(
@@ -381,16 +363,10 @@
 						: undefined;
 				if (topSeverity) {
 					activeFilters.set(imageName, new SvelteSet([topSeverity]));
-					fetchVulns(imageName, topSeverity);
+					fetchVulns(imageName, topSeverity, 0, null, "asc");
 				} else {
-					fetchVulns(imageName);
+					fetchVulns(imageName, undefined, 0, null, "asc");
 				}
-			} else if (
-				pendingVulns.has(imageName) &&
-				!pendingCallbacks.has(imageName)
-			) {
-				// Re-expanded mid-load after collapse — resume batch rendering
-				scheduleNextBatch(imageName);
 			}
 		}
 	}
@@ -402,14 +378,16 @@
 		const filters = activeFilters.get(imageName)!;
 		if (filters.has(severity)) filters.delete(severity);
 		else filters.add(severity);
-		// If we only fetched one severity, check whether the new filter state
-		// requires data we don't have, and if so re-fetch everything.
-		const fetchedSev = partiallyLoadedSeverity.get(imageName);
-		if (fetchedSev) {
-			const needsFull =
-				filters.size === 0 ||
-				[...filters].some((s) => s !== fetchedSev);
-			if (needsFull) fetchVulns(imageName);
+		// Determine which severity to fetch based on new filter state.
+		// If exactly one severity is selected, fetch only that; otherwise fetch all.
+		const meta = getMeta(imageName);
+		const fetchSev = filters.size === 1 ? [...filters][0] : undefined;
+		// Re-fetch from offset 0 with current sort.
+		fetchVulns(imageName, fetchSev, 0, meta.sortCol, meta.sortDir);
+		if (fetchSev) {
+			partiallyLoadedSeverity.set(imageName, fetchSev);
+		} else {
+			partiallyLoadedSeverity.delete(imageName);
 		}
 	}
 
@@ -660,7 +638,7 @@
 											transition:slide={{ duration: 200 }}
 											class="bg-muted/20 border-muted border-l-4 overflow-hidden"
 										>
-											{#if loadingContainers.has(container.image_name)}
+											{#if loadingContainers.has(container.image_name) && !getMeta(container.image_name).loadingMore}
 												<div
 													class="flex items-center gap-2 px-6 py-4 text-sm"
 												>
@@ -674,11 +652,11 @@
 													>
 												</div>
 											{:else}
-												{@const vulns = sortedVulns(
+												{@const vulns = visibleVulns(
 													container.image_name,
-													visibleVulns(
-														container.image_name,
-													),
+												)}
+												{@const meta = getMeta(
+													container.image_name,
 												)}
 												{#if vulns.length === 0}
 													<p
@@ -1340,20 +1318,48 @@
 													</div>
 												{/if}
 											{/if}
-											{#if pendingVulns.has(container.image_name)}
-												<div
-													class="flex items-center gap-2 border-t px-6 py-2 text-xs text-muted-foreground"
-												>
-													<Loader2
-														class="h-3 w-3 animate-spin"
-													/>
-													<span
-														>Loading {pendingVulns.get(
-															container.image_name,
-														)?.length ?? 0} more vulnerabilities…</span
+											{#each [getMeta(container.image_name)] as capMeta}
+												{#if capMeta.hasMore || capMeta.loadingMore}
+													<!-- Infinite scroll sentinel: watched by MutationObserver + IntersectionObserver -->
+													<div
+														data-sentinel={container.image_name}
+														class="flex items-center gap-2 border-t px-6 py-2 text-xs text-muted-foreground"
 													>
-												</div>
-											{/if}
+														{#if capMeta.loadingMore}
+															<Loader2
+																class="h-3 w-3 animate-spin"
+															/>
+															<span
+																>Loading more
+																vulnerabilities…</span
+															>
+														{:else}
+															<span
+																class="text-muted-foreground/60"
+																>Scroll for more</span
+															>
+														{/if}
+													</div>
+												{:else if capMeta.totalCount > SUBVIEW_MAX_ROWS && !capMeta.hasMore && capMeta.offset >= SUBVIEW_MAX_ROWS}
+													<div
+														class="border-t px-6 py-3 text-xs text-muted-foreground/80 bg-muted/20"
+													>
+														Showing {SUBVIEW_MAX_ROWS}
+														of {capMeta.totalCount.toLocaleString()}
+														vulnerabilities — use the
+														severity filters above or
+														sort by CVSS / EPSS to prioritize.
+													</div>
+												{:else if capMeta.totalCount > 0 && capMeta.totalCount > SUBVIEW_PAGE_SIZE}
+													<div
+														class="border-t px-6 py-2 text-[11px] text-muted-foreground/60"
+													>
+														Showing {capMeta.offset}
+														of {capMeta.totalCount.toLocaleString()}
+														vulnerabilities
+													</div>
+												{/if}
+											{/each}
 										</div>
 									</Table.Cell>
 								</Table.Row>

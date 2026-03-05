@@ -24,6 +24,20 @@ logger = logging.getLogger(__name__)
 _DESC_LIMIT = 250
 _LOC_LIMIT = 5
 
+# Allowed values for the sort_by query parameter across vulnerability endpoints.
+_VALID_SORT_COLS = {
+    "severity", "cvss_base_score", "epss_score", "is_kev",
+    "first_seen_at", "vuln_id", "package_name",
+}
+_SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Negligible", "Unknown"]
+
+
+def _severity_rank(s: str) -> int:
+    try:
+        return _SEVERITY_ORDER.index(s)
+    except ValueError:
+        return 99
+
 
 def _serialise_vuln(v: Vulnerability) -> dict:
     """Convert a Vulnerability ORM object to a dict, truncating large text fields."""
@@ -188,23 +202,71 @@ def update_settings(
 def get_vulnerabilities(
     image_ref: str = Query(..., description="Image reference: name+tag (nginx:latest) or digest (sha256:...)"),
     severity: str | None = Query(None, description="Filter by severity (e.g. Critical, High)"),
+    sort_by: str = Query("severity", description="Column to sort by"),
+    sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
+    limit: int = Query(default=200, le=500, description="Max rows per page"),
+    offset: int = Query(default=0, ge=0, description="Row offset for pagination"),
     session: Session = Depends(db.get_session),
 ):
-    """Vulnerabilities for the most recent scan of an image, optionally filtered by severity."""
+    """Vulnerabilities for the most recent scan of an image, with server-side sort and pagination."""
+    if sort_by not in _VALID_SORT_COLS:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
+
     t0 = time.perf_counter()
     scan = _latest_scan_for_ref(image_ref, session)
     q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     if severity:
         q = q.where(Vulnerability.severity == severity)
+
+    # Apply server-side ORDER BY where SQL can handle it efficiently.
+    # Severity uses a Python sort below since SQL doesn't know our severity order.
+    desc = sort_dir == "desc"
+    if sort_by == "cvss_base_score":
+        q = q.order_by(Vulnerability.cvss_base_score.desc() if desc else Vulnerability.cvss_base_score.asc(),
+                       Vulnerability.id.asc())
+    elif sort_by == "epss_score":
+        q = q.order_by(Vulnerability.epss_score.desc() if desc else Vulnerability.epss_score.asc(),
+                       Vulnerability.id.asc())
+    elif sort_by == "is_kev":
+        q = q.order_by(Vulnerability.is_kev.desc() if desc else Vulnerability.is_kev.asc(),
+                       Vulnerability.id.asc())
+    elif sort_by == "first_seen_at":
+        q = q.order_by(Vulnerability.first_seen_at.desc() if desc else Vulnerability.first_seen_at.asc(),
+                       Vulnerability.id.asc())
+    elif sort_by == "vuln_id":
+        q = q.order_by(Vulnerability.vuln_id.desc() if desc else Vulnerability.vuln_id.asc())
+    elif sort_by == "package_name":
+        q = q.order_by(Vulnerability.package_name.desc() if desc else Vulnerability.package_name.asc())
+    # severity: fetch all and sort in Python (non-lexicographic order)
+
     vulns = session.exec(q).all()
-    serialised = [_serialise_vuln(v) for v in vulns]
+
+    # For severity sort, apply Python ordering after fetch.
+    if sort_by == "severity":
+        m = -1 if desc else 1
+        vulns = sorted(vulns, key=lambda v: (m * _severity_rank(v.severity), -(v.cvss_base_score or 0)))
+
+    total_count = len(vulns)
+    page_vulns = vulns[offset: offset + limit]
+    serialised = [_serialise_vuln(v) for v in page_vulns]
+    has_more = (offset + limit) < total_count
+
     elapsed_ms = (time.perf_counter() - t0) * 1000
-    payload_est = sum(len(d.get("description") or "") + len(d.get("locations") or "") for d in serialised)
     logger.info(
-        "GET /images/vulnerabilities image_ref=%s severity=%s count=%d payload_est=%dB db_ms=%.1f",
-        image_ref, severity, len(serialised), payload_est, elapsed_ms,
+        "GET /images/vulnerabilities image_ref=%s severity=%s sort=%s%s offset=%d limit=%d "
+        "total=%d page=%d db_ms=%.1f",
+        image_ref, severity, sort_by, f":{sort_dir}", offset, limit,
+        total_count, len(serialised), elapsed_ms,
     )
-    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(serialised), "vulnerabilities": serialised}
+    return {
+        "scan_id": scan.id,
+        "scanned_at": _as_utc(scan.scanned_at),
+        "total_count": total_count,
+        "count": len(serialised),
+        "has_more": has_more,
+        "vulnerabilities": serialised,
+    }
 
 
 @app.get("/images/vulnerabilities/critical")
@@ -261,19 +323,27 @@ def get_total_vulnerability_count(session: Session = Depends(db.get_session)):
 @app.get("/vulnerabilities")
 def get_vulnerabilities_across_running(
     report: str = Query(
-        "all", 
+        "all",
         description="Filter report type. Options: 'critical', 'kev', 'new', 'all'"
     ),
+    sort_by: str = Query("severity", description="Column to sort by"),
+    sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
+    limit: int = Query(default=100, le=500, description="Max rows per page"),
+    offset: int = Query(default=0, ge=0, description="Row offset for pagination"),
     session: Session = Depends(db.get_session)
 ):
-    """Vulnerabilities across all running containers, grouped by vulnerability."""
+    """Vulnerabilities across all running containers, grouped by vulnerability, with server-side sort and pagination."""
+    if sort_by not in _VALID_SORT_COLS:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
+
     watcher = DockerWatcher()
     running = watcher.list_running_containers()
     if not running:
-        return {"report": report, "count": 0, "vulnerabilities": []}
+        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "vulnerabilities": []}
 
     image_names = {img["image_name"] for img in running}
-    
+
     # Get the latest scan for each running image
     latest_scan_id_subq = (
         select(func.max(Scan.id))
@@ -281,11 +351,11 @@ def get_vulnerabilities_across_running(
         .group_by(Scan.image_name)
     )
     scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
-    
+
     scan_id_to_images = {s.id: s.image_name for s in scans}
-    
+
     if not scan_id_to_images:
-        return {"report": report, "count": 0, "vulnerabilities": []}
+        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "vulnerabilities": []}
 
     # Map image_name -> list of container names
     image_to_containers = defaultdict(list)
@@ -303,66 +373,92 @@ def get_vulnerabilities_across_running(
     elif report == "new":
         cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
         q = q.where(Vulnerability.first_seen_at >= cutoff_24h)
-        
+
     vulns = session.exec(q).all()
 
     # Group identical vulnerabilities across different containers
     # Grouping key: vuln_id + package_name + installed_version
-    grouped_vulns = {}
-    
+    grouped_vulns: dict[str, dict] = {}
+
     for v in vulns:
         img_name = scan_id_to_images[v.scan_id]
         containers_for_img = image_to_containers[img_name]
-        
-        # Unique key for a specific vulnerability in a specific package version
+
         key = f"{v.vuln_id}|{v.package_name}|{v.installed_version}"
-        
+
         if key not in grouped_vulns:
-            # First time seeing this vuln, initialize its data
             vd = _serialise_vuln(v)
             vd["containers"] = [{"image_name": img_name, "container_name": c} for c in containers_for_img]
             grouped_vulns[key] = vd
         else:
-            # We've seen this vuln before, just add the new containers to the list
             existing_containers = grouped_vulns[key]["containers"]
-            # To avoid duplicates if multiple scans report the same vuln for the same image
             for c in containers_for_img:
                 c_data = {"image_name": img_name, "container_name": c}
                 if c_data not in existing_containers:
                     existing_containers.append(c_data)
-                    
-            # Merge locations if they differ
+
             if v.locations and grouped_vulns[key].get("locations"):
                 if v.locations not in grouped_vulns[key]["locations"]:
                     grouped_vulns[key]["locations"] += f"\n{v.locations}"
-                    # Re-apply the truncation logic from _serialise_vuln
                     paths = grouped_vulns[key]["locations"].split("\n")
                     if len(paths) > _LOC_LIMIT:
                         grouped_vulns[key]["locations"] = "\n".join(paths[:_LOC_LIMIT])
             elif v.locations and not grouped_vulns[key].get("locations"):
                 grouped_vulns[key]["locations"] = v.locations
 
-    # Sort results to match container view: Severity then CVSS
-    severity_order = {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Negligible': 4, 'Unknown': 5}
-    
-    sorted_vulns = sorted(
-        grouped_vulns.values(), 
-        key=lambda x: (
-            severity_order.get(x["severity"], 99),
-            -(x.get("cvss_base_score") or 0)
-        )
-    )
+    # Sort the fully-grouped result set in Python.
+    desc = sort_dir == "desc"
+    m = -1 if desc else 1
 
-    # Re-apply _DESC_LIMIT and _LOC_LIMIT as needed if we merged strings
-    for vd in sorted_vulns:
+    def _clean_sort_key(vd: dict):
+        if sort_by == "severity":
+            rank = _severity_rank(vd.get("severity", "Unknown"))
+            cvss = vd.get("cvss_base_score") or 0
+            return (rank if not desc else -rank, -cvss)
+        if sort_by == "cvss_base_score":
+            score = vd.get("cvss_base_score")
+            null_last = 1 if score is None else 0
+            val = -(score or 0) if not desc else (score or 0)
+            return (null_last, val)
+        if sort_by == "epss_score":
+            score = vd.get("epss_score")
+            null_last = 1 if score is None else 0
+            val = -(score or 0) if not desc else (score or 0)
+            return (null_last, val)
+        if sort_by == "is_kev":
+            # True first when desc, False first when asc
+            kev_val = 0 if vd.get("is_kev") else 1
+            return (kev_val if not desc else -kev_val, 0)
+        if sort_by == "first_seen_at":
+            ts = vd.get("first_seen_at") or ""
+            null_last = 1 if not ts else 0
+            return (null_last, ts if not desc else ("" if not ts else "".join(chr(0xFFFF - ord(c)) for c in ts[:20])))
+        if sort_by == "vuln_id":
+            s = vd.get("vuln_id", "")
+            return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
+        if sort_by == "package_name":
+            s = vd.get("package_name", "")
+            return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
+        return 0
+
+    all_vulns = sorted(grouped_vulns.values(), key=_clean_sort_key)
+
+    # Re-apply description truncation (may have been merged)
+    for vd in all_vulns:
         if vd.get("description") and len(vd["description"]) > _DESC_LIMIT:
             if not vd["description"].endswith("…"):
                 vd["description"] = vd["description"][:_DESC_LIMIT] + "…"
 
+    total_count = len(all_vulns)
+    page_vulns = all_vulns[offset: offset + limit]
+    has_more = (offset + limit) < total_count
+
     return {
         "report": report,
-        "count": len(sorted_vulns), 
-        "vulnerabilities": sorted_vulns
+        "total_count": total_count,
+        "count": len(page_vulns),
+        "has_more": has_more,
+        "vulnerabilities": page_vulns,
     }
 
 

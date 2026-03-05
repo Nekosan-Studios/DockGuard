@@ -4,6 +4,9 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIDS=()
 
+# Clear any stale VIRTUAL_ENV from a previous or renamed project — uv manages its own venv.
+unset VIRTUAL_ENV
+
 # Colors
 RED=$'\033[0;31m'
 YELLOW=$'\033[1;33m'
@@ -69,17 +72,46 @@ echo
 
 # ─── start backend ──────────────────────────────────────────────────────────────
 echo "Starting backend  :8765 ..."
-(cd "$SCRIPT_DIR" && uv run uvicorn backend.api:app --reload --port 8765) &
-PIDS+=($!)
+(cd "$SCRIPT_DIR" && uv run python -m uvicorn backend.api:app --reload --port 8765) &
+BACKEND_PID=$!
+PIDS+=("$BACKEND_PID")
+
+# Give it a moment to fail fast (import errors, missing deps, port conflict, etc.)
+sleep 2
+if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    err "Backend failed to start — check output above."
+    exit 1
+fi
+info "Backend process alive (PID $BACKEND_PID)"
 
 # ─── start frontend ─────────────────────────────────────────────────────────────
 echo "Starting frontend :5173 ..."
 (cd "$SCRIPT_DIR/frontend" && npm run dev) &
-PIDS+=($!)
+FRONTEND_PID=$!
+PIDS+=("$FRONTEND_PID")
+
+# Give Vite a moment to fail fast (missing node_modules, config error, etc.)
+sleep 2
+if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+    err "Frontend failed to start — check output above."
+    exit 1
+fi
+info "Frontend process alive (PID $FRONTEND_PID)"
 
 # ─── wait for Vite, then open browser ───────────────────────────────────────────
 printf "\nWaiting for Vite dev server"
 for i in {1..30}; do
+    # Check both processes are still alive on every iteration.
+    if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+        echo
+        err "Backend process died unexpectedly — aborting."
+        exit 1
+    fi
+    if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+        echo
+        err "Frontend process died unexpectedly — aborting."
+        exit 1
+    fi
     if curl -s -o /dev/null http://localhost:5173; then
         echo
         info "Dev server ready — opening http://localhost:5173"
