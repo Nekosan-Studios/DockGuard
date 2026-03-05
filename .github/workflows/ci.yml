@@ -5,15 +5,31 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run tests before building?'
+        required: true
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+      push_image:
+        description: 'Push image to GHCR?'
+        required: true
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  # ── Job 1: Run tests (PRs only) ─────────────────────────────────────
+  # ── Job 1: Run tests (PRs and optional manual dispatch) ─────────────
   test:
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_tests == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +71,11 @@ jobs:
         run: npm run check
         working-directory: frontend
 
-  # ── Job 2: Build & push Docker image (push to master only) ─────────
+  # ── Job 2: Build & push Docker image ────────────────────────────────
   docker-build-push:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,13 +90,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            BRANCH="${{ github.ref_name }}"
+            # Sanitize branch name for use as a Docker tag (slashes → dashes, etc.)
+            TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          else
+            TAG="latest"
+          fi
+          echo "value=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/dockguard
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ steps.tag.outputs.value }}
             type=sha,prefix=
 
       - name: Build and push Docker image
@@ -86,7 +116,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          push: true
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
