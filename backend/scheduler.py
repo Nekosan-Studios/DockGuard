@@ -350,16 +350,18 @@ class ContainerScheduler:
                 error_msg = f"Exit code {result.returncode}: {err_text}"
                 has_error = True
 
-        grype_version, db_built = await self._fetch_grype_info()
+        grype_version, db_schema, db_built = await self._fetch_grype_info()
 
         with Session(self.db.engine) as session:
             state = session.get(AppState, 1)
             if state is None:
-                session.add(AppState(id=1, last_db_checked_at=now, grype_version=grype_version, db_built=db_built))
+                session.add(AppState(id=1, last_db_checked_at=now, grype_version=grype_version, db_schema=db_schema, db_built=db_built))
             else:
                 state.last_db_checked_at = now
                 if grype_version:
                     state.grype_version = grype_version
+                if db_schema:
+                    state.db_schema = db_schema
                 if db_built:
                     state.db_built = db_built
                 session.add(state)
@@ -376,9 +378,10 @@ class ContainerScheduler:
             session.commit()
         logger.debug("Persisted last_db_checked_at = %s, grype_version = %s, db_built = %s", now, grype_version, db_built)
 
-    async def _fetch_grype_info(self) -> tuple[str | None, "datetime | None"]:
-        """Run grype version + grype db status to get current grype version and DB built date."""
+    async def _fetch_grype_info(self) -> tuple[str | None, str | None, "datetime | None"]:
+        """Run grype version + grype db status to get current grype version, DB schema, and DB built date."""
         grype_version: str | None = None
+        db_schema: str | None = None
         db_built: "datetime | None" = None
 
         try:
@@ -397,7 +400,9 @@ class ContainerScheduler:
                 subprocess.run, ["grype", "db", "status"], capture_output=True, text=True,
             )
             for line in db_result.stdout.splitlines():
-                if line.startswith("Built:"):
+                if line.startswith("Schema:"):
+                    db_schema = line.split(":", 1)[1].strip()
+                elif line.startswith("Built:"):
                     built_str = line.split(":", 1)[1].strip()
                     # grype db status emits Go time format: "2024-01-15 00:00:00 +0000 UTC"
                     # Strip the trailing " UTC" so fromisoformat can parse it.
@@ -407,11 +412,10 @@ class ContainerScheduler:
                     # Ignore the Go zero time (0001-01-01) which means DB not initialised.
                     if dt.year > 1:
                         db_built = dt
-                    break
         except Exception as e:
             logger.warning("Could not determine grype DB built date: %s", e)
 
-        return grype_version, db_built
+        return grype_version, db_schema, db_built
 
     async def _scan_image_async(self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None) -> None:
         """Run a Grype scan in a thread so the event loop is not blocked.
