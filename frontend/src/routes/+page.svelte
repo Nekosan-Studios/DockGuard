@@ -14,7 +14,7 @@
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 
-	import { formatDistanceToNow, format, parseISO } from "date-fns";
+	import { formatDistanceToNow, format } from "date-fns";
 
 	let { data }: { data: PageData } = $props();
 
@@ -68,9 +68,11 @@
 
 	const hasTrend = $derived(trendData.length > 0);
 
-	function formatDbBuilt(iso: string | null): string {
-		if (!iso) return "—";
-		return format(parseISO(iso), "MMM d, yyyy");
+	function formatVulnDb(schema: string | null, built: string | null): string {
+		if (!schema && !built) return "—";
+		const builtStr = built ? built.replace(/\+00:00$/, "Z") : "";
+		if (schema && builtStr) return `${schema}(${builtStr})`;
+		return schema ?? builtStr;
 	}
 </script>
 
@@ -131,7 +133,7 @@
 		<span class="flex items-center gap-1.5">
 			<span class="text-muted-foreground">Vuln DB</span>
 			<span class="text-foreground font-medium"
-				>{formatDbBuilt(data.summary.db_built)}</span
+				>{formatVulnDb(data.summary.db_schema, data.summary.db_built)}</span
 			>
 		</span>
 

@@ -54,6 +54,7 @@ class AppState(SQLModel, table=True):
     id: int = Field(default=1, primary_key=True)
     last_db_checked_at: Optional[datetime] = None
     grype_version: Optional[str] = None
+    db_schema: Optional[str] = None
     db_built: Optional[datetime] = None
 
 class Setting(SQLModel, table=True):

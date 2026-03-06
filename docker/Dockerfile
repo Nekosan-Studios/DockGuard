@@ -47,6 +47,13 @@ RUN uv sync --no-dev --frozen --compile-bytecode
 # Patch Python tooling vulnerabilities (pip, wheel, jaraco-context)
 RUN pip install --upgrade pip wheel 'jaraco-context>=6.1.0'
 
+# Copy VERSION file (may be overwritten by build arg below)
+COPY VERSION ./
+
+# Bake version from git tag when provided (e.g. --build-arg APP_VERSION=0.2.0)
+ARG APP_VERSION=""
+RUN if [ -n "$APP_VERSION" ]; then echo "$APP_VERSION" > VERSION; fi
+
 # Copy application source
 COPY backend/ ./backend/
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf

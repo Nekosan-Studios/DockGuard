@@ -5,7 +5,13 @@
       "Bash(uv run pytest -v tests/test_grype_scanner.py tests/test_scheduler.py)",
       "Bash(alembic history)",
       "Bash(alembic current)",
-      "Bash(PYTHONPATH=. alembic -c backend/alembic.ini current)"
+      "Bash(PYTHONPATH=. alembic -c backend/alembic.ini current)",
+      "Bash(grype nginx:latest -o json)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''descriptor'',{}\\), indent=2\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''descriptor'',{}\\).get\\(''db'',{}\\), indent=2\\)\\)\")",
+      "Bash(PYTHONPATH=. alembic -c backend/alembic.ini revision --autogenerate -m \"add db_schema to app_state\")",
+      "Bash(PYTHONPATH=. alembic -c backend/alembic.ini upgrade head)",
+      "Bash(uv run python -m pytest backend/tests/ -x -q)"
     ]
   }
 }
