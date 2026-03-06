@@ -10,7 +10,8 @@ class ConfigManager:
     DEFAULTS = {
         "SCAN_INTERVAL_SECONDS": "60",
         "MAX_CONCURRENT_SCANS": "1",
-        "DB_CHECK_INTERVAL_SECONDS": "3600"
+        "DB_CHECK_INTERVAL_SECONDS": "3600",
+        "DATA_RETENTION_DAYS": "30",
     }
 
     @staticmethod

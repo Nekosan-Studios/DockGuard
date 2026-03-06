@@ -5,13 +5,13 @@ import subprocess
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlmodel import Session, select
-from datetime import datetime, timezone
+from sqlmodel import Session, delete, select
+from datetime import datetime, timedelta, timezone
 
 from .database import Database
 from .docker_watcher import DockerWatcher
 from .grype_scanner import GrypeScanner
-from .models import AppState, Scan, SystemTask
+from .models import AppState, Scan, SystemTask, Vulnerability
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ class ContainerScheduler:
             self.scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
             self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
+            self.data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
 
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
         self._scheduler = AsyncIOScheduler()
@@ -54,6 +55,14 @@ class ContainerScheduler:
             next_run_time=datetime.now(),
             replace_existing=True,
         )
+        self._scheduler.add_job(
+            self._purge_old_data,
+            IntervalTrigger(hours=24),
+            id="purge_old_data",
+            name="Purge stale scans and task history",
+            next_run_time=datetime.now(),
+            replace_existing=True,
+        )
         _active_scheduler = self
         logger.info("Scheduler: max concurrent Grype scans = %d", self.max_concurrent_scans)
 
@@ -68,18 +77,23 @@ class ContainerScheduler:
         with Session(self.db.engine) as session:
             scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
             db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
-            
+            data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
+
             # The semaphore for concurrency can't easily be resized cleanly while tasks are running,
             # so we only update the polling intervals dynamically.
             if scan_interval != self.scan_interval:
                 self.scan_interval = scan_interval
                 self._scheduler.reschedule_job("check_running_containers", trigger=IntervalTrigger(seconds=self.scan_interval))
                 logger.info("Scheduler updated check_running_containers interval to %ds", self.scan_interval)
-                
+
             if db_check_interval != self.db_check_interval:
                 self.db_check_interval = db_check_interval
                 self._scheduler.reschedule_job("check_db_update", trigger=IntervalTrigger(seconds=self.db_check_interval))
                 logger.info("Scheduler updated check_db_update interval to %ds", self.db_check_interval)
+
+            if data_retention_days != self.data_retention_days:
+                self.data_retention_days = data_retention_days
+                logger.info("Scheduler updated data_retention_days to %d", self.data_retention_days)
 
     def get_jobs(self):
         return self._scheduler.get_jobs()
@@ -105,6 +119,102 @@ class ContainerScheduler:
                     session.add(task)
                 session.commit()
                 logger.info("Scheduler: marked %d stray task(s) as failed", len(stray_tasks))
+
+    async def _purge_old_data(self) -> None:
+        """Scheduled job (daily): delete stale Scan/Vulnerability and SystemTask rows.
+
+        Retention policy:
+        - All ``Scan`` rows (and their child ``Vulnerability`` rows) older than
+          ``DATA_RETENTION_DAYS`` are deleted, **except** the single most-recent
+          scan for each ``image_name``.  This guard ensures the dashboard always
+          has data for every actively-running container, even on stable images
+          that haven't been rescanned within the window.
+        - ``SystemTask`` rows older than ``DATA_RETENTION_DAYS`` are deleted
+          (excluding the currently-running purge task itself).
+        """
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=self.data_retention_days)
+
+        with Session(self.db.engine) as session:
+            task = SystemTask(
+                task_type="scheduled_purge",
+                task_name="Purge Old Data",
+                status="running",
+                created_at=now,
+                started_at=now,
+            )
+            session.add(task)
+            session.commit()
+            task_id = task.id
+
+        scans_deleted = vulns_deleted = tasks_deleted = 0
+        error_msg = None
+
+        try:
+            with Session(self.db.engine) as session:
+                # -- Collect IDs of scans that are old enough to be candidates.
+                old_scan_ids: list[int] = [
+                    row[0]
+                    for row in session.execute(
+                        select(Scan.id).where(Scan.scanned_at < cutoff)  # type: ignore[arg-type]
+                    ).all()
+                ]
+
+                if old_scan_ids:
+                    # -- Find the newest scan per image_name so we can exempt it.
+                    newest_by_image: dict[str, int] = {}
+                    for sid, img in session.execute(
+                        select(Scan.id, Scan.image_name)
+                    ).all():
+                        if img not in newest_by_image or sid > newest_by_image[img]:
+                            newest_by_image[img] = sid
+
+                    protected_ids = set(newest_by_image.values())
+                    purgeable_ids = [sid for sid in old_scan_ids if sid not in protected_ids]
+
+                    if purgeable_ids:
+                        # Delete child vulnerability rows first (no cascade on SQLite).
+                        vuln_result = session.execute(
+                            delete(Vulnerability).where(Vulnerability.scan_id.in_(purgeable_ids))
+                        )
+                        vulns_deleted = vuln_result.rowcount
+
+                        scan_result = session.execute(
+                            delete(Scan).where(Scan.id.in_(purgeable_ids))
+                        )
+                        scans_deleted = scan_result.rowcount
+
+                # -- Purge old SystemTask rows (skip the currently-running purge task).
+                task_result = session.execute(
+                    delete(SystemTask)
+                    .where(SystemTask.created_at < cutoff)  # type: ignore[arg-type]
+                    .where(SystemTask.id != task_id)
+                )
+                tasks_deleted = task_result.rowcount
+
+                session.commit()
+
+            logger.info(
+                "Purge complete — retention=%dd cutoff=%s scans=%d vulns=%d tasks=%d",
+                self.data_retention_days, cutoff.date(), scans_deleted, vulns_deleted, tasks_deleted,
+            )
+
+        except Exception as exc:
+            logger.exception("Error in _purge_old_data")
+            error_msg = str(exc)
+
+        with Session(self.db.engine) as session:
+            task = session.get(SystemTask, task_id)
+            if task:
+                task.status = "failed" if error_msg else "completed"
+                task.finished_at = datetime.now(timezone.utc)
+                task.error_message = error_msg
+                task.result_details = (
+                    f"Deleted {scans_deleted} scan(s), {vulns_deleted} vulnerability row(s), "
+                    f"{tasks_deleted} task history row(s) older than {self.data_retention_days} days."
+                )
+                session.add(task)
+                session.commit()
 
     async def _check_running_containers(self) -> None:
         """Scheduled job: detect new/updated running containers and trigger scans."""
