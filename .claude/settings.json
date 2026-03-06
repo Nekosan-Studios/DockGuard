@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(uv run pytest -v)",
-      "Bash(uv run pytest -v tests/test_grype_scanner.py tests/test_scheduler.py)"
+      "Bash(uv run pytest -v tests/test_grype_scanner.py tests/test_scheduler.py)",
+      "Bash(alembic history)",
+      "Bash(alembic current)",
+      "Bash(PYTHONPATH=. alembic -c backend/alembic.ini current)"
     ]
   }
 }

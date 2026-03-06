@@ -70,6 +70,21 @@ fi
 echo
 [[ "$MISSING" -ne 0 ]] && { err "Fix the above and re-run."; exit 1; }
 
+# ─── kill previous instances ─────────────────────────────────────────────────
+kill_port() {
+    local port=$1
+    local pids
+    pids=$(lsof -ti :"$port" 2>/dev/null) || true
+    if [[ -n "$pids" ]]; then
+        warn "Killing existing process(es) on port $port (PIDs: $(echo $pids | tr '\n' ' '))"
+        echo "$pids" | xargs kill 2>/dev/null || true
+        sleep 1
+    fi
+}
+
+kill_port 8765
+kill_port 5173
+
 # ─── start backend ──────────────────────────────────────────────────────────────
 echo "Starting backend  :8765 ..."
 (cd "$SCRIPT_DIR" && uv run python -m uvicorn backend.api:app --reload --port 8765) &
