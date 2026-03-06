@@ -1,5 +1,6 @@
 import colorlog
 import logging
+from pathlib import Path
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -78,6 +79,13 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 router = app.router
+
+_APP_VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip()
+
+
+@app.get("/version")
+def get_version():
+    return {"version": _APP_VERSION}
 
 
 # ---------------------------------------------------------------------------

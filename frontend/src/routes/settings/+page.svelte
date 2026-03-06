@@ -21,6 +21,8 @@
 		$pageTitle = "Settings";
 	}
 
+	let appVersion = "";
+
 	let isSaving = false;
 	let saveMessage: { type: "success" | "error"; text: string } | null = null;
 	let hasChanges = false;
@@ -30,6 +32,15 @@
 
 	onMount(async () => {
 		await settings.fetch();
+		try {
+			const res = await fetch("/api/version");
+			if (res.ok) {
+				const data = await res.json();
+				appVersion = data.version ?? "";
+			}
+		} catch {
+			// ignore – version is cosmetic
+		}
 	});
 
 	// Reactivity to update localValues when settings fetch
@@ -252,5 +263,11 @@
 				{/if}
 			</div>
 		</form>
+	{/if}
+
+	{#if appVersion}
+		<p class="text-xs text-muted-foreground text-center pt-4">
+			DockGuard v{appVersion}
+		</p>
 	{/if}
 </div>
