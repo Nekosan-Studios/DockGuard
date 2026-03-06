@@ -10,13 +10,13 @@ class Scan(SQLModel, table=True):
     image_repository: str    # name without tag, e.g. "nginx" or "ghcr.io/owner/repo"
     image_digest: str
     grype_version: str
+    db_version: str = Field(default="")
     db_built: Optional[datetime] = None
     distro_name: Optional[str] = None
     distro_version: Optional[str] = None
     container_name: Optional[str] = None
 
     vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
-
 
 class Vulnerability(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -47,12 +47,12 @@ class Vulnerability(SQLModel, table=True):
 
     scan: Optional[Scan] = Relationship(back_populates="vulnerabilities")
 
-
 class AppState(SQLModel, table=True):
     """Single-row table (id=1) for app-wide persistent state."""
     id: int = Field(default=1, primary_key=True)
     last_db_checked_at: Optional[datetime] = None
     grype_version: Optional[str] = None
+    db_version: Optional[str] = None
     db_built: Optional[datetime] = None
 
 class Setting(SQLModel, table=True):

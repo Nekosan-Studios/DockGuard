@@ -78,19 +78,24 @@ class GrypeScanner:
         image_repository = _parse_image_repository(image_name)
         scanned_at = datetime.now(timezone.utc)
 
-        scan = Scan(
-            scanned_at=scanned_at,
-            image_name=image_name,
-            image_repository=image_repository,
-            image_digest=target.get("imageID", ""),
-            grype_version=descriptor.get("version", ""),
-            db_built=self._parse_datetime(db_status.get("built")),
-            distro_name=distro.get("name") or None,
-            distro_version=distro.get("version") or None,
-            container_name=container_name,
-        )
-
         with Session(self.db.engine) as session:
+            # Grype v6+ omits the DB schema version from the JSON output. Pull it from AppState.
+            app_state = session.get(AppState, 1)
+            db_version_from_state = app_state.db_version if app_state else ""
+
+            scan = Scan(
+                scanned_at=scanned_at,
+                image_name=image_name,
+                image_repository=image_repository,
+                image_digest=target.get("imageID", ""),
+                grype_version=descriptor.get("version", ""),
+                db_version=db_version_from_state,
+                db_built=self._parse_datetime(db_status.get("built")),
+                distro_name=distro.get("name") or None,
+                distro_version=distro.get("version") or None,
+                container_name=container_name,
+            )
+
             # Build lookup: (vuln_id, package_name, installed_version) -> earliest first_seen_at
             # scoped to this image_repository so "new" is per-repo not per-tag.
             existing_rows = session.exec(

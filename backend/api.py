@@ -641,11 +641,13 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None
     grype_version = (app_state.grype_version if app_state else None)
+    db_version = (app_state.db_version if app_state else None)
     db_built = _as_utc(app_state.db_built) if app_state else None
 
     if not grype_version or not db_built:
         latest_scan = session.exec(select(Scan).order_by(Scan.scanned_at.desc()).limit(1)).first()
         grype_version = grype_version or (latest_scan.grype_version if latest_scan else None)
+        db_version = db_version or (latest_scan.db_version if latest_scan else None)
         db_built = db_built or (_as_utc(latest_scan.db_built) if latest_scan else None)
 
     cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -663,6 +665,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "trend": trend,
         "docker_connected": docker_connected,
         "grype_version": grype_version,
+        "db_version": db_version,
         "db_built": db_built,
         "last_db_checked_at": last_db_checked_at,
     }

@@ -66,9 +66,15 @@
 
 	const hasTrend = $derived(trendData.length > 0);
 
-	function formatDbBuilt(iso: string | null): string {
+	function formatDbBuilt(iso: string | null, version: string | null): string {
 		if (!iso) return "—";
-		return format(parseISO(iso), "MMM d, yyyy");
+		const v = version ? version : "Unknown";
+		// The user wants it formatted like v6.1.4(2026-03-05T06:26:58Z)
+		// Assuming iso comes down as `2026-03-05T06:26:58Z` we can just render it.
+		// Sometimes our fastAPI backend returns ISO without Z, let's just append Z if missing
+		// since we know db_built is always UTC from grype.
+		const rawTime = iso.endsWith("Z") ? iso : iso + "Z";
+		return `${v}(${rawTime})`;
 	}
 </script>
 
@@ -113,7 +119,10 @@
 		<span class="flex items-center gap-1.5">
 			<span class="text-muted-foreground">Vuln DB</span>
 			<span class="text-foreground font-medium"
-				>{formatDbBuilt(data.summary.db_built)}</span
+				>{formatDbBuilt(
+					data.summary.db_built,
+					data.summary.db_version,
+				)}</span
 			>
 		</span>
 
