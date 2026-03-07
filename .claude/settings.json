@@ -12,7 +12,9 @@
       "Bash(PYTHONPATH=. alembic -c backend/alembic.ini revision --autogenerate -m \"add db_schema to app_state\")",
       "Bash(PYTHONPATH=. alembic -c backend/alembic.ini upgrade head)",
       "Bash(uv run python -m pytest backend/tests/ -x -q)",
-      "Bash(npx svelte-check --threshold error)"
+      "Bash(npx svelte-check --threshold error)",
+      "Bash(grype config)",
+      "Read(//private/tmp/**)"
     ]
   }
 }
