@@ -345,6 +345,7 @@ def get_vulnerabilities_across_running(
         "all",
         description="Filter report type. Options: 'critical', 'kev', 'new', 'all'"
     ),
+    new_hours: int = Query(default=24, ge=1, le=336, description="Hours lookback for 'new' report (default 24)"),
     sort_by: str = Query("severity", description="Column to sort by"),
     sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
     limit: int = Query(default=100, le=500, description="Max rows per page"),
@@ -398,8 +399,8 @@ def get_vulnerabilities_across_running(
     elif report == "kev":
         q = q.where(Vulnerability.is_kev == True)
     elif report == "new":
-        cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-        q = q.where(Vulnerability.first_seen_at >= cutoff_24h)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=new_hours)
+        q = q.where(Vulnerability.first_seen_at >= cutoff)
 
     vulns = session.exec(q).all()
 

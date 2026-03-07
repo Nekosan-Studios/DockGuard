@@ -5,11 +5,13 @@ const API_URL = env.API_URL ?? 'http://localhost:8765';
 
 export const load: PageServerLoad = async ({ fetch, url }) => {
     const report = url.searchParams.get('report') || 'critical';
+    const new_hours = url.searchParams.get('new_hours') || '24';
     const sort_by = url.searchParams.get('sort_by') || 'severity';
     const sort_dir = url.searchParams.get('sort_dir') || 'asc';
 
     const params = new URLSearchParams({
         report,
+        new_hours,
         sort_by,
         sort_dir,
         limit: '100',
