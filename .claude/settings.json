@@ -11,7 +11,8 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''descriptor'',{}\\).get\\(''db'',{}\\), indent=2\\)\\)\")",
       "Bash(PYTHONPATH=. alembic -c backend/alembic.ini revision --autogenerate -m \"add db_schema to app_state\")",
       "Bash(PYTHONPATH=. alembic -c backend/alembic.ini upgrade head)",
-      "Bash(uv run python -m pytest backend/tests/ -x -q)"
+      "Bash(uv run python -m pytest backend/tests/ -x -q)",
+      "Bash(npx svelte-check --threshold error)"
     ]
   }
 }

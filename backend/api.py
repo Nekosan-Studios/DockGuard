@@ -395,35 +395,67 @@ def get_vulnerabilities_across_running(
 
     vulns = session.exec(q).all()
 
-    # Group identical vulnerabilities across different containers
-    # Grouping key: vuln_id + package_name + installed_version
+    # Group vulnerabilities by CVE ID across all containers/packages
     grouped_vulns: dict[str, dict] = {}
 
     for v in vulns:
         img_name = scan_id_to_images[v.scan_id]
         containers_for_img = image_to_containers[img_name]
 
-        key = f"{v.vuln_id}|{v.package_name}|{v.installed_version}"
+        key = v.vuln_id
+
+        pkg_entry = {
+            "package_name": v.package_name,
+            "installed_version": v.installed_version,
+            "fixed_version": v.fixed_version,
+            "package_type": v.package_type,
+            "locations": v.locations,
+            "severity": v.severity,
+            "cvss_base_score": v.cvss_base_score,
+        }
 
         if key not in grouped_vulns:
             vd = _serialise_vuln(v)
             vd["containers"] = [{"image_name": img_name, "container_name": c} for c in containers_for_img]
+            vd["packages"] = [pkg_entry]
             grouped_vulns[key] = vd
         else:
-            existing_containers = grouped_vulns[key]["containers"]
+            gv = grouped_vulns[key]
+
+            # Add new containers
+            existing_containers = gv["containers"]
             for c in containers_for_img:
                 c_data = {"image_name": img_name, "container_name": c}
                 if c_data not in existing_containers:
                     existing_containers.append(c_data)
 
-            if v.locations and grouped_vulns[key].get("locations"):
-                if v.locations not in grouped_vulns[key]["locations"]:
-                    grouped_vulns[key]["locations"] += f"\n{v.locations}"
-                    paths = grouped_vulns[key]["locations"].split("\n")
-                    if len(paths) > _LOC_LIMIT:
-                        grouped_vulns[key]["locations"] = "\n".join(paths[:_LOC_LIMIT])
-            elif v.locations and not grouped_vulns[key].get("locations"):
-                grouped_vulns[key]["locations"] = v.locations
+            # Add package if not already present (by name + version)
+            existing_pkgs = gv["packages"]
+            pkg_key = (v.package_name, v.installed_version)
+            if not any((p["package_name"], p["installed_version"]) == pkg_key for p in existing_pkgs):
+                existing_pkgs.append(pkg_entry)
+
+            # Promote row-level severity/CVSS to the worst values
+            if _severity_rank(v.severity) < _severity_rank(gv.get("severity", "Unknown")):
+                gv["severity"] = v.severity
+            v_cvss = v.cvss_base_score or 0
+            if v_cvss > (gv.get("cvss_base_score") or 0):
+                gv["cvss_base_score"] = v.cvss_base_score
+
+    # Sort packages within each group: worst severity, then highest CVSS, then alphabetical
+    for vd in grouped_vulns.values():
+        vd["packages"].sort(key=lambda p: (
+            _severity_rank(p.get("severity", "Unknown")),
+            -(p.get("cvss_base_score") or 0),
+            p.get("package_name", ""),
+        ))
+        # Set representative package fields for sorting and display
+        rep = vd["packages"][0]
+        vd["package_name"] = rep["package_name"]
+        vd["installed_version"] = rep["installed_version"]
+        vd["fixed_version"] = rep["fixed_version"]
+        vd["package_type"] = rep["package_type"]
+        vd["locations"] = rep["locations"]
 
     # Sort the fully-grouped result set in Python.
     desc = sort_dir == "desc"
