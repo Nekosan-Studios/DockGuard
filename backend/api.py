@@ -281,6 +281,7 @@ def get_vulnerabilities(
         "scanned_at": _as_utc(scan.scanned_at),
         "is_distro_eol": scan.is_distro_eol,
         "distro_display": f"{scan.distro_name} {scan.distro_version}" if scan.distro_name and scan.distro_version else scan.distro_name,
+        "has_vex": scan.vex_status == "found",
         "total_count": total_count,
         "count": len(serialised),
         "has_more": has_more,
@@ -343,7 +344,7 @@ def get_total_vulnerability_count(session: Session = Depends(db.get_session)):
 def get_vulnerabilities_across_running(
     report: str = Query(
         "all",
-        description="Filter report type. Options: 'critical', 'kev', 'new', 'all'"
+        description="Filter report type. Options: 'critical', 'kev', 'new', 'vex_annotated', 'all'"
     ),
     new_hours: int = Query(default=24, ge=1, le=336, description="Hours lookback for 'new' report (default 24)"),
     sort_by: str = Query("severity", description="Column to sort by"),
@@ -401,6 +402,8 @@ def get_vulnerabilities_across_running(
     elif report == "new":
         cutoff = datetime.now(timezone.utc) - timedelta(hours=new_hours)
         q = q.where(Vulnerability.first_seen_at >= cutoff)
+    elif report == "vex_annotated":
+        q = q.where(Vulnerability.vex_status.isnot(None))
 
     vulns = session.exec(q).all()
 
@@ -636,6 +639,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
             "vulns_by_severity": vulns_by_severity,
             "total": sum(vulns_by_severity.values()),
             "has_scan": True,
+            "has_vex": scan.vex_status == "found",
         })
 
     return {"containers": containers}

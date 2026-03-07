@@ -18,6 +18,7 @@
     import CvssCell from "$lib/components/vuln/CvssCell.svelte";
     import EpssCell from "$lib/components/vuln/EpssCell.svelte";
     import KevCell from "$lib/components/vuln/KevCell.svelte";
+    import VexStatusCell from "$lib/components/vuln/VexStatusCell.svelte";
     import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
     import { SEVERITY_CLASSES, toUtcDate, cvssClass } from "$lib/components/vuln/utils.js";
     import { page } from "$app/stores";
@@ -55,6 +56,9 @@
         locations: string | null;
         epss_percentile: number | null;
         first_seen_at: string | null;
+        vex_status: string | null;
+        vex_justification: string | null;
+        vex_statement: string | null;
         containers: ContainerInfo[];
         packages: PackageInfo[];
     }
@@ -75,6 +79,8 @@
         hasMore = data.has_more ?? false;
         currentOffset = data.vulnerabilities?.length ?? 0;
     });
+
+    let hasAnyVex = $derived(rows.some((v) => v.vex_status));
 
     const MAX_ROWS = 400;
 
@@ -137,6 +143,7 @@
         { value: "critical", label: "Critical Vulnerabilities" },
         { value: "kev", label: "Actively Exploited (KEV)" },
         { value: "new", label: "Newly Found" },
+        { value: "vex_annotated", label: "VEX Annotated" },
     ];
 
     const newRanges = [
@@ -363,8 +370,9 @@
                             <col style="width:5%" />
                             <col style="width:5%" />
                             <col style="width:4%" />
+                            {#if hasAnyVex}<col style="width:4%" />{/if}
                             <col style="width:8%" />
-                            <col style="width:18%" />
+                            <col style="width:{hasAnyVex ? '14' : '18'}%" />
                         </colgroup>
                         <Table.Header>
                             <Table.Row class="bg-muted/50">
@@ -475,6 +483,21 @@
                                         >
                                     </Tooltip.Root>
                                 </Table.Head>
+                                {#if hasAnyVex}
+                                    <Table.Head class="text-center">
+                                        <Tooltip.Root>
+                                            <Tooltip.Trigger>
+                                                <span class="text-xs font-medium">VEX</span>
+                                            </Tooltip.Trigger>
+                                            <Tooltip.Content
+                                                >Vulnerability Exploitability
+                                                eXchange — supplier assessment
+                                                of whether this vulnerability
+                                                affects the image.</Tooltip.Content
+                                            >
+                                        </Tooltip.Root>
+                                    </Table.Head>
+                                {/if}
                                 <Table.Head class="text-center">
                                     <SortButton
                                         label="First Seen"
@@ -669,6 +692,13 @@
                                         percentile={vuln.epss_percentile}
                                     />
                                     <KevCell isKev={vuln.is_kev} />
+                                    {#if hasAnyVex}
+                                        <VexStatusCell
+                                            vexStatus={vuln.vex_status}
+                                            vexJustification={vuln.vex_justification}
+                                            vexStatement={vuln.vex_statement}
+                                        />
+                                    {/if}
                                     <Table.Cell class="text-center">
                                         {#if vuln.first_seen_at}
                                             <Tooltip.Root>

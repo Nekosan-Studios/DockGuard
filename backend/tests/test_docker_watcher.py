@@ -19,11 +19,12 @@ def _make_mock_container(image_id: str) -> MagicMock:
     return container
 
 
-def _make_mock_running_container(name: str, image_id: str, tags: list[str]) -> MagicMock:
+def _make_mock_running_container(name: str, image_id: str, tags: list[str], config_image: str | None = None) -> MagicMock:
     container = MagicMock()
     container.name = name
     container.image.id = image_id
     container.image.tags = tags
+    container.attrs = {"Config": {"Image": config_image or (tags[0] if tags else "")}}
     return container
 
 
@@ -169,6 +170,26 @@ def test_list_running_containers_strips_leading_slash(mock_from_env):
     containers = watcher.list_running_containers()
 
     assert containers[0]["container_name"] == "my-app"
+
+
+@patch("docker.from_env")
+def test_list_running_containers_prefers_config_image(mock_from_env):
+    """Config.Image (what was passed to docker run) takes priority over image.tags[0]."""
+    image_id = "sha256:abcdef123456789000000000000000000000000000000000000000000000000"
+    mock_client = MagicMock()
+    mock_client.containers.list.return_value = [
+        _make_mock_running_container(
+            "/my-nginx", image_id, ["nginx:latest", "localhost:5555/test-nginx:latest"],
+            config_image="localhost:5555/test-nginx:latest",
+        ),
+    ]
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    containers = watcher.list_running_containers()
+
+    assert containers[0]["image_name"] == "localhost:5555/test-nginx:latest"
+    assert containers[0]["grype_ref"] == "localhost:5555/test-nginx:latest"
 
 
 @patch("docker.DockerClient", side_effect=docker.errors.DockerException("connection refused"))
