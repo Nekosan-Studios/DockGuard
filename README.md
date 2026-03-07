@@ -63,7 +63,7 @@ This starts a unified container running both the backend and frontend.
 
 | Service | Ports | Description |
 |---|---|---|
-| `dockguard` | 3000, 8765 | SvelteKit Frontend + FastAPI Backend + Grype |
+| `dockguard` | 8764, 8765 | SvelteKit Frontend + FastAPI Backend + Grype |
 
 The compose file handles everything:
 - Builds a single multi-stage image (see `docker/Dockerfile`)
@@ -73,7 +73,7 @@ The compose file handles everything:
 - Sets `SCAN_INTERVAL_SECONDS` and `MAX_CONCURRENT_SCANS` on the backend
 - Sets `API_URL=http://localhost:8765` so the frontend can reach the backend locally
 
-Visit http://localhost:3000 for the dashboard.
+Visit http://localhost:8764 for the dashboard.
 
 To run in the background:
 
