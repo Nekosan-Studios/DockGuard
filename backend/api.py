@@ -280,6 +280,7 @@ def get_vulnerabilities(
         "scan_id": scan.id,
         "scanned_at": _as_utc(scan.scanned_at),
         "is_distro_eol": scan.is_distro_eol,
+        "distro_display": f"{scan.distro_name} {scan.distro_version}" if scan.distro_name and scan.distro_version else scan.distro_name,
         "total_count": total_count,
         "count": len(serialised),
         "has_more": has_more,
@@ -344,6 +345,7 @@ def get_vulnerabilities_across_running(
         "all",
         description="Filter report type. Options: 'critical', 'kev', 'new', 'all'"
     ),
+    new_hours: int = Query(default=24, ge=1, le=336, description="Hours lookback for 'new' report (default 24)"),
     sort_by: str = Query("severity", description="Column to sort by"),
     sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
     limit: int = Query(default=100, le=500, description="Max rows per page"),
@@ -371,7 +373,14 @@ def get_vulnerabilities_across_running(
     scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
 
     scan_id_to_images = {s.id: s.image_name for s in scans}
-    eol_images = [s.image_name for s in scans if s.is_distro_eol]
+    eol_images = [
+        {
+            "image_name": s.image_name,
+            "distro": f"{s.distro_name} {s.distro_version}" if s.distro_name and s.distro_version else s.distro_name,
+        }
+        for s in scans
+        if s.is_distro_eol
+    ]
 
     if not scan_id_to_images:
         return {"report": report, "total_count": 0, "count": 0, "has_more": False, "eol_images": [], "vulnerabilities": []}
@@ -390,8 +399,8 @@ def get_vulnerabilities_across_running(
     elif report == "kev":
         q = q.where(Vulnerability.is_kev == True)
     elif report == "new":
-        cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-        q = q.where(Vulnerability.first_seen_at >= cutoff_24h)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=new_hours)
+        q = q.where(Vulnerability.first_seen_at >= cutoff)
 
     vulns = session.exec(q).all()
 
@@ -607,6 +616,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                 "scan_id": None,
                 "scanned_at": None,
                 "is_distro_eol": False,
+                "distro_display": None,
                 "vulns_by_severity": {},
                 "total": 0,
                 "has_scan": False,
@@ -622,6 +632,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
             "scan_id": scan.id,
             "scanned_at": _as_utc(scan.scanned_at),
             "is_distro_eol": scan.is_distro_eol,
+            "distro_display": f"{scan.distro_name} {scan.distro_version}" if scan.distro_name and scan.distro_version else scan.distro_name,
             "vulns_by_severity": vulns_by_severity,
             "total": sum(vulns_by_severity.values()),
             "has_scan": True,

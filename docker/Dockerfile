@@ -67,6 +67,6 @@ COPY frontend/log-timestamps.cjs ./frontend/
 # Create data directory
 RUN mkdir -p /app/data
 
-EXPOSE 8765 3000
+EXPOSE 8765 8764
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

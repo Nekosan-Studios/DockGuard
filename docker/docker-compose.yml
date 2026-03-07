@@ -5,7 +5,7 @@ services:
       dockerfile: docker/Dockerfile
     ports:
       - "8765:8765"
-      - "3000:3000"
+      - "8764:8764"
     volumes:
       - ../data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock

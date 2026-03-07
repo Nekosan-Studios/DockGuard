@@ -84,6 +84,7 @@
         try {
             const params = new URLSearchParams({
                 report: reportValue,
+                new_hours: newHoursValue,
                 sort_by: sortByValue,
                 sort_dir: sortDirValue,
                 limit: "100", // PAGE_SIZE
@@ -135,11 +136,21 @@
         { value: "all", label: "All Vulnerabilities" },
         { value: "critical", label: "Critical Vulnerabilities" },
         { value: "kev", label: "Actively Exploited (KEV)" },
-        { value: "new", label: "Newly Found (Last 24h)" },
+        { value: "new", label: "Newly Found" },
+    ];
+
+    const newRanges = [
+        { value: "24", label: "1d" },
+        { value: "48", label: "2d" },
+        { value: "168", label: "7d" },
+        { value: "336", label: "14d" },
     ];
 
     let reportValue = $derived(
         $page.url.searchParams.get("report") || "critical",
+    );
+    let newHoursValue = $derived(
+        $page.url.searchParams.get("new_hours") || "24",
     );
     let sortByValue = $derived(
         $page.url.searchParams.get("sort_by") || "severity",
@@ -148,8 +159,10 @@
         ($page.url.searchParams.get("sort_dir") as "asc" | "desc") || "asc",
     );
     let reportLabel = $derived(
-        reports.find((r) => r.value === reportValue)?.label ||
-            "Critical Vulnerabilities",
+        reportValue === "new"
+            ? `Newly Found (Last ${newRanges.find((r) => r.value === newHoursValue)?.label ?? "1d"})`
+            : reports.find((r) => r.value === reportValue)?.label ||
+              "Critical Vulnerabilities",
     );
 
     function handleReportChange(v: string) {
@@ -157,6 +170,13 @@
         u.searchParams.set("report", v);
         u.searchParams.delete("sort_by");
         u.searchParams.delete("sort_dir");
+        if (v !== "new") u.searchParams.delete("new_hours");
+        goto(u.toString());
+    }
+
+    function handleNewRangeChange(hours: string) {
+        const u = new URL($page.url);
+        u.searchParams.set("new_hours", hours);
         goto(u.toString());
     }
 
@@ -234,11 +254,15 @@
             <div class="flex flex-col gap-1 text-sm">
                 <span class="font-medium">End-of-Life Systems Detected</span>
                 <span class="opacity-90">
-                    One or more running containers ({data.eol_images.join(
-                        ", ",
-                    )}) are using an end-of-life operating system. Vulnerability
-                    data for these systems may be incomplete, outdated, or
-                    inaccurate.
+                    One or more running containers are using an end-of-life
+                    operating system: {data.eol_images
+                        .map(
+                            (e) =>
+                                e.image_name +
+                                (e.distro ? ` (${e.distro})` : ""),
+                        )
+                        .join(", ")}. Vulnerability data for these systems may
+                    be incomplete, outdated, or inaccurate.
                 </span>
             </div>
         </div>
@@ -286,6 +310,21 @@
                         </Select.Group>
                     </Select.Content>
                 </Select.Root>
+
+                {#if reportValue === "new"}
+                    <div class="flex items-center rounded-md border border-border">
+                        {#each newRanges as range}
+                            <button
+                                class="px-2.5 py-1 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md {newHoursValue === range.value
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+                                onclick={() => handleNewRangeChange(range.value)}
+                            >
+                                {range.label}
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         </Card.Header>
         <Card.Content class="p-0 sm:p-6 sm:pt-0">
