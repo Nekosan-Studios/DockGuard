@@ -50,49 +50,41 @@ Then visit http://localhost:5173. The frontend dev server proxies API calls to h
 
 ## Docker
 
-Grype is bundled in the backend image (pinned to a specific version), so no local install is needed when running via Docker.
+### Quick Start
 
-### Run with Docker Compose (recommended)
+The easiest way to run DockGuard is with the `docker-compose.yml` in the project root, which pulls the latest pre-built image from the GitHub Container Registry:
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+docker compose up -d
 ```
-
-This starts a unified container running both the backend and frontend.
-
-
-| Service | Ports | Description |
-|---|---|---|
-| `dockguard` | 8764, 8765 | SvelteKit Frontend + FastAPI Backend + Grype |
-
-The compose file handles everything:
-- Builds a single multi-stage image (see `docker/Dockerfile`)
-- Uses `supervisord` to manage both the Node.js and Python processes
-- Mounts `/var/run/docker.sock` so the backend can introspect the host Docker daemon
-- Creates a named volume `dg-data` at `/app/data` for database persistence
-- Sets `SCAN_INTERVAL_SECONDS` and `MAX_CONCURRENT_SCANS` on the backend
-- Sets `API_URL=http://localhost:8765` so the frontend can reach the backend locally
 
 Visit http://localhost:8764 for the dashboard.
 
-To run in the background:
-
 ```bash
-docker compose -f docker/docker-compose.yml up -d
-docker compose -f docker/docker-compose.yml logs -f        # tail logs
-docker compose -f docker/docker-compose.yml down           # stop (data volume is preserved)
+docker compose logs -f        # tail logs
+docker compose down           # stop (data is preserved in ./data/)
 ```
+
+Scan data is stored in `./data/dockguard.db` and persists across restarts. See `docker-compose.yml` for available environment variables.
 
 ### Notes
 
 - **Docker socket**: The backend must be able to reach the host Docker daemon. On Linux this is `/var/run/docker.sock`. Docker Desktop for Mac/Windows exposes the same path via the VM.
-- **Database persistence**: The SQLite file is written to `data/dockguard.db` (relative to the project root on the host). Removing or recreating containers does not delete scan history. To wipe the database, delete that file.
+- **Database persistence**: The SQLite file is written to `data/dockguard.db`. Removing or recreating containers does not delete scan history. To wipe the database, delete that file.
 
 Starting the API server also starts the background scheduler. Every 60 seconds it checks which Docker containers are running. If a new image appears, or an existing image has been re-pulled to a new digest (e.g. `latest` was updated), a Grype scan is automatically queued and run in the background. Results are persisted to the database as scans complete.
 
 The poll interval can be changed with the `SCAN_INTERVAL_SECONDS` environment variable (default: `60`).
 
 Every hour the scheduler also runs `grype db check`. If a newer Grype vulnerability database is available, all previously-seen image digests are cleared so every image — including any that were stopped at the time — is rescanned against the updated database when next observed. The check interval can be changed with the `DB_CHECK_INTERVAL_SECONDS` environment variable (default: `3600`).
+
+### Development Build
+
+To build the container locally for development and testing, use the compose file in `docker/`:
+
+```bash
+docker compose -f docker/docker-compose.yml up --build
+```
 
 ## Environment Variables
 
