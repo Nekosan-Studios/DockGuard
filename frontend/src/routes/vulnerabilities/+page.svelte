@@ -12,13 +12,14 @@
     import Loader2 from "@lucide/svelte/icons/loader-2";
     import SortButton from "../containers/sort-button.svelte";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+    import * as Popover from "$lib/components/ui/popover/index.js";
     import { formatDistanceToNow } from "date-fns";
     import { goto } from "$app/navigation";
     import CvssCell from "$lib/components/vuln/CvssCell.svelte";
     import EpssCell from "$lib/components/vuln/EpssCell.svelte";
     import KevCell from "$lib/components/vuln/KevCell.svelte";
     import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
-    import { SEVERITY_CLASSES, toUtcDate } from "$lib/components/vuln/utils.js";
+    import { SEVERITY_CLASSES, toUtcDate, cvssClass } from "$lib/components/vuln/utils.js";
     import { page } from "$app/stores";
     import { onMount, onDestroy } from "svelte";
 
@@ -27,6 +28,16 @@
     interface ContainerInfo {
         image_name: string;
         container_name: string;
+    }
+
+    interface PackageInfo {
+        package_name: string;
+        installed_version: string;
+        fixed_version: string | null;
+        package_type: string | null;
+        locations: string | null;
+        severity: string;
+        cvss_base_score: number | null;
     }
 
     interface Vulnerability {
@@ -45,6 +56,7 @@
         epss_percentile: number | null;
         first_seen_at: string | null;
         containers: ContainerInfo[];
+        packages: PackageInfo[];
     }
 
     // ── Infinite scroll state ─────────────────────────────────────────────────
@@ -326,11 +338,7 @@
                                     />
                                 </Table.Head>
                                 <Table.Head>
-                                    <SortButton
-                                        label="Containers"
-                                        size="sm"
-                                        sortDirection={false}
-                                    />
+                                    <span class="text-xs font-medium">Containers</span>
                                 </Table.Head>
                                 <Table.Head class="text-center">
                                     <SortButton
@@ -444,7 +452,9 @@
                             </Table.Row>
                         </Table.Header>
                         <Table.Body>
-                            {#each rows as vuln (vuln.vuln_id + vuln.package_name + vuln.installed_version)}
+                            {#each rows as vuln (vuln.vuln_id)}
+                                {@const rep = vuln.packages?.[0] ?? vuln}
+                                {@const extraPkgs = (vuln.packages?.length ?? 1) - 1}
                                 <Table.Row class="hover:bg-muted/30">
                                     <Table.Cell class="pl-4 font-mono">
                                         <div
@@ -509,68 +519,105 @@
                                     </Table.Cell>
                                     <SeverityCell severity={vuln.severity} />
                                     <Table.Cell class="font-mono">
-                                        <Tooltip.Root>
-                                            <Tooltip.Trigger
-                                                class="cursor-default text-left"
-                                            >
-                                                <div
-                                                    class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
+                                        <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                            <Tooltip.Root>
+                                                <Tooltip.Trigger
+                                                    class="cursor-default text-left"
                                                 >
-                                                    <span
-                                                        >{vuln.package_name}</span
-                                                    >
-                                                    {#if vuln.package_type}
-                                                        <span
-                                                            class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-                                                        >
-                                                            {vuln.package_type}
-                                                        </span>
-                                                    {/if}
-                                                </div>
-                                            </Tooltip.Trigger>
-                                            <Tooltip.Content class="max-w-sm">
-                                                {@const paths = vuln.locations
-                                                    ? vuln.locations.split("\n")
-                                                    : []}
-                                                <p class="mb-1 font-semibold">
-                                                    {paths.length === 1
-                                                        ? "Location:"
-                                                        : "Locations (Sample):"}
-                                                </p>
-                                                {#if paths.length > 0}
-                                                    <ul class="space-y-0.5">
-                                                        {#each paths as path (path)}
-                                                            <li
-                                                                class="flex items-start gap-1 font-mono text-xs"
+                                                    <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                                        <span>{rep.package_name}</span>
+                                                        {#if rep.package_type}
+                                                            <span
+                                                                class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                                                             >
-                                                                <span
-                                                                    class="shrink-0"
-                                                                    >•</span
-                                                                >
-                                                                <span
-                                                                    class="break-all"
-                                                                    >{path}</span
-                                                                >
-                                                            </li>
-                                                        {/each}
-                                                    </ul>
-                                                {:else}
-                                                    <p
-                                                        class="text-xs text-muted-foreground"
-                                                    >
-                                                        No locations noted.
+                                                                {rep.package_type}
+                                                            </span>
+                                                        {/if}
+                                                    </div>
+                                                </Tooltip.Trigger>
+                                                <Tooltip.Content class="max-w-sm">
+                                                    {@const paths = rep.locations
+                                                        ? rep.locations.split("\n")
+                                                        : []}
+                                                    <p class="mb-1 font-semibold">
+                                                        {paths.length === 1
+                                                            ? "Location:"
+                                                            : "Locations (Sample):"}
                                                     </p>
-                                                {/if}
-                                            </Tooltip.Content>
-                                        </Tooltip.Root>
+                                                    {#if paths.length > 0}
+                                                        <ul class="space-y-0.5">
+                                                            {#each paths as path (path)}
+                                                                <li class="flex items-start gap-1 font-mono text-xs">
+                                                                    <span class="shrink-0">•</span>
+                                                                    <span class="break-all">{path}</span>
+                                                                </li>
+                                                            {/each}
+                                                        </ul>
+                                                    {:else}
+                                                        <p class="text-xs text-muted-foreground">
+                                                            No locations noted.
+                                                        </p>
+                                                    {/if}
+                                                </Tooltip.Content>
+                                            </Tooltip.Root>
+                                            {#if extraPkgs > 0}
+                                                <Popover.Root>
+                                                    <Popover.Trigger>
+                                                        <span
+                                                            class="inline-flex cursor-pointer items-center rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-sans text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                                                        >
+                                                            +{extraPkgs} more
+                                                        </span>
+                                                    </Popover.Trigger>
+                                                    <Popover.Content class="w-80 p-0" align="start">
+                                                        <div class="px-3 py-2 border-b border-border">
+                                                            <p class="text-xs font-semibold">All Affected Packages ({vuln.packages.length})</p>
+                                                        </div>
+                                                        <div class="max-h-48 overflow-y-auto divide-y divide-border">
+                                                            {#each vuln.packages as pkg}
+                                                                <div class="px-3 py-2 text-xs">
+                                                                    <div class="flex items-center justify-between gap-1.5">
+                                                                        <div class="flex items-baseline gap-1.5">
+                                                                            <span class="font-mono font-medium">{pkg.package_name}</span>
+                                                                            {#if pkg.package_type}
+                                                                                <span class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                                                                                    {pkg.package_type}
+                                                                                </span>
+                                                                            {/if}
+                                                                        </div>
+                                                                        <div class="flex items-center gap-1.5 shrink-0">
+                                                                            <span class="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium {SEVERITY_CLASSES[pkg.severity] ?? SEVERITY_CLASSES['Unknown']}">
+                                                                                {pkg.severity}
+                                                                            </span>
+                                                                            {#if pkg.cvss_base_score != null}
+                                                                                <span class="font-mono text-[10px] {cvssClass(pkg.cvss_base_score)}">
+                                                                                    {pkg.cvss_base_score.toFixed(1)}
+                                                                                </span>
+                                                                            {/if}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="mt-0.5 flex gap-3 text-muted-foreground font-mono">
+                                                                        <span>{pkg.installed_version}</span>
+                                                                        <span>→</span>
+                                                                        <span class={pkg.fixed_version ? "text-foreground" : ""}>
+                                                                            {pkg.fixed_version ?? "No fix"}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            {/each}
+                                                        </div>
+                                                    </Popover.Content>
+                                                </Popover.Root>
+                                            {/if}
+                                        </div>
                                     </Table.Cell>
                                     <Table.Cell
                                         class="text-center font-mono text-muted-foreground"
-                                        >{vuln.installed_version}</Table.Cell
+                                        >{rep.installed_version}</Table.Cell
                                     >
                                     <Table.Cell class="text-center font-mono">
-                                        {#if vuln.fixed_version}
-                                            {vuln.fixed_version}
+                                        {#if rep.fixed_version}
+                                            {rep.fixed_version}
                                         {:else}
                                             <span class="text-muted-foreground"
                                                 >No fix</span
