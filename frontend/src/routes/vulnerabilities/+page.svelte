@@ -234,11 +234,15 @@
             <div class="flex flex-col gap-1 text-sm">
                 <span class="font-medium">End-of-Life Systems Detected</span>
                 <span class="opacity-90">
-                    One or more running containers ({data.eol_images.join(
-                        ", ",
-                    )}) are using an end-of-life operating system. Vulnerability
-                    data for these systems may be incomplete, outdated, or
-                    inaccurate.
+                    One or more running containers are using an end-of-life
+                    operating system: {data.eol_images
+                        .map(
+                            (e) =>
+                                e.image_name +
+                                (e.distro ? ` (${e.distro})` : ""),
+                        )
+                        .join(", ")}. Vulnerability data for these systems may
+                    be incomplete, outdated, or inaccurate.
                 </span>
             </div>
         </div>

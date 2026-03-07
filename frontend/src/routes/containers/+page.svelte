@@ -636,7 +636,7 @@
 													>
 														<span
 															class="font-medium"
-															>End-of-Life OS:</span
+															>End-of-Life OS{container.distro_display ? ` (${container.distro_display})` : ''}:</span
 														>
 														<span
 															>This image uses an
