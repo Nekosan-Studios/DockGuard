@@ -697,13 +697,12 @@
 													>
 														<span
 															class="font-medium"
-															>End-of-Life OS{container.distro_display ? ` (${container.distro_display})` : ''}:</span
+															>End-of-Life OS{container.distro_display
+																? ` (${container.distro_display})`
+																: ""}:</span
 														>
 														<span
-															>This image uses an
-															end-of-life
-															operating system.
-															Vulnerability data
+															>Vulnerability data
 															may be incomplete or
 															outdated.</span
 														>

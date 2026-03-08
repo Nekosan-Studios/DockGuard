@@ -1,0 +1,83 @@
+# Grype configuration for DockGuard self-scanning.
+#
+# These ignore rules suppress known-unfixable vulnerabilities in our
+# production Docker image. Each entry documents why the CVE cannot
+# currently be remediated. See VULNERABILITY_REPORT.md for the full
+# analysis.
+#
+# Usage:
+#   grype docker-dockguard -o table
+#
+# To see ALL vulnerabilities including suppressed ones:
+#   grype docker-dockguard -o table --show-suppressed
+
+ignore:
+
+  # ── Grype binary (Go/Rust dependencies) ────────────────────────────────
+  # These are compiled into the Grype binary. Fix requires a new Grype release.
+
+  - vulnerability: GHSA-9h8m-3fm2-qjrq   # go.opentelemetry.io/otel/sdk — High
+  - vulnerability: GHSA-h395-gr6q-cpjc    # jsonwebtoken (rust-crate) — Medium
+  - vulnerability: GHSA-q9hv-hpm4-hj6x   # github.com/cloudflare/circl — Low
+
+  # ── Python 3.13 (Debian-packaged) ──────────────────────────────────────
+  # Debian's python3.13 packages. No fix available from Debian yet.
+  # Some CVEs only fixed in unreleased Python 3.15.
+
+  - vulnerability: CVE-2025-6069
+  - vulnerability: CVE-2025-6075
+  - vulnerability: CVE-2025-8194
+  - vulnerability: CVE-2025-8291
+  - vulnerability: CVE-2025-12084
+  - vulnerability: CVE-2025-12781
+  - vulnerability: CVE-2025-13836
+  - vulnerability: CVE-2025-13837
+  - vulnerability: CVE-2025-15282
+  - vulnerability: CVE-2025-15366
+  - vulnerability: CVE-2025-15367
+  - vulnerability: CVE-2025-11468
+  - vulnerability: CVE-2026-0672
+  - vulnerability: CVE-2026-0865
+  - vulnerability: CVE-2026-1299
+  - vulnerability: CVE-2026-2297
+
+  # ── Node.js / libnode115 (Debian-packaged) ─────────────────────────────
+  # Debian's nodejs v20 and transitive deps. No fix available from Debian yet.
+
+  - vulnerability: CVE-2025-55130   # Critical — nodejs
+  - vulnerability: CVE-2025-55131   # High — nodejs
+  - vulnerability: CVE-2025-55132   # Medium — nodejs
+  - vulnerability: CVE-2025-59465   # High — nodejs
+  - vulnerability: CVE-2025-59466   # High — nodejs
+  - vulnerability: CVE-2026-21637   # High — nodejs
+  - vulnerability: CVE-2026-25547   # Critical — node-brace-expansion
+  - vulnerability: CVE-2026-26996   # High — node-minimatch
+  - vulnerability: CVE-2026-27903   # High — node-minimatch
+  - vulnerability: CVE-2026-27904   # High — node-minimatch
+  - vulnerability: CVE-2026-22036   # High — node-undici
+  - vulnerability: CVE-2025-23167   # Medium — node-undici
+  - vulnerability: CVE-2025-47279   # Low — node-undici
+
+  # ── glibc / libc (Debian-packaged) ─────────────────────────────────────
+
+  - vulnerability: CVE-2025-15281   # High — libc-bin/libc6
+  - vulnerability: CVE-2026-0861    # High — libc-bin/libc6
+  - vulnerability: CVE-2026-0915    # High — libc-bin/libc6
+
+  # ── Other Debian system packages ───────────────────────────────────────
+
+  - vulnerability: CVE-2025-13151   # High — libtasn1-6
+  - vulnerability: CVE-2025-59375   # High — libexpat1
+  - vulnerability: CVE-2025-66382   # Medium — libexpat1
+  - vulnerability: CVE-2026-25210   # Medium — libexpat1
+  - vulnerability: CVE-2026-24515   # Low — libexpat1
+  - vulnerability: CVE-2026-23949   # High — python3-jaraco.context / python3-pkg-resources
+  - vulnerability: CVE-2025-14819   # Medium — curl
+  - vulnerability: CVE-2025-14524   # Medium — curl
+  - vulnerability: CVE-2025-13034   # Medium — curl
+  - vulnerability: CVE-2025-7709    # Medium — libsqlite3-0
+  - vulnerability: CVE-2025-6141    # Medium — ncurses
+  - vulnerability: CVE-2026-27171   # Medium — zlib1g
+  - vulnerability: CVE-2024-56433   # Low — login.defs/passwd
+  - vulnerability: CVE-2026-2219    # Unknown — dpkg
+  - vulnerability: CVE-2026-3184    # Unknown — util-linux
