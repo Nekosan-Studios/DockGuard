@@ -321,3 +321,31 @@ def test_get_running_containers_uses_latest_scan(api_client):
     c = data["containers"][0]
     assert c["total"] == 1
     assert c["image_digest"] == "sha256:bbbb"
+# ---------------------------------------------------------------------------
+# GET /vulnerabilities
+# ---------------------------------------------------------------------------
+
+def test_get_vulnerabilities_across_running_returns_total_instances_and_unique_count(api_client):
+    client, test_db, mock_watcher_cls = api_client
+    
+    # Same CVE (VULN_CRITICAL) mapped to two different images.
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
+    seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL])
+    
+    # 3 total instances of the same CVE across 2 images.
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx-1", "nginx:latest", "sha256:aaaa"),
+        _make_running_container("my-nginx-2", "nginx:latest", "sha256:aaaa"),
+        _make_running_container("my-redis", "redis:7", "sha256:cccc"),
+    ]
+
+    response = client.get("/vulnerabilities?report=all")
+    assert response.status_code == 200
+    data = response.json()
+    
+    # There is only 1 unique vulnerability (grouped by CVE)
+    assert data["total_count"] == 1
+    assert data["count"] == 1
+    
+    # But there are 3 raw occurrences/instances of this vulnerability
+    assert data["total_instances"] == 3
