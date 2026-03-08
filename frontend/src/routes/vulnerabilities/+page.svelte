@@ -19,7 +19,11 @@
     import EpssCell from "$lib/components/vuln/EpssCell.svelte";
     import KevCell from "$lib/components/vuln/KevCell.svelte";
     import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
-    import { SEVERITY_CLASSES, toUtcDate, cvssClass } from "$lib/components/vuln/utils.js";
+    import {
+        SEVERITY_CLASSES,
+        toUtcDate,
+        cvssClass,
+    } from "$lib/components/vuln/utils.js";
     import { page } from "$app/stores";
     import { onMount, onDestroy } from "svelte";
 
@@ -64,6 +68,7 @@
 
     let rows = $state<Vulnerability[]>([]);
     let totalCount = $state(0);
+    let totalInstances = $state(0);
     let hasMore = $state(false);
     let currentOffset = $state(0);
     let loadingMore = $state(false);
@@ -72,6 +77,7 @@
     $effect(() => {
         rows = data.vulnerabilities || [];
         totalCount = data.total_count ?? 0;
+        totalInstances = data.total_instances ?? 0;
         hasMore = data.has_more ?? false;
         currentOffset = data.vulnerabilities?.length ?? 0;
     });
@@ -98,6 +104,7 @@
             currentOffset += newRows.length;
             hasMore = (payload.has_more ?? false) && currentOffset < MAX_ROWS;
             totalCount = payload.total_count ?? totalCount;
+            totalInstances = payload.total_instances ?? totalInstances;
         } catch (err) {
             console.error("[DG] Failed to load next vulnerability page", err);
         } finally {
@@ -162,7 +169,7 @@
         reportValue === "new"
             ? `Newly Found (Last ${newRanges.find((r) => r.value === newHoursValue)?.label ?? "1d"})`
             : reports.find((r) => r.value === reportValue)?.label ||
-              "Critical Vulnerabilities",
+                  "Critical Vulnerabilities",
     );
 
     function handleReportChange(v: string) {
@@ -276,11 +283,15 @@
                     <Card.Title>{reportLabel}</Card.Title>
                 </div>
                 <Card.Description>
-                    {#if totalCount > 0}
-                        Showing {rows.length.toLocaleString()} of {totalCount.toLocaleString()}
-                        vulnerabilities across running containers.
+                    {#if data.apiError}
+                        Unable to fetch vulnerabilities. Engine might be
+                        offline.
+                    {:else if rows.length === 0}
+                        No vulnerabilities found for this filter.
                     {:else}
-                        No vulnerabilities found for this report.
+                        Showing {rows.length.toLocaleString()} of {totalCount.toLocaleString()}
+                        unique vulnerabilities ({totalInstances.toLocaleString()}
+                        total instances) across running containers.
                     {/if}
                 </Card.Description>
             </div>
@@ -312,13 +323,17 @@
                 </Select.Root>
 
                 {#if reportValue === "new"}
-                    <div class="flex items-center rounded-md border border-border">
+                    <div
+                        class="flex items-center rounded-md border border-border"
+                    >
                         {#each newRanges as range}
                             <button
-                                class="px-2.5 py-1 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md {newHoursValue === range.value
+                                class="px-2.5 py-1 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md {newHoursValue ===
+                                range.value
                                     ? 'bg-primary text-primary-foreground'
                                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                                onclick={() => handleNewRangeChange(range.value)}
+                                onclick={() =>
+                                    handleNewRangeChange(range.value)}
                             >
                                 {range.label}
                             </button>
@@ -377,7 +392,9 @@
                                     />
                                 </Table.Head>
                                 <Table.Head>
-                                    <span class="text-xs font-medium">Containers</span>
+                                    <span class="text-xs font-medium"
+                                        >Containers</span
+                                    >
                                 </Table.Head>
                                 <Table.Head class="text-center">
                                     <SortButton
@@ -493,7 +510,8 @@
                         <Table.Body>
                             {#each rows as vuln (vuln.vuln_id)}
                                 {@const rep = vuln.packages?.[0] ?? vuln}
-                                {@const extraPkgs = (vuln.packages?.length ?? 1) - 1}
+                                {@const extraPkgs =
+                                    (vuln.packages?.length ?? 1) - 1}
                                 <Table.Row class="hover:bg-muted/30">
                                     <Table.Cell class="pl-4 font-mono">
                                         <div
@@ -558,13 +576,19 @@
                                     </Table.Cell>
                                     <SeverityCell severity={vuln.severity} />
                                     <Table.Cell class="font-mono">
-                                        <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                        <div
+                                            class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
+                                        >
                                             <Tooltip.Root>
                                                 <Tooltip.Trigger
                                                     class="cursor-default text-left"
                                                 >
-                                                    <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                                                        <span>{rep.package_name}</span>
+                                                    <div
+                                                        class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
+                                                    >
+                                                        <span
+                                                            >{rep.package_name}</span
+                                                        >
                                                         {#if rep.package_type}
                                                             <span
                                                                 class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
@@ -574,11 +598,18 @@
                                                         {/if}
                                                     </div>
                                                 </Tooltip.Trigger>
-                                                <Tooltip.Content class="max-w-sm">
-                                                    {@const paths = rep.locations
-                                                        ? rep.locations.split("\n")
-                                                        : []}
-                                                    <p class="mb-1 font-semibold">
+                                                <Tooltip.Content
+                                                    class="max-w-sm"
+                                                >
+                                                    {@const paths =
+                                                        rep.locations
+                                                            ? rep.locations.split(
+                                                                  "\n",
+                                                              )
+                                                            : []}
+                                                    <p
+                                                        class="mb-1 font-semibold"
+                                                    >
                                                         {paths.length === 1
                                                             ? "Location:"
                                                             : "Locations (Sample):"}
@@ -586,14 +617,24 @@
                                                     {#if paths.length > 0}
                                                         <ul class="space-y-0.5">
                                                             {#each paths as path (path)}
-                                                                <li class="flex items-start gap-1 font-mono text-xs">
-                                                                    <span class="shrink-0">•</span>
-                                                                    <span class="break-all">{path}</span>
+                                                                <li
+                                                                    class="flex items-start gap-1 font-mono text-xs"
+                                                                >
+                                                                    <span
+                                                                        class="shrink-0"
+                                                                        >•</span
+                                                                    >
+                                                                    <span
+                                                                        class="break-all"
+                                                                        >{path}</span
+                                                                    >
                                                                 </li>
                                                             {/each}
                                                         </ul>
                                                     {:else}
-                                                        <p class="text-xs text-muted-foreground">
+                                                        <p
+                                                            class="text-xs text-muted-foreground"
+                                                        >
                                                             No locations noted.
                                                         </p>
                                                     {/if}
@@ -608,38 +649,90 @@
                                                             +{extraPkgs} more
                                                         </span>
                                                     </Popover.Trigger>
-                                                    <Popover.Content class="w-80 p-0" align="start">
-                                                        <div class="px-3 py-2 border-b border-border">
-                                                            <p class="text-xs font-semibold">All Affected Packages ({vuln.packages.length})</p>
+                                                    <Popover.Content
+                                                        class="w-80 p-0"
+                                                        align="start"
+                                                    >
+                                                        <div
+                                                            class="px-3 py-2 border-b border-border"
+                                                        >
+                                                            <p
+                                                                class="text-xs font-semibold"
+                                                            >
+                                                                All Affected
+                                                                Packages ({vuln
+                                                                    .packages
+                                                                    .length})
+                                                            </p>
                                                         </div>
-                                                        <div class="max-h-48 overflow-y-auto divide-y divide-border">
+                                                        <div
+                                                            class="max-h-48 overflow-y-auto divide-y divide-border"
+                                                        >
                                                             {#each vuln.packages as pkg}
-                                                                <div class="px-3 py-2 text-xs">
-                                                                    <div class="flex items-center justify-between gap-1.5">
-                                                                        <div class="flex items-baseline gap-1.5">
-                                                                            <span class="font-mono font-medium">{pkg.package_name}</span>
+                                                                <div
+                                                                    class="px-3 py-2 text-xs"
+                                                                >
+                                                                    <div
+                                                                        class="flex items-center justify-between gap-1.5"
+                                                                    >
+                                                                        <div
+                                                                            class="flex items-baseline gap-1.5"
+                                                                        >
+                                                                            <span
+                                                                                class="font-mono font-medium"
+                                                                                >{pkg.package_name}</span
+                                                                            >
                                                                             {#if pkg.package_type}
-                                                                                <span class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                                                                                <span
+                                                                                    class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                                                                >
                                                                                     {pkg.package_type}
                                                                                 </span>
                                                                             {/if}
                                                                         </div>
-                                                                        <div class="flex items-center gap-1.5 shrink-0">
-                                                                            <span class="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium {SEVERITY_CLASSES[pkg.severity] ?? SEVERITY_CLASSES['Unknown']}">
+                                                                        <div
+                                                                            class="flex items-center gap-1.5 shrink-0"
+                                                                        >
+                                                                            <span
+                                                                                class="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium {SEVERITY_CLASSES[
+                                                                                    pkg
+                                                                                        .severity
+                                                                                ] ??
+                                                                                    SEVERITY_CLASSES[
+                                                                                        'Unknown'
+                                                                                    ]}"
+                                                                            >
                                                                                 {pkg.severity}
                                                                             </span>
                                                                             {#if pkg.cvss_base_score != null}
-                                                                                <span class="font-mono text-[10px] {cvssClass(pkg.cvss_base_score)}">
-                                                                                    {pkg.cvss_base_score.toFixed(1)}
+                                                                                <span
+                                                                                    class="font-mono text-[10px] {cvssClass(
+                                                                                        pkg.cvss_base_score,
+                                                                                    )}"
+                                                                                >
+                                                                                    {pkg.cvss_base_score.toFixed(
+                                                                                        1,
+                                                                                    )}
                                                                                 </span>
                                                                             {/if}
                                                                         </div>
                                                                     </div>
-                                                                    <div class="mt-0.5 flex gap-3 text-muted-foreground font-mono">
-                                                                        <span>{pkg.installed_version}</span>
-                                                                        <span>→</span>
-                                                                        <span class={pkg.fixed_version ? "text-foreground" : ""}>
-                                                                            {pkg.fixed_version ?? "No fix"}
+                                                                    <div
+                                                                        class="mt-0.5 flex gap-3 text-muted-foreground font-mono"
+                                                                    >
+                                                                        <span
+                                                                            >{pkg.installed_version}</span
+                                                                        >
+                                                                        <span
+                                                                            >→</span
+                                                                        >
+                                                                        <span
+                                                                            class={pkg.fixed_version
+                                                                                ? "text-foreground"
+                                                                                : ""}
+                                                                        >
+                                                                            {pkg.fixed_version ??
+                                                                                "No fix"}
                                                                         </span>
                                                                     </div>
                                                                 </div>

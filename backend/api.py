@@ -407,9 +407,12 @@ def get_vulnerabilities_across_running(
     # Group vulnerabilities by CVE ID across all containers/packages
     grouped_vulns: dict[str, dict] = {}
 
+    total_instances = 0
+
     for v in vulns:
         img_name = scan_id_to_images[v.scan_id]
         containers_for_img = image_to_containers[img_name]
+        total_instances += len(containers_for_img)
 
         key = v.vuln_id
 
@@ -518,6 +521,7 @@ def get_vulnerabilities_across_running(
     return {
         "report": report,
         "total_count": total_count,
+        "total_instances": total_instances,
         "count": len(page_vulns),
         "has_more": has_more,
         "eol_images": eol_images,

@@ -43,6 +43,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
         vulnerabilities: (data.vulnerabilities ?? []) as any[],
         count: (data.count ?? 0) as number,
         total_count: (data.total_count ?? 0) as number,
+        total_instances: (data.total_instances ?? 0) as number,
         has_more: (data.has_more ?? false) as boolean,
         eol_images: (data.eol_images ?? []) as { image_name: string; distro: string | null }[],
         apiError: false,

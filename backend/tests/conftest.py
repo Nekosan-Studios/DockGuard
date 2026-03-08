@@ -51,11 +51,12 @@ def test_db():
 def api_client(test_db):
     app.dependency_overrides[production_db.get_session] = test_db.get_session
 
-    with patch("backend.api.DockerWatcher") as mock_watcher_cls:
-        mock_watcher_cls.return_value.list_images.return_value = []
-        mock_watcher_cls.return_value.list_running_containers.return_value = []
-        with TestClient(app, raise_server_exceptions=True) as client:
-            yield client, test_db, mock_watcher_cls
+    with patch.object(production_db, "init"):
+        with patch("backend.api.DockerWatcher") as mock_watcher_cls:
+            mock_watcher_cls.return_value.list_images.return_value = []
+            mock_watcher_cls.return_value.list_running_containers.return_value = []
+            with TestClient(app, raise_server_exceptions=True) as client:
+                yield client, test_db, mock_watcher_cls
 
     app.dependency_overrides.clear()
 
