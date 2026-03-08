@@ -412,11 +412,6 @@
 		return vulns.some((v) => v.vex_status);
 	}
 
-	function truncate(text: string | null, max = 120): string {
-		if (!text) return "";
-		return text.length > max ? text.slice(0, max) + "…" : text;
-	}
-
 	function isNew(
 		vuln: Vulnerability,
 		scannedAt: string | undefined,
@@ -731,11 +726,11 @@
 														class="overflow-x-auto"
 													>
 														<Table.Root
-															class="w-full table-fixed text-xs"
+															class="w-full min-w-[1000px] table-fixed text-xs"
 														>
 															<colgroup>
 																<col
-																	style="width:14%"
+																	style="width:13%"
 																/>
 																<col
 																	style="width:7%"
@@ -767,7 +762,7 @@
 																	style="width:10%"
 																/>
 																<col
-																	style="width:{hasVexData(container.image_name) ? '22' : '26'}%"
+																	style="width:{hasVexData(container.image_name) ? '23' : '27'}%"
 																/>
 															</colgroup>
 															<Table.Header>
@@ -1076,6 +1071,7 @@
 																					) =>
 																						e.stopPropagation()}
 																					class="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+																					title={vuln.vuln_id}
 																				>
 																					{vuln.vuln_id}
 																					<ExternalLink
@@ -1160,10 +1156,12 @@
 																		</Table.Cell>
 																		<Table.Cell
 																			class="text-center font-mono text-muted-foreground"
+																			title={vuln.installed_version}
 																			>{vuln.installed_version}</Table.Cell
 																		>
 																		<Table.Cell
 																			class="text-center font-mono"
+																			title={vuln.fixed_version ?? undefined}
 																		>
 																			{#if vuln.fixed_version}
 																				{vuln.fixed_version}
@@ -1219,15 +1217,14 @@
 																			{/if}
 																		</Table.Cell>
 																		<Table.Cell
-																			class="text-muted-foreground pr-6"
+																			class="text-muted-foreground pr-6 whitespace-normal"
 																		>
 																			<span
+																				class="line-clamp-3"
 																				title={vuln.description ??
 																					undefined}
 																			>
-																				{truncate(
-																					vuln.description,
-																				)}
+																				{vuln.description ?? ""}
 																			</span>
 																		</Table.Cell>
 																	</Table.Row>

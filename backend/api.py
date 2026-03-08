@@ -22,7 +22,7 @@ from .config import ConfigManager
 
 logger = logging.getLogger(__name__)
 
-_DESC_LIMIT = 250
+_DESC_LIMIT = 1000
 _LOC_LIMIT = 5
 
 # Allowed values for the sort_by query parameter across vulnerability endpoints.
