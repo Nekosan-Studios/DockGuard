@@ -629,9 +629,10 @@
                                                     <p
                                                         class="mb-1 font-semibold"
                                                     >
+                                                        {rep.package_name}
                                                         {paths.length === 1
                                                             ? "Location:"
-                                                            : "Locations (Sample):"}
+                                                            : "Locations:"}
                                                     </p>
                                                     {#if paths.length > 0}
                                                         <ul class="space-y-0.5">

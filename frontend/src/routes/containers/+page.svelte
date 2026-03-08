@@ -1118,6 +1118,7 @@
 																					<p
 																						class="mb-1 font-semibold"
 																					>
+																						{vuln.package_name}
 																						{paths.length ===
 																						1
 																							? "Location:"
