@@ -372,23 +372,24 @@ def get_vulnerabilities_across_running(
     )
     scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
 
-    scan_id_to_images = {s.id: s.image_name for s in scans}
-    eol_images = [
-        {
-            "image_name": s.image_name,
-            "distro": f"{s.distro_name} {s.distro_version}" if s.distro_name and s.distro_version else s.distro_name,
-        }
-        for s in scans
-        if s.is_distro_eol
-    ]
-
-    if not scan_id_to_images:
-        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "eol_images": [], "vulnerabilities": []}
-
     # Map image_name -> list of container names
     image_to_containers = defaultdict(list)
     for c in running:
         image_to_containers[c["image_name"]].append(c["container_name"])
+
+    scan_id_to_images = {s.id: s.image_name for s in scans}
+    
+    eol_images = []
+    for s in scans:
+        if s.is_distro_eol:
+            for c_name in image_to_containers[s.image_name]:
+                eol_images.append({
+                    "container_name": c_name,
+                    "distro": f"{s.distro_name} {s.distro_version}" if s.distro_name and s.distro_version else s.distro_name,
+                })
+
+    if not scan_id_to_images:
+        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "eol_images": [], "vulnerabilities": []}
 
     # Base query for vulnerabilities
     q = select(Vulnerability).where(Vulnerability.scan_id.in_(scan_id_to_images.keys()))

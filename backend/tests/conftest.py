@@ -17,7 +17,7 @@ from unittest.mock import patch
 from backend.api import app
 from backend.database import Database, db as production_db
 from backend.grype_scanner import _parse_image_repository
-from backend.models import Scan, Vulnerability
+from backend.models import Scan, Vulnerability, AppState, Setting, SystemTask
 from datetime import datetime, timezone
 
 
@@ -52,11 +52,12 @@ def api_client(test_db):
     app.dependency_overrides[production_db.get_session] = test_db.get_session
 
     with patch.object(production_db, "init"):
-        with patch("backend.api.DockerWatcher") as mock_watcher_cls:
-            mock_watcher_cls.return_value.list_images.return_value = []
-            mock_watcher_cls.return_value.list_running_containers.return_value = []
-            with TestClient(app, raise_server_exceptions=True) as client:
-                yield client, test_db, mock_watcher_cls
+        with patch("backend.api.db", test_db):
+            with patch("backend.api.DockerWatcher") as mock_watcher_cls:
+                mock_watcher_cls.return_value.list_images.return_value = []
+                mock_watcher_cls.return_value.list_running_containers.return_value = []
+                with TestClient(app, raise_server_exceptions=True) as client:
+                    yield client, test_db, mock_watcher_cls
 
     app.dependency_overrides.clear()
 

@@ -29,7 +29,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
             count: 0,
             total_count: 0,
             has_more: false,
-            eol_images: [] as { image_name: string; distro: string | null }[],
+            eol_images: [] as { container_name: string; distro: string | null }[],
             apiError: true,
         };
     }
@@ -45,7 +45,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
         total_count: (data.total_count ?? 0) as number,
         total_instances: (data.total_instances ?? 0) as number,
         has_more: (data.has_more ?? false) as boolean,
-        eol_images: (data.eol_images ?? []) as { image_name: string; distro: string | null }[],
+        eol_images: (data.eol_images ?? []) as { container_name: string; distro: string | null }[],
         apiError: false,
     };
 };

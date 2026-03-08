@@ -265,7 +265,7 @@
                     operating system: {data.eol_images
                         .map(
                             (e) =>
-                                e.image_name +
+                                e.container_name +
                                 (e.distro ? ` (${e.distro})` : ""),
                         )
                         .join(", ")}. Vulnerability data for these systems may
