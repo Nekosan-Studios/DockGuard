@@ -119,7 +119,11 @@ class GrypeScanner:
                 (r[0], r[1], r[2]): r[3] for r in existing_rows if r[3] is not None
             }
 
-            vulnerabilities = []
+            # Use a dict keyed by (vuln_id, package_name, installed_version) to
+            # deduplicate: grype reports the same CVE+package multiple times when
+            # the package is found in more than one filesystem location.  We
+            # consolidate those matches into a single row, merging locations.
+            vuln_map: dict[tuple[str, str, str], Vulnerability] = {}
             for match in grype_json.get("matches", []):
                 vuln = match.get("vulnerability", {})
                 artifact = match.get("artifact", {})
@@ -151,30 +155,40 @@ class GrypeScanner:
                 installed_version = artifact.get("version", "")
                 key = (vuln_id, package_name, installed_version)
 
-                vulnerabilities.append(Vulnerability(
-                    vuln_id=vuln_id,
-                    severity=vuln.get("severity", ""),
-                    description=vuln.get("description") or None,
-                    data_source=vuln.get("dataSource") or None,
-                    urls=urls,
-                    cvss_base_score=cvss_base_score,
-                    epss_score=epss_score,
-                    epss_percentile=epss_percentile,
-                    is_kev=bool(vuln.get("knownExploited")),
-                    risk_score=vuln.get("risk"),
-                    cwes=cwes,
-                    package_name=package_name,
-                    installed_version=installed_version,
-                    fixed_version=fixed_version,
-                    fix_state=fix.get("state") or None,
-                    package_type=artifact.get("type") or None,
-                    package_language=artifact.get("language") or None,
-                    purl=artifact.get("purl") or None,
-                    locations="\n".join(
-                        loc["path"] for loc in artifact.get("locations", []) if loc.get("path")
-                    ) or None,
-                    first_seen_at=first_seen_map.get(key, scanned_at),
-                ))
+                new_locs = [
+                    loc["path"] for loc in artifact.get("locations", []) if loc.get("path")
+                ]
+
+                if key in vuln_map:
+                    # Merge locations into the existing row
+                    existing = vuln_map[key]
+                    existing_locs = existing.locations.split("\n") if existing.locations else []
+                    merged = existing_locs + [p for p in new_locs if p not in existing_locs]
+                    existing.locations = "\n".join(merged) or None
+                else:
+                    vuln_map[key] = Vulnerability(
+                        vuln_id=vuln_id,
+                        severity=vuln.get("severity", ""),
+                        description=vuln.get("description") or None,
+                        data_source=vuln.get("dataSource") or None,
+                        urls=urls,
+                        cvss_base_score=cvss_base_score,
+                        epss_score=epss_score,
+                        epss_percentile=epss_percentile,
+                        is_kev=bool(vuln.get("knownExploited")),
+                        risk_score=vuln.get("risk"),
+                        cwes=cwes,
+                        package_name=package_name,
+                        installed_version=installed_version,
+                        fixed_version=fixed_version,
+                        fix_state=fix.get("state") or None,
+                        package_type=artifact.get("type") or None,
+                        package_language=artifact.get("language") or None,
+                        purl=artifact.get("purl") or None,
+                        locations="\n".join(new_locs) or None,
+                        first_seen_at=first_seen_map.get(key, scanned_at),
+                    )
+            vulnerabilities = list(vuln_map.values())
 
             session.add(scan)
             session.flush()

@@ -31,6 +31,7 @@
 	);
 
 	interface Vulnerability {
+		id: number;
 		vuln_id: string;
 		severity: string;
 		description: string | null;
@@ -691,6 +692,7 @@
 													>
 												</div>
 											{:else}
+												<svelte:boundary onerror={(e) => console.error("[DockGuard] sub-view render error:", e)}>
 												{#if container.is_distro_eol}
 													<div
 														class="mx-6 mt-4 mb-2 rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex gap-3 text-sm"
@@ -1047,7 +1049,7 @@
 																</Table.Row>
 															</Table.Header>
 															<Table.Body>
-																{#each vulns as vuln (vuln.vuln_id + vuln.package_name + vuln.installed_version)}
+																{#each vulns as vuln (vuln.id)}
 																	<Table.Row
 																		class="hover:bg-muted/30"
 																	>
@@ -1234,6 +1236,13 @@
 														</Table.Root>
 													</div>
 												{/if}
+												{#snippet failed(error, reset)}
+													<div class="flex flex-col items-start gap-3 px-6 py-4">
+														<p class="text-sm font-medium text-destructive">Error rendering vulnerabilities: {error.message}</p>
+														<button class="text-xs underline text-muted-foreground" onclick={reset}>Try again</button>
+													</div>
+												{/snippet}
+												</svelte:boundary>
 											{/if}
 											{#each [getMeta(container.image_name)] as capMeta}
 												{#if capMeta.hasMore || capMeta.loadingMore}
