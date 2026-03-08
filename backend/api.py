@@ -732,10 +732,14 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         db_built = db_built or (_as_utc(latest_scan.db_built) if latest_scan else None)
 
     cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-    new_vulns_24h = session.exec(
-        select(func.count(Vulnerability.id))
-        .where(Vulnerability.first_seen_at >= cutoff_24h)
-    ).one()
+    if running_images:
+        new_vulns_24h = session.exec(
+            select(func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id.in_(latest_scan_id_subq))
+            .where(Vulnerability.first_seen_at >= cutoff_24h)
+        ).one()
+    else:
+        new_vulns_24h = 0
 
     active_tasks = session.exec(
         select(func.count(SystemTask.id))
