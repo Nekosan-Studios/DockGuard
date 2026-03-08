@@ -80,7 +80,11 @@ class DockerWatcher:
         containers = []
         for container in self.client.containers.list():
             image = container.image
-            tag = image.tags[0] if image.tags else None
+            # Prefer the image ref from Config.Image (what the user actually ran)
+            # over image.tags[0], which can pick the wrong tag when multiple tags
+            # point to the same digest.
+            config_image = container.attrs.get("Config", {}).get("Image", "")
+            tag = config_image if config_image else (image.tags[0] if image.tags else None)
             containers.append({
                 "container_name": container.name.lstrip("/"),
                 "image_name": tag if tag else "<untagged>",

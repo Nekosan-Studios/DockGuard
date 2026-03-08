@@ -24,6 +24,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write    # cosign keyless signing (OIDC)
 
 jobs:
   # ── Job 1: Run tests (PRs and optional manual dispatch) ─────────────
@@ -81,6 +82,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -124,6 +128,7 @@ jobs:
             type=sha,prefix=
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -135,3 +140,13 @@ jobs:
             APP_VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Attest VEX document
+        if: steps.build.outputs.digest != ''
+        env:
+          COSIGN_YES: "true"
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/dockguard@${{ steps.build.outputs.digest }}"
+          cosign attest --predicate vex/dockguard.vex.json \
+            --type openvex \
+            "$IMAGE"

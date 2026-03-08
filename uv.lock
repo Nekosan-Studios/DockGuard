@@ -148,6 +148,7 @@ dependencies = [
     { name = "colorlog" },
     { name = "docker" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "sqlmodel" },
     { name = "uvicorn" },
 ]
@@ -165,6 +166,7 @@ requires-dist = [
     { name = "colorlog", specifier = ">=6.10.1" },
     { name = "docker" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "sqlmodel" },
     { name = "uvicorn" },
 ]

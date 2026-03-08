@@ -18,10 +18,17 @@
 	import CvssCell from "$lib/components/vuln/CvssCell.svelte";
 	import EpssCell from "$lib/components/vuln/EpssCell.svelte";
 	import KevCell from "$lib/components/vuln/KevCell.svelte";
+	import VexStatusCell from "$lib/components/vuln/VexStatusCell.svelte";
 	import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
 	import { SEVERITY_CLASSES, toUtcDate } from "$lib/components/vuln/utils.js";
+	import { Checkbox } from "$lib/components/ui/checkbox/index.js";
 
 	let { data }: { data: PageData } = $props();
+
+	let hideVexResolved = $state(false);
+	let anyContainerHasVex = $derived(
+		data.containers.some((c: { has_vex?: boolean }) => c.has_vex),
+	);
 
 	interface Vulnerability {
 		vuln_id: string;
@@ -38,6 +45,9 @@
 		locations: string | null;
 		epss_percentile: number | null;
 		first_seen_at: string | null;
+		vex_status: string | null;
+		vex_justification: string | null;
+		vex_statement: string | null;
 	}
 
 	const SEVERITY_ORDER = [
@@ -383,10 +393,22 @@
 	}
 
 	function visibleVulns(imageName: string): Vulnerability[] {
-		const vulns = containerVulns.get(imageName) ?? [];
+		let vulns = containerVulns.get(imageName) ?? [];
 		const filters = activeFilters.get(imageName);
-		if (!filters || filters.size === 0) return vulns;
-		return vulns.filter((v) => filters.has(v.severity));
+		if (filters && filters.size > 0) {
+			vulns = vulns.filter((v) => filters.has(v.severity));
+		}
+		if (hideVexResolved) {
+			vulns = vulns.filter(
+				(v) => v.vex_status !== "not_affected" && v.vex_status !== "fixed",
+			);
+		}
+		return vulns;
+	}
+
+	function hasVexData(imageName: string): boolean {
+		const vulns = containerVulns.get(imageName) ?? [];
+		return vulns.some((v) => v.vex_status);
 	}
 
 	function truncate(text: string | null, max = 120): string {
@@ -420,12 +442,36 @@
 	</div>
 
 	<Card.Root>
-		<Card.Header>
-			<Card.Title>Running Containers</Card.Title>
-			<Card.Description
-				>Images currently running, cross-referenced with the latest scan
-				results.</Card.Description
-			>
+		<Card.Header class="flex flex-row items-center justify-between">
+			<div class="space-y-1.5">
+				<Card.Title>Running Containers</Card.Title>
+				<Card.Description
+					>Images currently running, cross-referenced with the latest scan
+					results.</Card.Description
+				>
+			</div>
+			{#if anyContainerHasVex}
+				<label
+					class="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none"
+				>
+					<Checkbox
+						checked={hideVexResolved}
+						onCheckedChange={(v) => {
+							hideVexResolved = v === true;
+						}}
+					/>
+					Hide VEX Resolved
+					<Tooltip.Root>
+						<Tooltip.Trigger class="cursor-default">
+							<span class="text-muted-foreground/60 text-xs">ⓘ</span>
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							Hide vulnerabilities where the supplier has declared them
+							"not affected" or "fixed" via VEX attestations.
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</label>
+			{/if}
 		</Card.Header>
 		<Card.Content>
 			{#if data.apiError}
@@ -526,6 +572,21 @@
 													>
 														EOL OS
 													</Badge>
+												{/if}
+												{#if container.has_vex}
+													<Tooltip.Root>
+														<Tooltip.Trigger class="cursor-default">
+															<Badge
+																variant="outline"
+																class="bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800"
+															>
+																VEX
+															</Badge>
+														</Tooltip.Trigger>
+														<Tooltip.Content>
+															This image includes VEX attestations from the supplier.
+														</Tooltip.Content>
+													</Tooltip.Root>
 												{/if}
 											</div>
 											<div
@@ -695,11 +756,16 @@
 																<col
 																	style="width:4%"
 																/>
+																{#if hasVexData(container.image_name)}
+																	<col
+																		style="width:4%"
+																	/>
+																{/if}
 																<col
 																	style="width:10%"
 																/>
 																<col
-																	style="width:26%"
+																	style="width:{hasVexData(container.image_name) ? '22' : '26'}%"
 																/>
 															</colgroup>
 															<Table.Header>
@@ -940,6 +1006,20 @@
 																			</Tooltip.Content>
 																		</Tooltip.Root>
 																	</Table.Head>
+																	{#if hasVexData(container.image_name)}
+																		<Table.Head
+																			class="text-center"
+																		>
+																			<Tooltip.Root>
+																				<Tooltip.Trigger>
+																					<span class="text-xs font-medium">VEX</span>
+																				</Tooltip.Trigger>
+																				<Tooltip.Content>
+																					Vulnerability Exploitability eXchange — supplier assessment.
+																				</Tooltip.Content>
+																			</Tooltip.Root>
+																		</Table.Head>
+																	{/if}
 																	<Table.Head
 																		class="text-center"
 																	>
@@ -1103,6 +1183,13 @@
 																		<KevCell
 																			isKev={vuln.is_kev}
 																		/>
+																		{#if hasVexData(container.image_name)}
+																			<VexStatusCell
+																				vexStatus={vuln.vex_status}
+																				vexJustification={vuln.vex_justification}
+																				vexStatement={vuln.vex_statement}
+																			/>
+																		{/if}
 																		<Table.Cell
 																			class="text-center"
 																		>

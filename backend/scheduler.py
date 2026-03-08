@@ -12,6 +12,7 @@ from .database import Database
 from .docker_watcher import DockerWatcher
 from .grype_scanner import GrypeScanner
 from .models import AppState, Scan, SystemTask, Vulnerability
+from .vex_discovery import check_vex_for_image
 
 
 logger = logging.getLogger(__name__)
@@ -439,6 +440,8 @@ class ContainerScheduler:
     def _scan_image_sync(self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None) -> None:
         try:
             GrypeScanner(watcher=None, database=self.db).scan_image(image_name, grype_ref, container_name)
+            # Check for VEX attestations after a successful scan
+            self._check_vex_for_latest_scan(image_name)
             if task_id:
                 with Session(self.db.engine) as session:
                     task = session.get(SystemTask, task_id)
@@ -459,3 +462,75 @@ class ContainerScheduler:
                         task.error_message = str(e)
                         session.add(task)
                         session.commit()
+
+    def _resolve_repo_digest(self, image_name: str, config_digest: str) -> str:
+        """Resolve the OCI manifest digest for an image from Docker's repo digests.
+
+        Docker's image ID is the config digest, but VEX attestations are attached
+        to the manifest digest.  We inspect Docker to find the repo digest that
+        matches ``image_name``.  Falls back to ``config_digest`` if unavailable.
+        """
+        try:
+            watcher = DockerWatcher()
+            if not watcher.client:
+                return config_digest
+            image = watcher.client.images.get(image_name)
+            for rd in image.attrs.get("RepoDigests", []):
+                # Format: "registry/repo@sha256:..."
+                if rd.startswith(image_name.split(":")[0]):
+                    return rd.split("@", 1)[1]
+            # If no match by name prefix, return first available
+            if image.attrs.get("RepoDigests"):
+                return image.attrs["RepoDigests"][0].split("@", 1)[1]
+        except Exception as e:
+            logger.debug("Could not resolve repo digest for %s: %s", image_name, e)
+        return config_digest
+
+    def _check_vex_for_latest_scan(self, image_name: str) -> None:
+        """Check for VEX attestations and apply to the latest scan's vulnerabilities."""
+        try:
+            with Session(self.db.engine) as session:
+                scan = session.exec(
+                    select(Scan).where(Scan.image_name == image_name).order_by(Scan.scanned_at.desc())
+                ).first()
+                if not scan:
+                    return
+
+                # Use the OCI manifest digest (not Docker's config digest) for
+                # the referrers API query, since VEX attestations are attached
+                # to the manifest.
+                digest = self._resolve_repo_digest(image_name, scan.image_digest)
+                vex_result = check_vex_for_image(image_name, digest)
+                now = datetime.now(timezone.utc)
+
+                if vex_result.error:
+                    scan.vex_status = "error"
+                    scan.vex_checked_at = now
+                    logger.warning("VEX check error for %s: %s", image_name, vex_result.error)
+                elif vex_result.found:
+                    scan.vex_status = "found"
+                    scan.vex_source = vex_result.source
+                    scan.vex_checked_at = now
+                    # Apply VEX statements to matching vulnerabilities
+                    vulns = session.exec(
+                        select(Vulnerability).where(Vulnerability.scan_id == scan.id)
+                    ).all()
+                    stmt_map = {s.vuln_id: s for s in vex_result.statements}
+                    matched = 0
+                    for v in vulns:
+                        vex_stmt = stmt_map.get(v.vuln_id)
+                        if vex_stmt:
+                            v.vex_status = vex_stmt.status
+                            v.vex_justification = vex_stmt.justification
+                            v.vex_statement = vex_stmt.notes
+                            session.add(v)
+                            matched += 1
+                    logger.info("VEX found for %s: %d statements, %d matched vulns", image_name, len(vex_result.statements), matched)
+                else:
+                    scan.vex_status = "none"
+                    scan.vex_checked_at = now
+
+                session.add(scan)
+                session.commit()
+        except Exception:
+            logger.exception("Error checking VEX for %s", image_name)

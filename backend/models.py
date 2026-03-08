@@ -15,6 +15,9 @@ class Scan(SQLModel, table=True):
     distro_version: Optional[str] = None
     is_distro_eol: bool = Field(default=False)
     container_name: Optional[str] = None
+    vex_status: Optional[str] = None  # "found", "none", "error", "unchecked"
+    vex_source: Optional[str] = None
+    vex_checked_at: Optional[datetime] = None
 
     vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
 
@@ -45,6 +48,9 @@ class Vulnerability(SQLModel, table=True):
     purl: Optional[str] = None
     locations: Optional[str] = None  # newline-separated file paths
     first_seen_at: Optional[datetime] = None
+    vex_status: Optional[str] = None        # "not_affected", "affected", "fixed", "under_investigation"
+    vex_justification: Optional[str] = None
+    vex_statement: Optional[str] = None
 
     scan: Optional[Scan] = Relationship(back_populates="vulnerabilities")
 
