@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest", "httpx"]
+dev = ["pytest", "httpx", "pytest-cov"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
@@ -22,3 +22,10 @@ addopts = "-m 'not e2e'"
 markers = [
     "e2e: end-to-end tests requiring a live Docker daemon and grype on PATH",
 ]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/tests/*", "backend/migrations/*"]
+
+[tool.coverage.report]
+show_missing = true

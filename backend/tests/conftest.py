@@ -71,11 +71,14 @@ def api_client(test_db):
                             with patch("backend.routers.settings.db", test_db):
                                 with patch("backend.routers.internal.db", test_db):
                                     with patch("backend.routers.containers.DockerWatcher") as cw, \
-                                         patch("backend.routers.vulnerabilities.DockerWatcher") as vw:
+                                         patch("backend.routers.vulnerabilities.DockerWatcher") as vw, \
+                                         patch("backend.jobs.containers.DockerWatcher") as jw:
                                         cw.return_value.list_images.return_value = []
                                         cw.return_value.list_running_containers.return_value = []
                                         vw.return_value.list_images.return_value = []
                                         vw.return_value.list_running_containers.return_value = []
+                                        jw.return_value.list_images.return_value = []
+                                        jw.return_value.list_running_containers.return_value = []
                                         with TestClient(app, raise_server_exceptions=True) as client:
                                             # tests expect the mock instance
                                             yield client, test_db, (cw, vw)

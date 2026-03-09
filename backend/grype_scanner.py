@@ -45,7 +45,10 @@ class GrypeScanner:
             return
 
         for image in images:
-            self.scan_image(image["name"], image["grype_ref"])
+            try:
+                self.scan_image(image["name"], image["grype_ref"])
+            except Exception:
+                logger.exception("Failed to scan image %s", image["name"])
 
     async def scan_image_async(self, image_name: str, grype_ref: str, semaphore: asyncio.Semaphore, container_name: str | None = None, task_id: int | None = None) -> None:
         """Run a Grype scan asynchronously to avoid blocking the event loop."""
