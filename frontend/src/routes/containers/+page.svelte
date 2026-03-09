@@ -1354,7 +1354,7 @@
 												{/if}
 												{#snippet failed(error, reset)}
 													<div class="flex flex-col items-start gap-3 px-6 py-4">
-														<p class="text-sm font-medium text-destructive">Error rendering vulnerabilities: {error.message}</p>
+														<p class="text-sm font-medium text-destructive">Error rendering vulnerabilities: {error instanceof Error ? error.message : String(error)}</p>
 														<button class="text-xs underline text-muted-foreground" onclick={reset}>Try again</button>
 													</div>
 												{/snippet}

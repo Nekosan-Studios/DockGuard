@@ -15,7 +15,7 @@ build/
 
 # Database
 *.db
-data/
+/data/
 !data/.gitkeep
 
 # Environment variables
