@@ -1,6 +1,13 @@
+import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/svelte';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import VexStatusCell from './VexStatusCell.svelte';
+
+globalThis.ResizeObserver = class ResizeObserver {
+    observe() { }
+    unobserve() { }
+    disconnect() { }
+};
 
 describe('VexStatusCell', () => {
     it('renders a dash for null/unknown statuses', () => {
