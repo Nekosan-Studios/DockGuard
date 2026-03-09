@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 
-import pytest
 from sqlmodel import Session, select
 
 from backend.models import Scan, Vulnerability

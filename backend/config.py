@@ -1,6 +1,6 @@
 import os
 from typing import Any, Dict
-from sqlmodel import Session, select
+from sqlmodel import Session
 from backend.models import Setting
 
 class ConfigManager:

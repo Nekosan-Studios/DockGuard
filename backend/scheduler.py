@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import subprocess
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler

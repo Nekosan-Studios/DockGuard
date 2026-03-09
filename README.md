@@ -38,7 +38,7 @@ cd frontend && npm ci   # install frontend dependencies
 
 ### Backend (dev mode)
 ```bash
-uv run uvicorn backend.api:app --reload --port 8765
+uv run uvicorn backend.main:app --reload --port 8765
 ```
 
 ### Frontend (dev mode)

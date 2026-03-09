@@ -1,7 +1,3 @@
-import pytest
-from sqlmodel import Session
-from backend.models import Setting
-from backend.config import ConfigManager
 
 def test_patch_settings(api_client):
     client, test_db, _ = api_client

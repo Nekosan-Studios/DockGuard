@@ -1,15 +1,13 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from subprocess import CompletedProcess
 from unittest.mock import MagicMock, patch
 
-import pytest
 from sqlmodel import Session, select
 
 from backend.grype_scanner import GrypeScanner
 from backend.models import Scan, Vulnerability
-from backend.tests.conftest import seed_scan
-from backend.tests.fixtures import GRYPE_JSON_NGINX, GRYPE_JSON_REDIS, MOCK_DOCKER_IMAGES
+from backend.tests.fixtures import GRYPE_JSON_NGINX, MOCK_DOCKER_IMAGES
 
 
 def _make_scanner(test_db, images=None):

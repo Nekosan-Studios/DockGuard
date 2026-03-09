@@ -5,7 +5,7 @@ from sqlmodel import SQLModel
 
 from alembic import context
 import backend.database as _db
-from backend.models import Scan, Vulnerability  # noqa: F401 — registers models with SQLModel.metadata
+from backend.models import Scan, Vulnerability, AppState, Setting, SystemTask  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", f"sqlite:///{_db.DATABASE_PATH}")

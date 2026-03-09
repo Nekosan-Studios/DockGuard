@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 from backend.tests.conftest import (
     VULN_CRITICAL,
@@ -90,9 +89,9 @@ def test_get_critical_vulnerabilities_not_found(api_client):
 # ---------------------------------------------------------------------------
 
 def test_get_critical_running_with_running_containers(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL_2, VULN_CRITICAL_2])
-    mock_watcher_cls.return_value.list_running_containers.return_value = [
+    mock_vw.return_value.list_running_containers.return_value = [
         _make_running_container("my-redis", "redis:7", "sha256:cccc"),
     ]
 
@@ -104,9 +103,9 @@ def test_get_critical_running_with_running_containers(api_client):
 
 
 def test_get_critical_running_no_running_containers(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
-    mock_watcher_cls.return_value.list_running_containers.return_value = []
+    mock_vw.return_value.list_running_containers.return_value = []
 
     response = client.get("/vulnerabilities/critical/running")
     data = response.json()
@@ -115,9 +114,9 @@ def test_get_critical_running_no_running_containers(api_client):
 
 
 def test_get_critical_running_no_scan_for_running_image(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     # running container exists in Docker but has no scan in DB
-    mock_watcher_cls.return_value.list_running_containers.return_value = [
+    mock_vw.return_value.list_running_containers.return_value = [
         _make_running_container("my-alpine", "alpine:latest", "sha256:dddd"),
     ]
 
@@ -233,9 +232,9 @@ def test_get_history_not_found(api_client):
 # ---------------------------------------------------------------------------
 
 def test_get_running_containers_no_running(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
-    mock_watcher_cls.return_value.list_running_containers.return_value = []
+    mock_cw.return_value.list_running_containers.return_value = []
 
     response = client.get("/containers/running")
     assert response.status_code == 200
@@ -243,9 +242,9 @@ def test_get_running_containers_no_running(api_client):
 
 
 def test_get_running_containers_with_scan(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM])
-    mock_watcher_cls.return_value.list_running_containers.return_value = [
+    mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
     ]
 
@@ -265,8 +264,8 @@ def test_get_running_containers_with_scan(api_client):
 
 
 def test_get_running_containers_no_scan_for_image(api_client):
-    client, test_db, mock_watcher_cls = api_client
-    mock_watcher_cls.return_value.list_running_containers.return_value = [
+    client, test_db, (mock_cw, mock_vw) = api_client
+    mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-alpine", "alpine:latest", "sha256:dddd"),
     ]
 
@@ -284,10 +283,10 @@ def test_get_running_containers_no_scan_for_image(api_client):
 
 
 def test_get_running_containers_multiple_mixed(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
     seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL_2, VULN_CRITICAL])
-    mock_watcher_cls.return_value.list_running_containers.return_value = [
+    mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
         _make_running_container("my-redis", "redis:7", "sha256:cccc"),
         _make_running_container("my-alpine", "alpine:latest", "sha256:dddd"),
@@ -307,12 +306,12 @@ def test_get_running_containers_multiple_mixed(api_client):
 
 
 def test_get_running_containers_uses_latest_scan(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     t1 = datetime.now(timezone.utc) - timedelta(hours=1)
     t2 = datetime.now(timezone.utc)
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM], scanned_at=t1)
     seed_scan(test_db, "nginx:latest", "sha256:bbbb", [VULN_CRITICAL], scanned_at=t2)
-    mock_watcher_cls.return_value.list_running_containers.return_value = [
+    mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:bbbb"),
     ]
 
@@ -326,14 +325,14 @@ def test_get_running_containers_uses_latest_scan(api_client):
 # ---------------------------------------------------------------------------
 
 def test_get_vulnerabilities_across_running_returns_total_instances_and_unique_count(api_client):
-    client, test_db, mock_watcher_cls = api_client
+    client, test_db, (mock_cw, mock_vw) = api_client
     
     # Same CVE (VULN_CRITICAL) mapped to two different images.
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
     seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL])
     
     # 3 total instances of the same CVE across 2 images.
-    mock_watcher_cls.return_value.list_running_containers.return_value = [
+    mock_vw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx-1", "nginx:latest", "sha256:aaaa"),
         _make_running_container("my-nginx-2", "nginx:latest", "sha256:aaaa"),
         _make_running_container("my-redis", "redis:7", "sha256:cccc"),
