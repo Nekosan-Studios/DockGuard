@@ -18,7 +18,11 @@
     {#if score != null}
         <Tooltip.Root>
             <Tooltip.Trigger class="cursor-default">
-                {(score * 100).toFixed(2)}%
+                {#if score * 100 >= 1 && score * 100 < 99.5}
+                    {Math.round(score * 100)}%
+                {:else}
+                    {(score * 100).toFixed(2)}%
+                {/if}
             </Tooltip.Trigger>
             <Tooltip.Content>
                 <p>{epssTooltip(score)}</p>

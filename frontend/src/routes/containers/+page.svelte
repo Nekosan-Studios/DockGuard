@@ -20,7 +20,8 @@
 	import KevCell from "$lib/components/vuln/KevCell.svelte";
 	import VexStatusCell from "$lib/components/vuln/VexStatusCell.svelte";
 	import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
-	import { SEVERITY_CLASSES, toUtcDate } from "$lib/components/vuln/utils.js";
+	import { SEVERITY_CLASSES, cvssClass, toUtcDate } from "$lib/components/vuln/utils.js";
+	import * as Popover from "$lib/components/ui/popover/index.js";
 	import { Checkbox } from "$lib/components/ui/checkbox/index.js";
 
 	let { data }: { data: PageData } = $props();
@@ -29,6 +30,16 @@
 	let anyContainerHasVex = $derived(
 		data.containers.some((c: { has_vex?: boolean }) => c.has_vex),
 	);
+
+	interface PackageInfo {
+		package_name: string;
+		installed_version: string;
+		fixed_version: string | null;
+		package_type: string | null;
+		locations: string | null;
+		severity: string;
+		cvss_base_score: number | null;
+	}
 
 	interface Vulnerability {
 		id: number;
@@ -49,6 +60,7 @@
 		vex_status: string | null;
 		vex_justification: string | null;
 		vex_statement: string | null;
+		packages: PackageInfo[];
 	}
 
 	const SEVERITY_ORDER = [
@@ -412,11 +424,6 @@
 		return vulns.some((v) => v.vex_status);
 	}
 
-	function truncate(text: string | null, max = 120): string {
-		if (!text) return "";
-		return text.length > max ? text.slice(0, max) + "…" : text;
-	}
-
 	function isNew(
 		vuln: Vulnerability,
 		scannedAt: string | undefined,
@@ -731,11 +738,11 @@
 														class="overflow-x-auto"
 													>
 														<Table.Root
-															class="w-full table-fixed text-xs"
+															class="w-full min-w-[1000px] table-fixed text-xs"
 														>
 															<colgroup>
 																<col
-																	style="width:14%"
+																	style="width:13%"
 																/>
 																<col
 																	style="width:7%"
@@ -767,7 +774,7 @@
 																	style="width:10%"
 																/>
 																<col
-																	style="width:{hasVexData(container.image_name) ? '22' : '26'}%"
+																	style="width:{hasVexData(container.image_name) ? '23' : '27'}%"
 																/>
 															</colgroup>
 															<Table.Header>
@@ -1049,7 +1056,9 @@
 																</Table.Row>
 															</Table.Header>
 															<Table.Body>
-																{#each vulns as vuln (vuln.id)}
+																{#each vulns as vuln (vuln.vuln_id)}
+																	{@const rep = vuln.packages?.[0] ?? vuln}
+																	{@const extraPkgs = (vuln.packages?.length ?? 1) - 1}
 																	<Table.Row
 																		class="hover:bg-muted/30"
 																	>
@@ -1076,6 +1085,7 @@
 																					) =>
 																						e.stopPropagation()}
 																					class="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+																					title={vuln.vuln_id}
 																				>
 																					{vuln.vuln_id}
 																					<ExternalLink
@@ -1090,83 +1100,190 @@
 																		<Table.Cell
 																			class="font-mono"
 																		>
-																			<Tooltip.Root
+																			<div
+																				class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
 																			>
-																				<Tooltip.Trigger
-																					class="cursor-default text-left"
+																				<Tooltip.Root
 																				>
-																					<div
-																						class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
+																					<Tooltip.Trigger
+																						class="cursor-default text-left"
 																					>
-																						<span
-																							>{vuln.package_name}</span
+																						<div
+																							class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
 																						>
-																						{#if vuln.package_type}
 																							<span
-																								class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+																								>{rep.package_name}</span
 																							>
-																								{vuln.package_type}
-																							</span>
-																						{/if}
-																					</div>
-																				</Tooltip.Trigger>
-																				<Tooltip.Content
-																					class="max-w-sm"
-																				>
-																					{@const paths =
-																						vuln.locations
-																							? vuln.locations.split(
-																									"\n",
-																								)
-																							: []}
-																					<p
-																						class="mb-1 font-semibold"
-																					>
-																						{paths.length ===
-																						1
-																							? "Location:"
-																							: "Locations:"}
-																					</p>
-																					{#if paths.length > 0}
-																						<ul
-																							class="space-y-0.5"
-																						>
-																							{#each paths as path (path)}
-																								<li
-																									class="flex items-start gap-1 font-mono text-xs"
+																							{#if rep.package_type}
+																								<span
+																									class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
 																								>
-																									<span
-																										class="shrink-0"
-																										>•</span
-																									>
-																									<span
-																										class="break-all"
-																										>{path}</span
-																									>
-																								</li>
-																							{/each}
-																						</ul>
-																					{:else}
+																									{rep.package_type}
+																								</span>
+																							{/if}
+																						</div>
+																					</Tooltip.Trigger>
+																					<Tooltip.Content
+																						class="max-w-sm"
+																					>
+																						{@const paths =
+																							rep.locations
+																								? rep.locations.split(
+																										"\n",
+																									)
+																								: []}
 																						<p
-																							class="text-xs text-muted-foreground"
+																							class="mb-1 font-semibold"
 																						>
-																							No
-																							locations
-																							noted.
+																							{rep.package_name}
+																							{paths.length ===
+																							1
+																								? "Location:"
+																								: "Locations:"}
 																						</p>
-																					{/if}
-																				</Tooltip.Content>
-																			</Tooltip.Root>
+																						{#if paths.length > 0}
+																							<ul
+																								class="space-y-0.5"
+																							>
+																								{#each paths as path (path)}
+																									<li
+																										class="flex items-start gap-1 font-mono text-xs"
+																									>
+																										<span
+																											class="shrink-0"
+																											>•</span
+																										>
+																										<span
+																											class="break-all"
+																											>{path}</span
+																										>
+																									</li>
+																								{/each}
+																							</ul>
+																						{:else}
+																							<p
+																								class="text-xs text-muted-foreground"
+																							>
+																								No
+																								locations
+																								noted.
+																							</p>
+																						{/if}
+																					</Tooltip.Content>
+																				</Tooltip.Root>
+																				{#if extraPkgs > 0}
+																					<Popover.Root>
+																						<Popover.Trigger>
+																							<span
+																								class="inline-flex cursor-pointer items-center rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-sans text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+																							>
+																								+{extraPkgs} more
+																							</span>
+																						</Popover.Trigger>
+																						<Popover.Content
+																							class="w-80 p-0"
+																							align="start"
+																						>
+																							<div
+																								class="px-3 py-2 border-b border-border"
+																							>
+																								<p
+																									class="text-xs font-semibold"
+																								>
+																									All Affected
+																									Packages ({vuln
+																										.packages
+																										.length})
+																								</p>
+																							</div>
+																							<div
+																								class="max-h-48 overflow-y-auto divide-y divide-border"
+																							>
+																								{#each vuln.packages as pkg}
+																									<div
+																										class="px-3 py-2 text-xs"
+																									>
+																										<div
+																											class="flex items-center justify-between gap-1.5"
+																										>
+																											<div
+																												class="flex items-baseline gap-1.5"
+																											>
+																												<span
+																													class="font-mono font-medium"
+																													>{pkg.package_name}</span
+																												>
+																												{#if pkg.package_type}
+																													<span
+																														class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+																													>
+																														{pkg.package_type}
+																													</span>
+																												{/if}
+																											</div>
+																											<div
+																												class="flex items-center gap-1.5 shrink-0"
+																											>
+																												<span
+																													class="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium {SEVERITY_CLASSES[
+																														pkg.severity
+																													] ??
+																														SEVERITY_CLASSES[
+																															'Unknown'
+																														]}"
+																												>
+																													{pkg.severity}
+																												</span>
+																												{#if pkg.cvss_base_score != null}
+																													<span
+																														class="font-mono text-[10px] {cvssClass(
+																															pkg.cvss_base_score,
+																														)}"
+																													>
+																														{pkg.cvss_base_score.toFixed(
+																															1,
+																														)}
+																													</span>
+																												{/if}
+																											</div>
+																										</div>
+																										<div
+																											class="mt-0.5 flex gap-3 text-muted-foreground font-mono"
+																										>
+																											<span
+																												>{pkg.installed_version}</span
+																											>
+																											<span
+																												>→</span
+																											>
+																											<span
+																												class={pkg.fixed_version
+																													? "text-foreground"
+																													: ""}
+																											>
+																												{pkg.fixed_version ??
+																													"No fix"}
+																											</span>
+																										</div>
+																									</div>
+																								{/each}
+																							</div>
+																						</Popover.Content>
+																					</Popover.Root>
+																				{/if}
+																			</div>
 																		</Table.Cell>
 																		<Table.Cell
 																			class="text-center font-mono text-muted-foreground"
-																			>{vuln.installed_version}</Table.Cell
+																			title={rep.installed_version}
+																			>{rep.installed_version}</Table.Cell
 																		>
 																		<Table.Cell
 																			class="text-center font-mono"
+																			title={rep.fixed_version ?? undefined}
 																		>
-																			{#if vuln.fixed_version}
-																				{vuln.fixed_version}
+																			{#if rep.fixed_version}
+																				{rep.fixed_version}
 																			{:else}
 																				<span
 																					class="text-muted-foreground"
@@ -1219,15 +1336,14 @@
 																			{/if}
 																		</Table.Cell>
 																		<Table.Cell
-																			class="text-muted-foreground pr-6"
+																			class="text-muted-foreground pr-6 whitespace-normal"
 																		>
 																			<span
+																				class="line-clamp-3"
 																				title={vuln.description ??
 																					undefined}
 																			>
-																				{truncate(
-																					vuln.description,
-																				)}
+																				{vuln.description ?? ""}
 																			</span>
 																		</Table.Cell>
 																	</Table.Row>

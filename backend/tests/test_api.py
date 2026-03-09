@@ -286,7 +286,7 @@ def test_get_running_containers_no_scan_for_image(api_client):
 def test_get_running_containers_multiple_mixed(api_client):
     client, test_db, mock_watcher_cls = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
-    seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL_2, VULN_CRITICAL_2])
+    seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL_2, VULN_CRITICAL])
     mock_watcher_cls.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
         _make_running_container("my-redis", "redis:7", "sha256:cccc"),

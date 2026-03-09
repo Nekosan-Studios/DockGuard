@@ -22,7 +22,7 @@ from .config import ConfigManager
 
 logger = logging.getLogger(__name__)
 
-_DESC_LIMIT = 250
+_DESC_LIMIT = 1000
 _LOC_LIMIT = 5
 
 # Allowed values for the sort_by query parameter across vulnerability endpoints.
@@ -236,37 +236,87 @@ def get_vulnerabilities(
     if severity:
         q = q.where(Vulnerability.severity == severity)
 
-    # Apply server-side ORDER BY where SQL can handle it efficiently.
-    # Severity uses a Python sort below since SQL doesn't know our severity order.
-    desc = sort_dir == "desc"
-    if sort_by == "cvss_base_score":
-        q = q.order_by(Vulnerability.cvss_base_score.desc() if desc else Vulnerability.cvss_base_score.asc(),
-                       Vulnerability.id.asc())
-    elif sort_by == "epss_score":
-        q = q.order_by(Vulnerability.epss_score.desc() if desc else Vulnerability.epss_score.asc(),
-                       Vulnerability.id.asc())
-    elif sort_by == "is_kev":
-        q = q.order_by(Vulnerability.is_kev.desc() if desc else Vulnerability.is_kev.asc(),
-                       Vulnerability.id.asc())
-    elif sort_by == "first_seen_at":
-        q = q.order_by(Vulnerability.first_seen_at.desc() if desc else Vulnerability.first_seen_at.asc(),
-                       Vulnerability.id.asc())
-    elif sort_by == "vuln_id":
-        q = q.order_by(Vulnerability.vuln_id.desc() if desc else Vulnerability.vuln_id.asc())
-    elif sort_by == "package_name":
-        q = q.order_by(Vulnerability.package_name.desc() if desc else Vulnerability.package_name.asc())
-    # severity: fetch all and sort in Python (non-lexicographic order)
-
     vulns = session.exec(q).all()
 
-    # For severity sort, apply Python ordering after fetch.
-    if sort_by == "severity":
-        m = -1 if desc else 1
-        vulns = sorted(vulns, key=lambda v: (m * _severity_rank(v.severity), -(v.cvss_base_score or 0)))
+    # Group by vuln_id — same pattern as the cross-container vulnerability report.
+    grouped_vulns: dict[str, dict] = {}
+    for v in vulns:
+        key = v.vuln_id
+        pkg_entry = {
+            "package_name": v.package_name,
+            "installed_version": v.installed_version,
+            "fixed_version": v.fixed_version,
+            "package_type": v.package_type,
+            "locations": v.locations,
+            "severity": v.severity,
+            "cvss_base_score": v.cvss_base_score,
+        }
+        if key not in grouped_vulns:
+            vd = _serialise_vuln(v)
+            vd["packages"] = [pkg_entry]
+            grouped_vulns[key] = vd
+        else:
+            gv = grouped_vulns[key]
+            pkg_key = (v.package_name, v.installed_version)
+            if not any((p["package_name"], p["installed_version"]) == pkg_key for p in gv["packages"]):
+                gv["packages"].append(pkg_entry)
+            if _severity_rank(v.severity) < _severity_rank(gv.get("severity", "Unknown")):
+                gv["severity"] = v.severity
+            v_cvss = v.cvss_base_score or 0
+            if v_cvss > (gv.get("cvss_base_score") or 0):
+                gv["cvss_base_score"] = v.cvss_base_score
 
-    total_count = len(vulns)
-    page_vulns = vulns[offset: offset + limit]
-    serialised = [_serialise_vuln(v) for v in page_vulns]
+    # Sort packages within each group: worst severity, highest CVSS, alphabetical.
+    for vd in grouped_vulns.values():
+        vd["packages"].sort(key=lambda p: (
+            _severity_rank(p.get("severity", "Unknown")),
+            -(p.get("cvss_base_score") or 0),
+            p.get("package_name", ""),
+        ))
+        rep = vd["packages"][0]
+        vd["package_name"] = rep["package_name"]
+        vd["installed_version"] = rep["installed_version"]
+        vd["fixed_version"] = rep["fixed_version"]
+        vd["package_type"] = rep["package_type"]
+        vd["locations"] = rep["locations"]
+
+    # Sort grouped results in Python (all columns, consistent with vuln report).
+    desc = sort_dir == "desc"
+
+    def _image_sort_key(vd: dict):
+        if sort_by == "severity":
+            rank = _severity_rank(vd.get("severity", "Unknown"))
+            cvss = vd.get("cvss_base_score") or 0
+            return (rank if not desc else -rank, -cvss)
+        if sort_by == "cvss_base_score":
+            score = vd.get("cvss_base_score")
+            null_last = 1 if score is None else 0
+            val = -(score or 0) if not desc else (score or 0)
+            return (null_last, val)
+        if sort_by == "epss_score":
+            score = vd.get("epss_score")
+            null_last = 1 if score is None else 0
+            val = -(score or 0) if not desc else (score or 0)
+            return (null_last, val)
+        if sort_by == "is_kev":
+            kev_val = 0 if vd.get("is_kev") else 1
+            return (kev_val if not desc else -kev_val, 0)
+        if sort_by == "first_seen_at":
+            ts_raw = vd.get("first_seen_at")
+            ts = ts_raw.isoformat() if hasattr(ts_raw, "isoformat") else (ts_raw or "")
+            null_last = 1 if not ts else 0
+            return (null_last, ts if not desc else ("" if not ts else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in ts[:20])))
+        if sort_by == "vuln_id":
+            s = vd.get("vuln_id", "")
+            return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
+        if sort_by == "package_name":
+            s = vd.get("package_name", "")
+            return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
+        return 0
+
+    all_vulns = sorted(grouped_vulns.values(), key=_image_sort_key)
+    total_count = len(all_vulns)
+    page_vulns = all_vulns[offset: offset + limit]
     has_more = (offset + limit) < total_count
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -274,7 +324,7 @@ def get_vulnerabilities(
         "GET /images/vulnerabilities image_ref=%s severity=%s sort=%s%s offset=%d limit=%d "
         "total=%d page=%d db_ms=%.1f",
         image_ref, severity, sort_by, f":{sort_dir}", offset, limit,
-        total_count, len(serialised), elapsed_ms,
+        total_count, len(page_vulns), elapsed_ms,
     )
     return {
         "scan_id": scan.id,
@@ -283,9 +333,9 @@ def get_vulnerabilities(
         "distro_display": f"{scan.distro_name} {scan.distro_version}" if scan.distro_name and scan.distro_version else scan.distro_name,
         "has_vex": scan.vex_status == "found",
         "total_count": total_count,
-        "count": len(serialised),
+        "count": len(page_vulns),
         "has_more": has_more,
-        "vulnerabilities": serialised,
+        "vulnerabilities": page_vulns,
     }
 
 
@@ -605,12 +655,18 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     scan_ids = [s.id for s in scans_by_image.values()]
     severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
     if scan_ids:
-        for scan_id, severity, cnt in session.exec(
-            select(Vulnerability.scan_id, Vulnerability.severity, func.count(Vulnerability.id))
+        # Count unique CVEs per severity bucket, using each CVE's worst severity.
+        rows = session.exec(
+            select(Vulnerability.scan_id, Vulnerability.vuln_id, Vulnerability.severity)
             .where(Vulnerability.scan_id.in_(scan_ids))
-            .group_by(Vulnerability.scan_id, Vulnerability.severity)
-        ).all():
-            severity_by_scan[scan_id][severity] = cnt
+        ).all()
+        best_severity: dict[tuple, str] = {}
+        for scan_id, vuln_id, severity in rows:
+            key = (scan_id, vuln_id)
+            if key not in best_severity or _severity_rank(severity) < _severity_rank(best_severity[key]):
+                best_severity[key] = severity
+        for (scan_id, _vuln_id), severity in best_severity.items():
+            severity_by_scan[scan_id][severity] = severity_by_scan[scan_id].get(severity, 0) + 1
 
     containers = []
     for img in running:
@@ -732,10 +788,14 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         db_built = db_built or (_as_utc(latest_scan.db_built) if latest_scan else None)
 
     cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-    new_vulns_24h = session.exec(
-        select(func.count(Vulnerability.id))
-        .where(Vulnerability.first_seen_at >= cutoff_24h)
-    ).one()
+    if running_images:
+        new_vulns_24h = session.exec(
+            select(func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id.in_(latest_scan_id_subq))
+            .where(Vulnerability.first_seen_at >= cutoff_24h)
+        ).one()
+    else:
+        new_vulns_24h = 0
 
     active_tasks = session.exec(
         select(func.count(SystemTask.id))

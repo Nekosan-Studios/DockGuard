@@ -1,4 +1,10 @@
+import os
 import shutil
+
+# Point the test database to the tests/data directory before any backend
+# modules are imported. DATABASE_PATH is read at module-load time in
+# backend/database.py, so this must come first.
+os.environ.setdefault("DATABASE_PATH", "backend/tests/data/test.db")
 
 import pytest
 
@@ -51,13 +57,18 @@ def test_db():
 def api_client(test_db):
     app.dependency_overrides[production_db.get_session] = test_db.get_session
 
+    # Patch init on both the production db and test_db: the lifespan calls
+    # db.init() where db has been replaced by test_db, and test_db.init()
+    # would invoke Alembic against the real DATABASE_PATH. Tables are already
+    # created by SQLModel.metadata.create_all in the test_db fixture.
     with patch.object(production_db, "init"):
-        with patch("backend.api.db", test_db):
-            with patch("backend.api.DockerWatcher") as mock_watcher_cls:
-                mock_watcher_cls.return_value.list_images.return_value = []
-                mock_watcher_cls.return_value.list_running_containers.return_value = []
-                with TestClient(app, raise_server_exceptions=True) as client:
-                    yield client, test_db, mock_watcher_cls
+        with patch.object(test_db, "init"):
+            with patch("backend.api.db", test_db):
+                with patch("backend.api.DockerWatcher") as mock_watcher_cls:
+                    mock_watcher_cls.return_value.list_images.return_value = []
+                    mock_watcher_cls.return_value.list_running_containers.return_value = []
+                    with TestClient(app, raise_server_exceptions=True) as client:
+                        yield client, test_db, mock_watcher_cls
 
     app.dependency_overrides.clear()
 

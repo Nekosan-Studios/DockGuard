@@ -237,11 +237,6 @@
         return toUtcDate(iso).toLocaleString();
     }
 
-    function truncate(text: string | null, max = 120): string {
-        if (!text) return "";
-        return text.length > max ? text.slice(0, max) + "…" : text;
-    }
-
     function isNew(firstSeenAt: string | null): boolean {
         if (!firstSeenAt) return false;
         const date = toUtcDate(firstSeenAt);
@@ -374,10 +369,10 @@
                 </div>
             {:else}
                 <div class="overflow-x-auto rounded-md border">
-                    <Table.Root class="w-full table-fixed text-xs">
+                    <Table.Root class="w-full min-w-[1100px] table-fixed text-xs">
                         <colgroup>
-                            <col style="width:14%" />
-                            <col style="width:15%" />
+                            <col style="width:13%" />
+                            <col style="width:10%" />
                             <col style="width:7%" />
                             <col style="width:10%" />
                             <col style="width:7%" />
@@ -386,8 +381,8 @@
                             <col style="width:5%" />
                             <col style="width:4%" />
                             {#if hasAnyVex}<col style="width:4%" />{/if}
-                            <col style="width:8%" />
-                            <col style="width:{hasAnyVex ? '14' : '18'}%" />
+                            <col style="width:10%" />
+                            <col style="width:{hasAnyVex ? '18' : '22'}%" />
                         </colgroup>
                         <Table.Header>
                             <Table.Row class="bg-muted/50">
@@ -553,6 +548,7 @@
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 class="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+                                                title={vuln.vuln_id}
                                             >
                                                 {vuln.vuln_id}
                                                 <ExternalLink
@@ -633,9 +629,10 @@
                                                     <p
                                                         class="mb-1 font-semibold"
                                                     >
+                                                        {rep.package_name}
                                                         {paths.length === 1
                                                             ? "Location:"
-                                                            : "Locations (Sample):"}
+                                                            : "Locations:"}
                                                     </p>
                                                     {#if paths.length > 0}
                                                         <ul class="space-y-0.5">
@@ -768,9 +765,13 @@
                                     </Table.Cell>
                                     <Table.Cell
                                         class="text-center font-mono text-muted-foreground"
+                                        title={rep.installed_version}
                                         >{rep.installed_version}</Table.Cell
                                     >
-                                    <Table.Cell class="text-center font-mono">
+                                    <Table.Cell
+                                        class="text-center font-mono"
+                                        title={rep.fixed_version ?? undefined}
+                                    >
                                         {#if rep.fixed_version}
                                             {rep.fixed_version}
                                         {:else}
@@ -816,13 +817,14 @@
                                     </Table.Cell>
 
                                     <Table.Cell
-                                        class="text-muted-foreground pr-6 text-[11px] leading-snug"
+                                        class="text-muted-foreground pr-6 text-[11px] leading-snug whitespace-normal"
                                     >
                                         <span
+                                            class="line-clamp-3"
                                             title={vuln.description ??
                                                 undefined}
                                         >
-                                            {truncate(vuln.description, 100)}
+                                            {vuln.description ?? ""}
                                         </span>
                                     </Table.Cell>
                                 </Table.Row>
