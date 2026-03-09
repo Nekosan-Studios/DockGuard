@@ -167,7 +167,7 @@ def integration_client(tmp_path):
                     with patch("backend.routers.tasks.db", temp_db):
                         with patch("backend.routers.settings.db", temp_db):
                             with patch("backend.routers.internal.db", temp_db):
-                                 with patch("backend.scheduler.DockerWatcher") as mock_watcher:
+                                 with patch("backend.jobs.containers.DockerWatcher") as mock_watcher:
                                      mock_watcher.return_value.list_images.return_value = []
                                      with TestClient(app, raise_server_exceptions=True) as client:
                                          yield client, temp_db
