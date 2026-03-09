@@ -10,7 +10,6 @@ from .database import db
 from .scheduler import ContainerScheduler
 
 from .routers import vulnerabilities, containers, tasks, settings, internal
-from . import models
 
 logger = logging.getLogger(__name__)
 
