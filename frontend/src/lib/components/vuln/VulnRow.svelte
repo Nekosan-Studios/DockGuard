@@ -33,6 +33,7 @@
         description: string | null;
         data_source: string | null;
         cvss_base_score: number | null;
+        cvss_vector: string | null;
         epss_score: number | null;
         is_kev: boolean;
         package_name: string; // Used as fallback or top-level string
@@ -45,6 +46,8 @@
         vex_status: string | null;
         vex_justification: string | null;
         vex_statement: string | null;
+        match_type: string | null;
+        upstream_name: string | null;
         containers?: ContainerInfo[]; // Optional: Present only in global view
         packages?: PackageInfo[]; // Optional: Present in grouped scenarios
     }
@@ -82,11 +85,6 @@
     function timeAgo(iso: string | null): string {
         if (!iso) return "";
         return formatDistanceToNow(toUtcDate(iso), { addSuffix: true });
-    }
-
-    function formatDate(iso: string | null): string {
-        if (!iso) return "";
-        return toUtcDate(iso).toLocaleString();
     }
 </script>
 
@@ -152,6 +150,16 @@
                     {@const paths = rep.locations
                         ? rep.locations.split("\n")
                         : []}
+                    {#if vuln.upstream_name}
+                        <div class="mb-2 pb-2 border-b border-border/60">
+                            <p class="mb-1 font-semibold">CVE matched via source package</p>
+                            <p class="font-mono text-xs">
+                                {rep.package_name}
+                                <span class="text-muted-foreground mx-1">←</span>
+                                {vuln.upstream_name}
+                            </p>
+                        </div>
+                    {/if}
                     <p class="mb-1 font-semibold">
                         {rep.package_name}
                         {paths.length === 1 ? "Location:" : "Locations:"}
@@ -274,7 +282,7 @@
         {/if}
     </Table.Cell>
 
-    <CvssCell score={vuln.cvss_base_score} />
+    <CvssCell score={vuln.cvss_base_score} cvssVector={vuln.cvss_vector} />
     <EpssCell score={vuln.epss_score} percentile={vuln.epss_percentile} />
     <KevCell isKev={vuln.is_kev} />
 
@@ -288,37 +296,20 @@
 
     <Table.Cell class="text-center">
         {#if vuln.first_seen_at}
-            <Tooltip.Root>
-                <Tooltip.Trigger
-                    class="cursor-default text-xs text-muted-foreground"
-                >
-                    <span
-                        class="border-b border-dashed border-muted-foreground/50 pb-0.5"
-                    >
-                        {timeAgo(vuln.first_seen_at)}
-                    </span>
-                </Tooltip.Trigger>
-                <Tooltip.Content>
-                    First seen: {formatDate(vuln.first_seen_at)}
-                </Tooltip.Content>
-            </Tooltip.Root>
+            <span class="text-xs text-muted-foreground">{timeAgo(vuln.first_seen_at)}</span>
         {:else}
             <span class="text-muted-foreground text-xs">—</span>
         {/if}
     </Table.Cell>
 
-    <Table.Cell class="max-w-[300px] truncate pr-6 text-muted-foreground">
+    <Table.Cell
+        class="pr-6 text-muted-foreground whitespace-normal"
+        title={vuln.description ?? undefined}
+    >
         {#if vuln.description}
-            <Tooltip.Root>
-                <Tooltip.Trigger
-                    class="cursor-default text-left max-w-full truncate block hover:text-foreground transition-colors"
-                >
-                    {vuln.description}
-                </Tooltip.Trigger>
-                <Tooltip.Content class="max-w-md" align="end">
-                    <p class="text-sm leading-relaxed">{vuln.description}</p>
-                </Tooltip.Content>
-            </Tooltip.Root>
+            <div style="overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3">
+                {vuln.description}
+            </div>
         {:else}
             <span class="italic opacity-70">No description available</span>
         {/if}

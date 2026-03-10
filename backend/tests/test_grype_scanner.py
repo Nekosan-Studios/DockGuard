@@ -102,6 +102,27 @@ def test_store_scan_parses_cvss(test_db):
     with Session(test_db.engine) as session:
         vuln = session.exec(select(Vulnerability).where(Vulnerability.vuln_id == "CVE-2024-0001")).first()
     assert vuln.cvss_base_score == 9.8
+    assert vuln.cvss_vector == "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+
+
+def test_store_scan_parses_indirect_match(test_db):
+    scanner = _make_scanner(test_db)
+    scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
+
+    with Session(test_db.engine) as session:
+        vuln = session.exec(select(Vulnerability).where(Vulnerability.vuln_id == "CVE-2024-0001")).first()
+    assert vuln.match_type == "exact-indirect-match"
+    assert vuln.upstream_name == "openssl"
+
+
+def test_store_scan_parses_direct_match(test_db):
+    scanner = _make_scanner(test_db)
+    scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
+
+    with Session(test_db.engine) as session:
+        vuln = session.exec(select(Vulnerability).where(Vulnerability.vuln_id == "CVE-2024-0002")).first()
+    assert vuln.match_type == "exact-direct-match"
+    assert vuln.upstream_name is None
 
 
 def test_store_scan_parses_epss(test_db):

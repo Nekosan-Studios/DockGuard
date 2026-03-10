@@ -12,6 +12,8 @@ dist/
 build/
 .eggs/
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Database
 *.db

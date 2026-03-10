@@ -51,6 +51,9 @@ class Vulnerability(SQLModel, table=True):
     vex_status: Optional[str] = None        # "not_affected", "affected", "fixed", "under_investigation"
     vex_justification: Optional[str] = None
     vex_statement: Optional[str] = None
+    match_type: Optional[str] = None        # "exact-direct-match" | "exact-indirect-match"
+    upstream_name: Optional[str] = None     # source package name for indirect matches (e.g. "gnutls28")
+    cvss_vector: Optional[str] = None       # e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H"
 
     scan: Optional[Scan] = Relationship(back_populates="vulnerabilities")
 

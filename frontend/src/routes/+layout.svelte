@@ -27,7 +27,7 @@
 <Tooltip.Provider delayDuration={400}>
 	<Sidebar.Provider>
 		<AppSidebar />
-		<Sidebar.Inset>
+		<Sidebar.Inset class="min-w-0">
 			<header
 				class="flex h-12 shrink-0 items-center justify-between border-b px-4"
 			>
@@ -36,7 +36,7 @@
 				</div>
 				<ModeToggle />
 			</header>
-			<main class="flex flex-1 flex-col gap-4 p-6">
+			<main class="flex flex-1 flex-col gap-4 p-6 min-w-0">
 				{@render children()}
 			</main>
 		</Sidebar.Inset>
