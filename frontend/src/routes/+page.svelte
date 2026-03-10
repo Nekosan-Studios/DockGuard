@@ -153,8 +153,8 @@
 	<!-- Stat cards -->
 	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		<!-- Running containers + images scanned -->
-		<Card.Root>
-			<div class="block h-full">
+		<Card.Root class="transition-colors hover:bg-muted/50">
+			<a href="/containers" class="block h-full">
 				<Card.Header
 					class="flex flex-row items-center justify-between space-y-0 pb-2"
 				>
@@ -240,7 +240,7 @@
 						{/if}
 					{/if}
 				</Card.Content>
-			</div>
+			</a>
 		</Card.Root>
 
 		<!-- Critical vulnerabilities -->
