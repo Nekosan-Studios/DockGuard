@@ -40,6 +40,7 @@
         description: string | null;
         data_source: string | null;
         cvss_base_score: number | null;
+        cvss_vector: string | null;
         epss_score: number | null;
         is_kev: boolean;
         package_name: string;
@@ -52,6 +53,8 @@
         vex_status: string | null;
         vex_justification: string | null;
         vex_statement: string | null;
+        match_type: string | null;
+        upstream_name: string | null;
         containers: ContainerInfo[];
         packages: PackageInfo[];
     }
