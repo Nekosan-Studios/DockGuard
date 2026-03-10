@@ -40,12 +40,26 @@ GRYPE_JSON_NGINX = {
                 "version": "1.1.1",
                 "type": "deb",
                 "language": "",
-                "purl": "pkg:deb/debian/libssl@1.1.1",
+                "purl": "pkg:deb/debian/libssl@1.1.1?arch=amd64&distro=debian-12&upstream=openssl",
+                "upstreams": [{"name": "openssl"}],
                 "locations": [
                     {"path": "/usr/lib/x86_64-linux-gnu/libssl.so.1.1", "layerID": "sha256:aaaa01"},
                     {"path": "/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1", "layerID": "sha256:aaaa01"},
                 ],
             },
+            "matchDetails": [
+                {
+                    "type": "exact-indirect-match",
+                    "matcher": "dpkg-matcher",
+                    "searchedBy": {
+                        "distro": {"type": "debian", "version": "12"},
+                        "package": {"name": "openssl", "version": "1.1.1"},
+                        "namespace": "debian:distro:debian:12",
+                    },
+                    "found": {"vulnerabilityID": "CVE-2024-0001", "versionConstraint": "none (unknown)"},
+                }
+            ],
+            "relatedVulnerabilities": [],
         },
         {
             "vulnerability": {
@@ -67,10 +81,24 @@ GRYPE_JSON_NGINX = {
                 "type": "deb",
                 "language": "",
                 "purl": "pkg:deb/debian/curl@7.88.0",
+                "upstreams": [],
                 "locations": [
                     {"path": "/usr/bin/curl", "layerID": "sha256:aaaa02"},
                 ],
             },
+            "matchDetails": [
+                {
+                    "type": "exact-direct-match",
+                    "matcher": "dpkg-matcher",
+                    "searchedBy": {
+                        "distro": {"type": "debian", "version": "12"},
+                        "package": {"name": "curl", "version": "7.88.0"},
+                        "namespace": "debian:distro:debian:12",
+                    },
+                    "found": {"vulnerabilityID": "CVE-2024-0002", "versionConstraint": "none (unknown)"},
+                }
+            ],
+            "relatedVulnerabilities": [],
         },
         {
             "vulnerability": {
@@ -92,12 +120,26 @@ GRYPE_JSON_NGINX = {
                 "type": "deb",
                 "language": "",
                 "purl": "pkg:deb/debian/zlib@1.2.11",
+                "upstreams": [],
                 "locations": [
                     {"path": "/lib/x86_64-linux-gnu/libz.so.1.2.11", "layerID": "sha256:aaaa03"},
                     {"path": "/lib/x86_64-linux-gnu/libz.so.1", "layerID": "sha256:aaaa03"},
                     {"path": "/usr/lib/x86_64-linux-gnu/libz.a", "layerID": "sha256:aaaa03"},
                 ],
             },
+            "matchDetails": [
+                {
+                    "type": "exact-direct-match",
+                    "matcher": "dpkg-matcher",
+                    "searchedBy": {
+                        "distro": {"type": "debian", "version": "12"},
+                        "package": {"name": "zlib", "version": "1.2.11"},
+                        "namespace": "debian:distro:debian:12",
+                    },
+                    "found": {"vulnerabilityID": "CVE-2024-0003", "versionConstraint": "none (unknown)"},
+                }
+            ],
+            "relatedVulnerabilities": [],
         },
     ],
 }

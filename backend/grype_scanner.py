@@ -177,8 +177,10 @@ class GrypeScanner:
 
                 cvss_list = vuln.get("cvss", [])
                 cvss_base_score = None
+                cvss_vector = None
                 if cvss_list:
                     cvss_base_score = cvss_list[0].get("metrics", {}).get("baseScore")
+                    cvss_vector = cvss_list[0].get("vector") or None
 
                 epss_list = vuln.get("epss", [])
                 epss_score = None
@@ -201,6 +203,11 @@ class GrypeScanner:
                 installed_version = artifact.get("version", "")
                 key = (vuln_id, package_name, installed_version)
 
+                match_details = match.get("matchDetails", [])
+                match_type = match_details[0].get("type") or None if match_details else None
+                upstreams = artifact.get("upstreams", [])
+                upstream_name = upstreams[0].get("name") or None if upstreams else None
+
                 new_locs = [
                     loc["path"] for loc in artifact.get("locations", []) if loc.get("path")
                 ]
@@ -219,6 +226,7 @@ class GrypeScanner:
                         data_source=vuln.get("dataSource") or None,
                         urls=urls,
                         cvss_base_score=cvss_base_score,
+                        cvss_vector=cvss_vector,
                         epss_score=epss_score,
                         epss_percentile=epss_percentile,
                         is_kev=bool(vuln.get("knownExploited")),
@@ -233,6 +241,8 @@ class GrypeScanner:
                         purl=artifact.get("purl") or None,
                         locations="\n".join(new_locs) or None,
                         first_seen_at=first_seen_map.get(key, scanned_at),
+                        match_type=match_type,
+                        upstream_name=upstream_name,
                     )
             vulnerabilities = list(vuln_map.values())
 

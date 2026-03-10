@@ -118,4 +118,9 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Prevent flex children from expanding beyond viewport width,
+     enabling overflow-x-auto on descendant table containers to scroll. */
+  [data-slot="sidebar-inset"] {
+    min-width: 0;
+  }
 }
