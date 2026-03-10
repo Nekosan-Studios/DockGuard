@@ -1,35 +1,33 @@
 import asyncio
 import logging
-import os
-import subprocess
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlmodel import Session, delete, select
-from datetime import datetime, timedelta, timezone
+from sqlmodel import Session, select
 
 from .database import Database
-from .docker_watcher import DockerWatcher
-from .grype_scanner import GrypeScanner
-from .models import AppState, Scan, SystemTask, Vulnerability
-from .vex_discovery import check_vex_for_image
+from .models import SystemTask
+from .config import ConfigManager
 
+from backend.jobs.containers import check_running_containers
+from backend.jobs.grype_db import check_db_update
+from backend.jobs.maintenance import purge_old_data
+from backend.models import Scan
 
 logger = logging.getLogger(__name__)
-
-from .config import ConfigManager
 
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
 _active_scheduler: "ContainerScheduler | None" = None
 
-
 class ContainerScheduler:
-    """Polls the Docker daemon for new/updated running images and triggers Grype scans."""
+    """Manages APScheduler and triggers background jobs for DockGuard."""
 
     def __init__(self, db: Database):
         global _active_scheduler
         self.db = db
         self._seen_digests: set[str] = set()
+        
         with Session(self.db.engine) as session:
             self.scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
             self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
@@ -40,8 +38,9 @@ class ContainerScheduler:
         self._scheduler = AsyncIOScheduler()
         self._bootstrap_seen_digests()
         self._cleanup_stray_tasks()
+        
         self._scheduler.add_job(
-            self._check_running_containers,
+            self._run_check_running_containers,
             IntervalTrigger(seconds=self.scan_interval),
             id="check_running_containers",
             name="Monitor running containers for new/updated images",
@@ -49,7 +48,7 @@ class ContainerScheduler:
             replace_existing=True,
         )
         self._scheduler.add_job(
-            self._check_db_update,
+            self._run_check_db_update,
             IntervalTrigger(seconds=self.db_check_interval),
             id="check_db_update",
             name="Check for grype DB updates and trigger rescan if available",
@@ -57,7 +56,7 @@ class ContainerScheduler:
             replace_existing=True,
         )
         self._scheduler.add_job(
-            self._purge_old_data,
+            self._run_purge_old_data,
             IntervalTrigger(hours=24),
             id="purge_old_data",
             name="Purge stale scans and task history",
@@ -80,8 +79,6 @@ class ContainerScheduler:
             db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
             data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
 
-            # The semaphore for concurrency can't easily be resized cleanly while tasks are running,
-            # so we only update the polling intervals dynamically.
             if scan_interval != self.scan_interval:
                 self.scan_interval = scan_interval
                 self._scheduler.reschedule_job("check_running_containers", trigger=IntervalTrigger(seconds=self.scan_interval))
@@ -121,416 +118,11 @@ class ContainerScheduler:
                 session.commit()
                 logger.info("Scheduler: marked %d stray task(s) as failed", len(stray_tasks))
 
-    async def _purge_old_data(self) -> None:
-        """Scheduled job (daily): delete stale Scan/Vulnerability and SystemTask rows.
-
-        Retention policy:
-        - All ``Scan`` rows (and their child ``Vulnerability`` rows) older than
-          ``DATA_RETENTION_DAYS`` are deleted, **except** the single most-recent
-          scan for each ``image_name``.  This guard ensures the dashboard always
-          has data for every actively-running container, even on stable images
-          that haven't been rescanned within the window.
-        - ``SystemTask`` rows older than ``DATA_RETENTION_DAYS`` are deleted
-          (excluding the currently-running purge task itself).
-        """
-        now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(days=self.data_retention_days)
-
-        with Session(self.db.engine) as session:
-            task = SystemTask(
-                task_type="scheduled_purge",
-                task_name="Purge Old Data",
-                status="running",
-                created_at=now,
-                started_at=now,
-            )
-            session.add(task)
-            session.commit()
-            task_id = task.id
-
-        scans_deleted = vulns_deleted = tasks_deleted = 0
-        error_msg = None
-
-        try:
-            with Session(self.db.engine) as session:
-                # -- Collect IDs of scans that are old enough to be candidates.
-                old_scan_ids: list[int] = [
-                    row[0]
-                    for row in session.execute(
-                        select(Scan.id).where(Scan.scanned_at < cutoff)  # type: ignore[arg-type]
-                    ).all()
-                ]
-
-                if old_scan_ids:
-                    # -- Find the newest scan per image_name so we can exempt it.
-                    newest_by_image: dict[str, int] = {}
-                    for sid, img in session.execute(
-                        select(Scan.id, Scan.image_name)
-                    ).all():
-                        if img not in newest_by_image or sid > newest_by_image[img]:
-                            newest_by_image[img] = sid
-
-                    protected_ids = set(newest_by_image.values())
-                    purgeable_ids = [sid for sid in old_scan_ids if sid not in protected_ids]
-
-                    if purgeable_ids:
-                        # Delete child vulnerability rows first (no cascade on SQLite).
-                        vuln_result = session.execute(
-                            delete(Vulnerability).where(Vulnerability.scan_id.in_(purgeable_ids))
-                        )
-                        vulns_deleted = vuln_result.rowcount
-
-                        scan_result = session.execute(
-                            delete(Scan).where(Scan.id.in_(purgeable_ids))
-                        )
-                        scans_deleted = scan_result.rowcount
-
-                # -- Purge old SystemTask rows (skip the currently-running purge task).
-                task_result = session.execute(
-                    delete(SystemTask)
-                    .where(SystemTask.created_at < cutoff)  # type: ignore[arg-type]
-                    .where(SystemTask.id != task_id)
-                )
-                tasks_deleted = task_result.rowcount
-
-                session.commit()
-
-            logger.info(
-                "Purge complete — retention=%dd cutoff=%s scans=%d vulns=%d tasks=%d",
-                self.data_retention_days, cutoff.date(), scans_deleted, vulns_deleted, tasks_deleted,
-            )
-
-        except Exception as exc:
-            logger.exception("Error in _purge_old_data")
-            error_msg = str(exc)
-
-        with Session(self.db.engine) as session:
-            task = session.get(SystemTask, task_id)
-            if task:
-                task.status = "failed" if error_msg else "completed"
-                task.finished_at = datetime.now(timezone.utc)
-                task.error_message = error_msg
-                task.result_details = (
-                    f"Deleted {scans_deleted} scan(s), {vulns_deleted} vulnerability row(s), "
-                    f"{tasks_deleted} task history row(s) older than {self.data_retention_days} days."
-                )
-                session.add(task)
-                session.commit()
-
-    async def _check_running_containers(self) -> None:
-        """Scheduled job: detect new/updated running containers and trigger scans."""
-        now = datetime.now(timezone.utc)
+    async def _run_check_running_containers(self) -> None:
+        await check_running_containers(self.db, self._seen_digests, self._scan_semaphore)
         
-        with Session(self.db.engine) as session:
-            task = SystemTask(
-                task_type="scheduled_check_containers",
-                task_name="Monitor Running Containers",
-                status="running",
-                created_at=now,
-                started_at=now,
-            )
-            session.add(task)
-            session.commit()
-            task_id = task.id
-
-        try:
-            watcher = DockerWatcher()
-            running = watcher.list_running_containers()
-
-            new_scans_queued = 0
-            for img in running:
-                image_id = img["image_id"]  # full sha256:...
-                if image_id in self._seen_digests:
-                    continue
-
-                self._seen_digests.add(image_id)
-                logger.info(
-                    "New running image detected: %s (%s) — scheduling Grype scan",
-                    img["image_name"], img["hash"],
-                )
-                
-                # Create a queued task for the scan
-                with Session(self.db.engine) as session:
-                    scan_task = SystemTask(
-                        task_type="scan",
-                        task_name=f"Scan {img['image_name']}",
-                        status="queued",
-                        created_at=datetime.now(timezone.utc)
-                    )
-                    session.add(scan_task)
-                    session.commit()
-                    scan_task_id = scan_task.id
-                
-                new_scans_queued += 1
-                asyncio.create_task(self._scan_image_async(img["image_name"], img["grype_ref"], img["container_name"], scan_task_id))
-
-            with Session(self.db.engine) as session:
-                task = session.get(SystemTask, task_id)
-                if task:
-                    task.status = "completed"
-                    task.finished_at = datetime.now(timezone.utc)
-                    task.result_details = f"Detected {len(running)} running containers. Queued {new_scans_queued} new scans."
-                    session.add(task)
-                    session.commit()
-
-        except Exception as e:
-            logger.exception("Error in _check_running_containers")
-            with Session(self.db.engine) as session:
-                task = session.get(SystemTask, task_id)
-                if task:
-                    task.status = "failed"
-                    task.finished_at = datetime.now(timezone.utc)
-                    task.error_message = str(e)
-                    session.add(task)
-                    session.commit()
-
-    async def _check_db_update(self) -> None:
-        """Scheduled job: check if a newer grype DB is available.
-
-        Uses 'grype db check' exit codes:
-          0   → DB is current, nothing to do
-          100 → update available, clear _seen_digests so all images are rescanned
-          other → unexpected error, log and take no action
-
-        Always persists the check timestamp to AppState regardless of outcome.
-        """
-        now = datetime.now(timezone.utc)
-
-        with Session(self.db.engine) as session:
-            task = SystemTask(
-                task_type="scheduled_db_update",
-                task_name="Check Grype DB Update",
-                status="running",
-                created_at=now,
-                started_at=now,
-            )
-            session.add(task)
-            session.commit()
-            task_id = task.id
-
-        result_msg = ""
-        error_msg = None
-        has_error = False
-
-        try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["grype", "db", "check"],
-                capture_output=True,
-                text=True,
-            )
-        except Exception as e:
-            logger.error("grype db check failed: %s", e)
-            error_msg = str(e)
-            has_error = True
-        else:
-            if result.returncode == 0:
-                logger.info("Grype DB is current — no rescan needed")
-                result_msg = "DB is current."
-            elif result.returncode == 100:
-                logger.info("New grype DB available — downloading update before rescan")
-                try:
-                    await asyncio.to_thread(
-                        subprocess.run,
-                        ["grype", "db", "update"],
-                        capture_output=True,
-                        text=True,
-                    )
-                    logger.info("grype db update completed — clearing seen digests to trigger full rescan")
-                except Exception as upd_exc:
-                    logger.warning("grype db update failed (will still rescan): %s", upd_exc)
-                self._seen_digests.clear()
-                result_msg = "New DB available. Triggered full rescan."
-            else:
-                err_text = result.stderr.strip()
-                logger.error(
-                    "grype db check returned unexpected exit code %d: %s",
-                    result.returncode,
-                    err_text,
-                )
-                error_msg = f"Exit code {result.returncode}: {err_text}"
-                has_error = True
-
-        grype_version, db_schema, db_built = await self._fetch_grype_info()
-
-        with Session(self.db.engine) as session:
-            state = session.get(AppState, 1)
-            if state is None:
-                session.add(AppState(id=1, last_db_checked_at=now, grype_version=grype_version, db_schema=db_schema, db_built=db_built))
-            else:
-                state.last_db_checked_at = now
-                if grype_version:
-                    state.grype_version = grype_version
-                if db_schema:
-                    state.db_schema = db_schema
-                if db_built:
-                    state.db_built = db_built
-                session.add(state)
-            
-            # Update the task
-            task = session.get(SystemTask, task_id)
-            if task:
-                task.status = "failed" if has_error else "completed"
-                task.finished_at = datetime.now(timezone.utc)
-                task.error_message = error_msg
-                task.result_details = result_msg
-                session.add(task)
-                
-            session.commit()
-        logger.debug("Persisted last_db_checked_at = %s, grype_version = %s, db_built = %s", now, grype_version, db_built)
-
-    async def _fetch_grype_info(self) -> tuple[str | None, str | None, "datetime | None"]:
-        """Run grype version + grype db status to get current grype version, DB schema, and DB built date."""
-        grype_version: str | None = None
-        db_schema: str | None = None
-        db_built: "datetime | None" = None
-
-        try:
-            ver_result = await asyncio.to_thread(
-                subprocess.run, ["grype", "version"], capture_output=True, text=True,
-            )
-            for line in ver_result.stdout.splitlines():
-                if line.startswith("Version:"):
-                    grype_version = line.split(":", 1)[1].strip()
-                    break
-        except Exception as e:
-            logger.warning("Could not determine grype version: %s", e)
-
-        try:
-            db_result = await asyncio.to_thread(
-                subprocess.run, ["grype", "db", "status"], capture_output=True, text=True,
-            )
-            for line in db_result.stdout.splitlines():
-                if line.startswith("Schema:"):
-                    db_schema = line.split(":", 1)[1].strip()
-                elif line.startswith("Built:"):
-                    built_str = line.split(":", 1)[1].strip()
-                    # grype db status emits Go time format: "2024-01-15 00:00:00 +0000 UTC"
-                    # Strip the trailing " UTC" so fromisoformat can parse it.
-                    if built_str.endswith(" UTC"):
-                        built_str = built_str[:-4].strip()
-                    dt = datetime.fromisoformat(built_str.replace("Z", "+00:00"))
-                    # Ignore the Go zero time (0001-01-01) which means DB not initialised.
-                    if dt.year > 1:
-                        db_built = dt
-        except Exception as e:
-            logger.warning("Could not determine grype DB built date: %s", e)
-
-        return grype_version, db_schema, db_built
-
-    async def _scan_image_async(self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None) -> None:
-        """Run a Grype scan in a thread so the event loop is not blocked.
-
-        Acquires _scan_semaphore before launching so at most MAX_CONCURRENT_SCANS
-        Grype processes run simultaneously.
-        """
-        async with self._scan_semaphore:
-            # Mark scan as running once we acquire the semaphore
-            if task_id:
-                with Session(self.db.engine) as session:
-                    task = session.get(SystemTask, task_id)
-                    if task:
-                        task.status = "running"
-                        task.started_at = datetime.now(timezone.utc)
-                        session.add(task)
-                        session.commit()
-            
-            await asyncio.to_thread(self._scan_image_sync, image_name, grype_ref, container_name, task_id)
-
-    def _scan_image_sync(self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None) -> None:
-        try:
-            GrypeScanner(watcher=None, database=self.db).scan_image(image_name, grype_ref, container_name)
-            # Check for VEX attestations after a successful scan
-            self._check_vex_for_latest_scan(image_name)
-            if task_id:
-                with Session(self.db.engine) as session:
-                    task = session.get(SystemTask, task_id)
-                    if task:
-                        task.status = "completed"
-                        task.finished_at = datetime.now(timezone.utc)
-                        task.result_details = "Scan completed successfully."
-                        session.add(task)
-                        session.commit()
-        except Exception as e:
-            logger.exception("Error scanning image %s", image_name)
-            if task_id:
-                with Session(self.db.engine) as session:
-                    task = session.get(SystemTask, task_id)
-                    if task:
-                        task.status = "failed"
-                        task.finished_at = datetime.now(timezone.utc)
-                        task.error_message = str(e)
-                        session.add(task)
-                        session.commit()
-
-    def _resolve_repo_digest(self, image_name: str, config_digest: str) -> str:
-        """Resolve the OCI manifest digest for an image from Docker's repo digests.
-
-        Docker's image ID is the config digest, but VEX attestations are attached
-        to the manifest digest.  We inspect Docker to find the repo digest that
-        matches ``image_name``.  Falls back to ``config_digest`` if unavailable.
-        """
-        try:
-            watcher = DockerWatcher()
-            if not watcher.client:
-                return config_digest
-            image = watcher.client.images.get(image_name)
-            for rd in image.attrs.get("RepoDigests", []):
-                # Format: "registry/repo@sha256:..."
-                if rd.startswith(image_name.split(":")[0]):
-                    return rd.split("@", 1)[1]
-            # If no match by name prefix, return first available
-            if image.attrs.get("RepoDigests"):
-                return image.attrs["RepoDigests"][0].split("@", 1)[1]
-        except Exception as e:
-            logger.debug("Could not resolve repo digest for %s: %s", image_name, e)
-        return config_digest
-
-    def _check_vex_for_latest_scan(self, image_name: str) -> None:
-        """Check for VEX attestations and apply to the latest scan's vulnerabilities."""
-        try:
-            with Session(self.db.engine) as session:
-                scan = session.exec(
-                    select(Scan).where(Scan.image_name == image_name).order_by(Scan.scanned_at.desc())
-                ).first()
-                if not scan:
-                    return
-
-                # Use the OCI manifest digest (not Docker's config digest) for
-                # the referrers API query, since VEX attestations are attached
-                # to the manifest.
-                digest = self._resolve_repo_digest(image_name, scan.image_digest)
-                vex_result = check_vex_for_image(image_name, digest)
-                now = datetime.now(timezone.utc)
-
-                if vex_result.error:
-                    scan.vex_status = "error"
-                    scan.vex_checked_at = now
-                    logger.warning("VEX check error for %s: %s", image_name, vex_result.error)
-                elif vex_result.found:
-                    scan.vex_status = "found"
-                    scan.vex_source = vex_result.source
-                    scan.vex_checked_at = now
-                    # Apply VEX statements to matching vulnerabilities
-                    vulns = session.exec(
-                        select(Vulnerability).where(Vulnerability.scan_id == scan.id)
-                    ).all()
-                    stmt_map = {s.vuln_id: s for s in vex_result.statements}
-                    matched = 0
-                    for v in vulns:
-                        vex_stmt = stmt_map.get(v.vuln_id)
-                        if vex_stmt:
-                            v.vex_status = vex_stmt.status
-                            v.vex_justification = vex_stmt.justification
-                            v.vex_statement = vex_stmt.notes
-                            session.add(v)
-                            matched += 1
-                    logger.info("VEX found for %s: %d statements, %d matched vulns", image_name, len(vex_result.statements), matched)
-                else:
-                    scan.vex_status = "none"
-                    scan.vex_checked_at = now
-
-                session.add(scan)
-                session.commit()
-        except Exception:
-            logger.exception("Error checking VEX for %s", image_name)
+    async def _run_check_db_update(self) -> None:
+        await check_db_update(self.db, self._seen_digests)
+        
+    async def _run_purge_old_data(self) -> None:
+        await purge_old_data(self.db, self.data_retention_days)

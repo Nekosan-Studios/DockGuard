@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import subprocess
@@ -7,7 +8,8 @@ from sqlmodel import Session, func, select
 
 from .database import Database, db
 from .docker_watcher import DockerWatcher
-from .models import Scan, Vulnerability
+from .models import Scan, SystemTask, Vulnerability
+from .vex_discovery import check_vex_for_image
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +45,54 @@ class GrypeScanner:
             return
 
         for image in images:
-            self.scan_image(image["name"], image["grype_ref"])
+            try:
+                self.scan_image(image["name"], image["grype_ref"])
+            except Exception:
+                logger.exception("Failed to scan image %s", image["name"])
+
+    async def scan_image_async(self, image_name: str, grype_ref: str, semaphore: asyncio.Semaphore, container_name: str | None = None, task_id: int | None = None) -> None:
+        """Run a Grype scan asynchronously to avoid blocking the event loop."""
+        async with semaphore:
+            if task_id:
+                with Session(self.db.engine) as session:
+                    task = session.get(SystemTask, task_id)
+                    if task:
+                        task.status = "running"
+                        task.started_at = datetime.now(timezone.utc)
+                        session.add(task)
+                        session.commit()
+            
+            await asyncio.to_thread(self.scan_image_sync, image_name, grype_ref, container_name, task_id)
+
+    def scan_image_sync(self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None) -> None:
+        """Scan a single image, check VEX, and update the task status."""
+        try:
+            self.scan_image(image_name, grype_ref, container_name)
+            self._check_vex_for_latest_scan(image_name)
+
+            if task_id:
+                with Session(self.db.engine) as session:
+                    task = session.get(SystemTask, task_id)
+                    if task:
+                        task.status = "completed"
+                        task.finished_at = datetime.now(timezone.utc)
+                        task.result_details = "Scan completed successfully."
+                        session.add(task)
+                        session.commit()
+        except Exception as e:
+            logger.exception("Error scanning image %s", image_name)
+            if task_id:
+                with Session(self.db.engine) as session:
+                    task = session.get(SystemTask, task_id)
+                    if task:
+                        task.status = "failed"
+                        task.finished_at = datetime.now(timezone.utc)
+                        task.error_message = str(e)
+                        session.add(task)
+                        session.commit()
 
     def scan_image(self, image_name: str, grype_ref: str, container_name: str | None = None) -> None:
-        """Scan a single image and persist results to the database."""
+        """Execute the grype CLI specifically and persist results to the database."""
         logger.info("Scanning %s", image_name)
         result = subprocess.run(
             ["grype", grype_ref, "-o", "json", "-q"],
@@ -56,13 +102,13 @@ class GrypeScanner:
 
         if result.returncode != 0:
             logger.error("Grype error for %s: %s", image_name, result.stderr.strip())
-            return
+            raise RuntimeError(f"Grype CLI failed: {result.stderr.strip()}")
 
         try:
             grype_json = json.loads(result.stdout)
         except json.JSONDecodeError as e:
             logger.error("Failed to parse Grype JSON for %s: %s", image_name, e)
-            return
+            raise
 
         self._store_scan(grype_json, image_name, container_name)
 
@@ -211,6 +257,73 @@ class GrypeScanner:
             return dt
         except ValueError:
             return None
+
+    def _resolve_repo_digest(self, image_name: str, config_digest: str) -> str:
+        """Resolve the OCI manifest digest for an image from Docker's repo digests."""
+        try:
+            if not self.watcher or not self.watcher.client:
+                # instantiate a new one if watcher is not tied to the instance
+                watcher = DockerWatcher()
+            else:
+                watcher = self.watcher
+                
+            if not watcher.client:
+                return config_digest
+                
+            image = watcher.client.images.get(image_name)
+            for rd in image.attrs.get("RepoDigests", []):
+                if rd.startswith(image_name.split(":")[0]):
+                    return rd.split("@", 1)[1]
+            if image.attrs.get("RepoDigests"):
+                return image.attrs["RepoDigests"][0].split("@", 1)[1]
+        except Exception as e:
+            logger.debug("Could not resolve repo digest for %s: %s", image_name, e)
+        return config_digest
+
+    def _check_vex_for_latest_scan(self, image_name: str) -> None:
+        """Check for VEX attestations and apply to the latest scan's vulnerabilities."""
+        try:
+            with Session(self.db.engine) as session:
+                scan = session.exec(
+                    select(Scan).where(Scan.image_name == image_name).order_by(Scan.scanned_at.desc())
+                ).first()
+                if not scan:
+                    return
+
+                digest = self._resolve_repo_digest(image_name, scan.image_digest)
+                vex_result = check_vex_for_image(image_name, digest)
+                now = datetime.now(timezone.utc)
+
+                if vex_result.error:
+                    scan.vex_status = "error"
+                    scan.vex_checked_at = now
+                    logger.warning("VEX check error for %s: %s", image_name, vex_result.error)
+                elif vex_result.found:
+                    scan.vex_status = "found"
+                    scan.vex_source = vex_result.source
+                    scan.vex_checked_at = now
+                    vulns = session.exec(
+                        select(Vulnerability).where(Vulnerability.scan_id == scan.id)
+                    ).all()
+                    stmt_map = {s.vuln_id: s for s in vex_result.statements}
+                    matched = 0
+                    for v in vulns:
+                        vex_stmt = stmt_map.get(v.vuln_id)
+                        if vex_stmt:
+                            v.vex_status = vex_stmt.status
+                            v.vex_justification = vex_stmt.justification
+                            v.vex_statement = vex_stmt.notes
+                            session.add(v)
+                            matched += 1
+                    logger.info("VEX found for %s: %d statements, %d matched vulns", image_name, len(vex_result.statements), matched)
+                else:
+                    scan.vex_status = "none"
+                    scan.vex_checked_at = now
+
+                session.add(scan)
+                session.commit()
+        except Exception:
+            logger.exception("Error checking VEX for %s", image_name)
 
 
 if __name__ == "__main__":

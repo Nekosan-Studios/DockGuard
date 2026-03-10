@@ -1,13 +1,9 @@
 """Tests for VEX discovery module."""
 
-import json
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 from backend.vex_discovery import (
-    VexResult,
-    VexStatement,
     _parse_image_ref,
     _parse_openvex,
     _is_vex_artifact,

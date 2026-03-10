@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, patch
 
 import docker
-import pytest
 
 from backend.docker_watcher import DockerWatcher
 

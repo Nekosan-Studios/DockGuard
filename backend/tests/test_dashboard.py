@@ -1,0 +1,199 @@
+from datetime import datetime, timedelta, timezone
+
+from sqlmodel import Session
+
+from backend.models import AppState, SystemTask
+from backend.tests.conftest import seed_scan, VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM
+
+
+def _make_running_container(container_name, image_name, image_id):
+    return {
+        "container_name": container_name,
+        "image_name": image_name,
+        "grype_ref": image_name,
+        "hash": image_id.replace("sha256:", "")[:12],
+        "image_id": image_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard/summary
+# ---------------------------------------------------------------------------
+
+def test_dashboard_summary_empty_db(api_client):
+    client, _, (mock_cw, _) = api_client
+    mock_cw.return_value.list_running_containers.return_value = []
+
+    response = client.get("/dashboard/summary")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["running_containers"] == 0
+    assert data["images_scanned"] == 0
+    assert data["critical_count"] == 0
+    assert data["kev_count"] == 0
+    assert data["trend"] == []
+
+
+def test_dashboard_summary_with_running_containers_and_scan(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM])
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    response = client.get("/dashboard/summary")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["running_containers"] == 1
+    assert data["images_scanned"] == 1
+    assert data["critical_count"] == 1
+
+
+def test_dashboard_summary_kev_count(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])  # VULN_CRITICAL has is_kev=True
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    data = client.get("/dashboard/summary").json()
+    assert data["kev_count"] == 1
+
+
+def test_dashboard_summary_trend_includes_recent_scans(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    seed_scan(
+        test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL],
+        scanned_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    mock_cw.return_value.list_running_containers.return_value = []
+
+    data = client.get("/dashboard/summary").json()
+    assert len(data["trend"]) >= 1
+    assert data["trend"][0]["critical"] == 1
+
+
+def test_dashboard_summary_docker_disconnected(api_client):
+    client, _, (mock_cw, _) = api_client
+    mock_cw.return_value.list_running_containers.side_effect = Exception("Docker not available")
+
+    response = client.get("/dashboard/summary")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["docker_connected"] is False
+    assert data["running_containers"] == 0
+
+
+def test_dashboard_summary_grype_info_from_app_state(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    with Session(test_db.engine) as session:
+        session.add(AppState(id=1, grype_version="0.85.0"))
+        session.commit()
+    mock_cw.return_value.list_running_containers.return_value = []
+
+    data = client.get("/dashboard/summary").json()
+    assert data["grype_version"] == "0.85.0"
+
+
+def test_dashboard_summary_grype_info_fallback_to_latest_scan(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [])
+    mock_cw.return_value.list_running_containers.return_value = []
+
+    data = client.get("/dashboard/summary").json()
+    assert data["grype_version"] == "0.85.0"  # grype_version in seed_scan fixture
+
+
+def test_dashboard_summary_active_and_queued_tasks(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    with Session(test_db.engine) as session:
+        session.add(SystemTask(task_type="scan", task_name="Scan A", status="running", created_at=datetime.now(timezone.utc)))
+        session.add(SystemTask(task_type="scan", task_name="Scan B", status="queued", created_at=datetime.now(timezone.utc)))
+        session.commit()
+    mock_cw.return_value.list_running_containers.return_value = []
+
+    data = client.get("/dashboard/summary").json()
+    # Scheduler may also add tasks during the lifespan; check >= 1
+    assert data["active_tasks"] >= 1
+    assert data["queued_tasks"] >= 1
+
+
+def test_dashboard_summary_eol_count(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    from backend.models import Scan
+    from backend.grype_scanner import _parse_image_repository
+    with Session(test_db.engine) as session:
+        session.add(Scan(
+            scanned_at=datetime.now(timezone.utc),
+            image_name="nginx:latest",
+            image_repository=_parse_image_repository("nginx:latest"),
+            image_digest="sha256:aaaa",
+            grype_version="0.85.0",
+            is_distro_eol=True,
+        ))
+        session.commit()
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    data = client.get("/dashboard/summary").json()
+    assert data["eol_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /activity/recent
+# ---------------------------------------------------------------------------
+
+def test_get_recent_activity_empty(api_client):
+    client, _, _ = api_client
+    response = client.get("/activity/recent")
+    assert response.status_code == 200
+    assert response.json()["activities"] == []
+
+
+def test_get_recent_activity_returns_scans(api_client):
+    client, test_db, _ = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
+    seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL])
+
+    response = client.get("/activity/recent")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["activities"]) == 2
+    totals = {a["image_name"]: a["total"] for a in data["activities"]}
+    assert totals["nginx:latest"] == 2
+    assert totals["redis:7"] == 1
+
+
+def test_get_recent_activity_respects_limit(api_client):
+    client, test_db, _ = api_client
+    for i in range(10):
+        seed_scan(test_db, f"image{i}:latest", f"sha256:{'a' * 4}{i}", [])
+
+    response = client.get("/activity/recent?limit=3")
+    assert response.status_code == 200
+    assert len(response.json()["activities"]) == 3
+
+
+def test_get_recent_activity_ordered_most_recent_first(api_client):
+    client, test_db, _ = api_client
+    t1 = datetime.now(timezone.utc) - timedelta(hours=2)
+    t2 = datetime.now(timezone.utc) - timedelta(hours=1)
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [], scanned_at=t1)
+    seed_scan(test_db, "redis:7", "sha256:cccc", [], scanned_at=t2)
+
+    activities = client.get("/activity/recent").json()["activities"]
+    assert activities[0]["image_name"] == "redis:7"
+    assert activities[1]["image_name"] == "nginx:latest"
+
+
+def test_get_recent_activity_includes_severity_breakdown(api_client):
+    client, test_db, _ = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM])
+
+    activities = client.get("/activity/recent?limit=50").json()["activities"]
+    # The scheduler may add other scans concurrently; find ours by name
+    activity = next(a for a in activities if a["image_name"] == "nginx:latest" and a["image_digest"] == "sha256:aaaa")
+    assert activity["vulns_by_severity"]["Critical"] == 1
+    assert activity["vulns_by_severity"]["High"] == 1
+    assert activity["vulns_by_severity"]["Medium"] == 1

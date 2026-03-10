@@ -7,24 +7,13 @@
     import { Label } from "$lib/components/ui/label/index.js";
     import Shield from "@lucide/svelte/icons/shield";
     import ShieldAlert from "@lucide/svelte/icons/shield-alert";
-    import ExternalLink from "@lucide/svelte/icons/external-link";
     import CircleCheck from "@lucide/svelte/icons/circle-check";
     import Loader2 from "@lucide/svelte/icons/loader-2";
     import SortButton from "../containers/sort-button.svelte";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-    import * as Popover from "$lib/components/ui/popover/index.js";
-    import { formatDistanceToNow } from "date-fns";
     import { goto } from "$app/navigation";
-    import CvssCell from "$lib/components/vuln/CvssCell.svelte";
-    import EpssCell from "$lib/components/vuln/EpssCell.svelte";
-    import KevCell from "$lib/components/vuln/KevCell.svelte";
-    import VexStatusCell from "$lib/components/vuln/VexStatusCell.svelte";
-    import SeverityCell from "$lib/components/vuln/SeverityCell.svelte";
-    import {
-        SEVERITY_CLASSES,
-        toUtcDate,
-        cvssClass,
-    } from "$lib/components/vuln/utils.js";
+    import { SEVERITY_CLASSES } from "$lib/components/vuln/utils.js";
+    import VulnRow from "$lib/components/vuln/VulnRow.svelte";
     import { page } from "$app/stores";
     import { onMount, onDestroy } from "svelte";
 
@@ -229,20 +218,6 @@
     }
 
     // ── Utility functions ─────────────────────────────────────────────────────
-    function timeAgo(iso: string): string {
-        return formatDistanceToNow(toUtcDate(iso), { addSuffix: true });
-    }
-
-    function formatDate(iso: string): string {
-        return toUtcDate(iso).toLocaleString();
-    }
-
-    function isNew(firstSeenAt: string | null): boolean {
-        if (!firstSeenAt) return false;
-        const date = toUtcDate(firstSeenAt);
-        const hours = (Date.now() - date.getTime()) / (1000 * 60 * 60);
-        return hours <= 24;
-    }
 </script>
 
 <div class="flex flex-col gap-6">
@@ -369,7 +344,9 @@
                 </div>
             {:else}
                 <div class="overflow-x-auto rounded-md border">
-                    <Table.Root class="w-full min-w-[1100px] table-fixed text-xs">
+                    <Table.Root
+                        class="w-full min-w-[1100px] table-fixed text-xs"
+                    >
                         <colgroup>
                             <col style="width:13%" />
                             <col style="width:10%" />
@@ -499,7 +476,10 @@
                                     <Table.Head class="text-center">
                                         <Tooltip.Root>
                                             <Tooltip.Trigger>
-                                                <span class="text-xs font-medium">VEX</span>
+                                                <span
+                                                    class="text-xs font-medium"
+                                                    >VEX</span
+                                                >
                                             </Tooltip.Trigger>
                                             <Tooltip.Content
                                                 >Vulnerability Exploitability
@@ -527,307 +507,11 @@
                         </Table.Header>
                         <Table.Body>
                             {#each rows as vuln (vuln.vuln_id)}
-                                {@const rep = vuln.packages?.[0] ?? vuln}
-                                {@const extraPkgs =
-                                    (vuln.packages?.length ?? 1) - 1}
-                                <Table.Row class="hover:bg-muted/30">
-                                    <Table.Cell class="pl-4 font-mono">
-                                        <div
-                                            class="flex flex-wrap items-center gap-1"
-                                        >
-                                            {#if isNew(vuln.first_seen_at)}
-                                                <span
-                                                    class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                                                >
-                                                    NEW
-                                                </span>
-                                            {/if}
-                                            <a
-                                                href={vuln.data_source ??
-                                                    `https://nvd.nist.gov/vuln/detail/${vuln.vuln_id}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                class="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
-                                                title={vuln.vuln_id}
-                                            >
-                                                {vuln.vuln_id}
-                                                <ExternalLink
-                                                    class="h-3 w-3 shrink-0"
-                                                />
-                                            </a>
-                                        </div>
-                                    </Table.Cell>
-                                    <Table.Cell class="align-top py-2">
-                                        {#if vuln.containers && vuln.containers.length > 0}
-                                            <div class="flex flex-wrap gap-1">
-                                                {#each vuln.containers as container}
-                                                    <Tooltip.Root>
-                                                        <Tooltip.Trigger
-                                                            class="cursor-default"
-                                                        >
-                                                            <span
-                                                                class="inline-flex max-w-[120px] truncate items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                                                            >
-                                                                {container.container_name}
-                                                            </span>
-                                                        </Tooltip.Trigger>
-                                                        <Tooltip.Content>
-                                                            <p
-                                                                class="font-medium text-xs mb-0.5"
-                                                            >
-                                                                Container: {container.container_name}
-                                                            </p>
-                                                            <p
-                                                                class="font-mono text-[10px] text-muted-foreground"
-                                                            >
-                                                                Image: {container.image_name}
-                                                            </p>
-                                                        </Tooltip.Content>
-                                                    </Tooltip.Root>
-                                                {/each}
-                                            </div>
-                                        {:else}
-                                            <span
-                                                class="text-muted-foreground text-xs"
-                                                >—</span
-                                            >
-                                        {/if}
-                                    </Table.Cell>
-                                    <SeverityCell severity={vuln.severity} />
-                                    <Table.Cell class="font-mono">
-                                        <div
-                                            class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
-                                        >
-                                            <Tooltip.Root>
-                                                <Tooltip.Trigger
-                                                    class="cursor-default text-left"
-                                                >
-                                                    <div
-                                                        class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
-                                                    >
-                                                        <span
-                                                            >{rep.package_name}</span
-                                                        >
-                                                        {#if rep.package_type}
-                                                            <span
-                                                                class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-                                                            >
-                                                                {rep.package_type}
-                                                            </span>
-                                                        {/if}
-                                                    </div>
-                                                </Tooltip.Trigger>
-                                                <Tooltip.Content
-                                                    class="max-w-sm"
-                                                >
-                                                    {@const paths =
-                                                        rep.locations
-                                                            ? rep.locations.split(
-                                                                  "\n",
-                                                              )
-                                                            : []}
-                                                    <p
-                                                        class="mb-1 font-semibold"
-                                                    >
-                                                        {rep.package_name}
-                                                        {paths.length === 1
-                                                            ? "Location:"
-                                                            : "Locations:"}
-                                                    </p>
-                                                    {#if paths.length > 0}
-                                                        <ul class="space-y-0.5">
-                                                            {#each paths as path (path)}
-                                                                <li
-                                                                    class="flex items-start gap-1 font-mono text-xs"
-                                                                >
-                                                                    <span
-                                                                        class="shrink-0"
-                                                                        >•</span
-                                                                    >
-                                                                    <span
-                                                                        class="break-all"
-                                                                        >{path}</span
-                                                                    >
-                                                                </li>
-                                                            {/each}
-                                                        </ul>
-                                                    {:else}
-                                                        <p
-                                                            class="text-xs text-muted-foreground"
-                                                        >
-                                                            No locations noted.
-                                                        </p>
-                                                    {/if}
-                                                </Tooltip.Content>
-                                            </Tooltip.Root>
-                                            {#if extraPkgs > 0}
-                                                <Popover.Root>
-                                                    <Popover.Trigger>
-                                                        <span
-                                                            class="inline-flex cursor-pointer items-center rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-sans text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
-                                                        >
-                                                            +{extraPkgs} more
-                                                        </span>
-                                                    </Popover.Trigger>
-                                                    <Popover.Content
-                                                        class="w-80 p-0"
-                                                        align="start"
-                                                    >
-                                                        <div
-                                                            class="px-3 py-2 border-b border-border"
-                                                        >
-                                                            <p
-                                                                class="text-xs font-semibold"
-                                                            >
-                                                                All Affected
-                                                                Packages ({vuln
-                                                                    .packages
-                                                                    .length})
-                                                            </p>
-                                                        </div>
-                                                        <div
-                                                            class="max-h-48 overflow-y-auto divide-y divide-border"
-                                                        >
-                                                            {#each vuln.packages as pkg}
-                                                                <div
-                                                                    class="px-3 py-2 text-xs"
-                                                                >
-                                                                    <div
-                                                                        class="flex items-center justify-between gap-1.5"
-                                                                    >
-                                                                        <div
-                                                                            class="flex items-baseline gap-1.5"
-                                                                        >
-                                                                            <span
-                                                                                class="font-mono font-medium"
-                                                                                >{pkg.package_name}</span
-                                                                            >
-                                                                            {#if pkg.package_type}
-                                                                                <span
-                                                                                    class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-                                                                                >
-                                                                                    {pkg.package_type}
-                                                                                </span>
-                                                                            {/if}
-                                                                        </div>
-                                                                        <div
-                                                                            class="flex items-center gap-1.5 shrink-0"
-                                                                        >
-                                                                            <span
-                                                                                class="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium {SEVERITY_CLASSES[
-                                                                                    pkg
-                                                                                        .severity
-                                                                                ] ??
-                                                                                    SEVERITY_CLASSES[
-                                                                                        'Unknown'
-                                                                                    ]}"
-                                                                            >
-                                                                                {pkg.severity}
-                                                                            </span>
-                                                                            {#if pkg.cvss_base_score != null}
-                                                                                <span
-                                                                                    class="font-mono text-[10px] {cvssClass(
-                                                                                        pkg.cvss_base_score,
-                                                                                    )}"
-                                                                                >
-                                                                                    {pkg.cvss_base_score.toFixed(
-                                                                                        1,
-                                                                                    )}
-                                                                                </span>
-                                                                            {/if}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div
-                                                                        class="mt-0.5 flex gap-3 text-muted-foreground font-mono"
-                                                                    >
-                                                                        <span
-                                                                            >{pkg.installed_version}</span
-                                                                        >
-                                                                        <span
-                                                                            >→</span
-                                                                        >
-                                                                        <span
-                                                                            class={pkg.fixed_version
-                                                                                ? "text-foreground"
-                                                                                : ""}
-                                                                        >
-                                                                            {pkg.fixed_version ??
-                                                                                "No fix"}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                            {/each}
-                                                        </div>
-                                                    </Popover.Content>
-                                                </Popover.Root>
-                                            {/if}
-                                        </div>
-                                    </Table.Cell>
-                                    <Table.Cell
-                                        class="text-center font-mono text-muted-foreground"
-                                        title={rep.installed_version}
-                                        >{rep.installed_version}</Table.Cell
-                                    >
-                                    <Table.Cell
-                                        class="text-center font-mono"
-                                        title={rep.fixed_version ?? undefined}
-                                    >
-                                        {#if rep.fixed_version}
-                                            {rep.fixed_version}
-                                        {:else}
-                                            <span class="text-muted-foreground"
-                                                >No fix</span
-                                            >
-                                        {/if}
-                                    </Table.Cell>
-                                    <CvssCell score={vuln.cvss_base_score} />
-                                    <EpssCell
-                                        score={vuln.epss_score}
-                                        percentile={vuln.epss_percentile}
-                                    />
-                                    <KevCell isKev={vuln.is_kev} />
-                                    {#if hasAnyVex}
-                                        <VexStatusCell
-                                            vexStatus={vuln.vex_status}
-                                            vexJustification={vuln.vex_justification}
-                                            vexStatement={vuln.vex_statement}
-                                        />
-                                    {/if}
-                                    <Table.Cell class="text-center">
-                                        {#if vuln.first_seen_at}
-                                            <Tooltip.Root>
-                                                <Tooltip.Trigger
-                                                    class="cursor-default text-xs text-muted-foreground"
-                                                >
-                                                    {timeAgo(
-                                                        vuln.first_seen_at,
-                                                    )}
-                                                </Tooltip.Trigger>
-                                                <Tooltip.Content
-                                                    >{formatDate(
-                                                        vuln.first_seen_at,
-                                                    )}</Tooltip.Content
-                                                >
-                                            </Tooltip.Root>
-                                        {:else}
-                                            <span class="text-muted-foreground"
-                                                >—</span
-                                            >
-                                        {/if}
-                                    </Table.Cell>
-
-                                    <Table.Cell
-                                        class="text-muted-foreground pr-6 text-[11px] leading-snug whitespace-normal"
-                                    >
-                                        <span
-                                            class="line-clamp-3"
-                                            title={vuln.description ??
-                                                undefined}
-                                        >
-                                            {vuln.description ?? ""}
-                                        </span>
-                                    </Table.Cell>
-                                </Table.Row>
+                                <VulnRow
+                                    {vuln}
+                                    showContainers={true}
+                                    {hasAnyVex}
+                                />
                             {/each}
                         </Table.Body>
                     </Table.Root>

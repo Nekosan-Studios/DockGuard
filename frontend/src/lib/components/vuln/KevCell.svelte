@@ -9,17 +9,19 @@
 
 <Table.Cell class="text-center {className}">
     {#if isKev}
-        <Tooltip.Root>
-            <Tooltip.Trigger class="cursor-default">
-                <CircleCheck
-                    class="mx-auto h-4 w-4 text-red-600 dark:text-red-400"
-                />
-            </Tooltip.Trigger>
-            <Tooltip.Content>
-                Known Exploited Vulnerability — this CVE is confirmed to be
-                actively exploited in the wild by CISA.
-            </Tooltip.Content>
-        </Tooltip.Root>
+        <Tooltip.Provider>
+            <Tooltip.Root>
+                <Tooltip.Trigger class="cursor-default">
+                    <CircleCheck
+                        class="mx-auto h-4 w-4 text-red-600 dark:text-red-400"
+                    />
+                </Tooltip.Trigger>
+                <Tooltip.Content>
+                    Known Exploited Vulnerability — this CVE is confirmed to be
+                    actively exploited in the wild by CISA.
+                </Tooltip.Content>
+            </Tooltip.Root>
+        </Tooltip.Provider>
     {:else}
         <span class="text-muted-foreground">—</span>
     {/if}

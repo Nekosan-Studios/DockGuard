@@ -87,7 +87,7 @@ kill_port 5173
 
 # ─── start backend ──────────────────────────────────────────────────────────────
 echo "Starting backend  :8765 ..."
-(cd "$SCRIPT_DIR" && uv run python -m uvicorn backend.api:app --reload --port 8765) &
+(cd "$SCRIPT_DIR" && uv run python -m uvicorn backend.main:app --reload --port 8765) &
 BACKEND_PID=$!
 PIDS+=("$BACKEND_PID")
 

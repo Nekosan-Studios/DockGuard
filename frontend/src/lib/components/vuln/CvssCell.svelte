@@ -11,12 +11,14 @@
 
 <Table.Cell class="text-center {cvssClass(score)} {className}">
     {#if score != null}
-        <Tooltip.Root>
-            <Tooltip.Trigger class="cursor-default">
-                {score.toFixed(1)}
-            </Tooltip.Trigger>
-            <Tooltip.Content>{cvssTooltip(score)}</Tooltip.Content>
-        </Tooltip.Root>
+        <Tooltip.Provider>
+            <Tooltip.Root>
+                <Tooltip.Trigger class="cursor-default">
+                    {score.toFixed(1)}
+                </Tooltip.Trigger>
+                <Tooltip.Content>{cvssTooltip(score)}</Tooltip.Content>
+            </Tooltip.Root>
+        </Tooltip.Provider>
     {:else}
         —
     {/if}

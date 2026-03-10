@@ -5,7 +5,6 @@ config, scheduler wiring) using a throwaway SQLite file via tmp_path.
 """
 import logging
 
-import pytest
 from sqlalchemy import inspect as sa_inspect
 
 import backend.scheduler as sched_module
