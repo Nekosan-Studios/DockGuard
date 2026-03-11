@@ -246,7 +246,9 @@
   {/if}
 
   <Card.Root>
-    <Card.Header class="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
+    <Card.Header
+      class="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between"
+    >
       <div class="space-y-1.5">
         <div class="flex items-center gap-2">
           <ShieldAlert class="h-5 w-5 text-muted-foreground" />

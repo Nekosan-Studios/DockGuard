@@ -171,9 +171,15 @@
                       {task.status}
                     </Badge>
                   </Table.Cell>
-                  <Table.Cell class="py-1.5 font-medium">{task.task_name}</Table.Cell>
-                  <Table.Cell class="py-1.5">{formatDate(task.created_at)}</Table.Cell>
-                  <Table.Cell class="py-1.5">{formatDate(task.finished_at)}</Table.Cell>
+                  <Table.Cell class="py-1.5 font-medium"
+                    >{task.task_name}</Table.Cell
+                  >
+                  <Table.Cell class="py-1.5"
+                    >{formatDate(task.created_at)}</Table.Cell
+                  >
+                  <Table.Cell class="py-1.5"
+                    >{formatDate(task.finished_at)}</Table.Cell
+                  >
                   <Table.Cell class="py-1.5">
                     {#if task.status === "failed"}
                       <span class="text-destructive text-sm"
