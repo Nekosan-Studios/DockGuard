@@ -170,17 +170,6 @@ def get_current_branch(repo_root):
     return branch
 
 
-def is_tag_merged_to_master(repo_root, tag):
-    """Return True if the tagged commit is an ancestor of origin/master."""
-    print("Fetching latest origin/master...")
-    run_cmd(["git", "fetch", "origin", "master"], cwd=repo_root)
-    rc = run_cmd_rc(
-        ["git", "merge-base", "--is-ancestor", tag, "origin/master"],
-        cwd=repo_root,
-    )
-    return rc == 0
-
-
 def cmd_push_tag(repo_root):
     """Push the release tag after verifying it has been merged to master."""
     current_version = get_current_version(repo_root)
@@ -193,8 +182,36 @@ def cmd_push_tag(repo_root):
         print("Run the bump script first (e.g. ./scripts/release.sh --minor).")
         sys.exit(1)
 
+    # Fetch latest origin/master before any checks
+    print("Fetching latest origin/master...")
+    run_cmd(["git", "fetch", "origin", "master"], cwd=repo_root)
+
+    # Guard: detect stale local checkout — local VERSION differs from origin/master
+    remote_version = run_cmd(["git", "show", "origin/master:VERSION"], cwd=repo_root)
+    if current_version != remote_version:
+        print()
+        print("=" * 68)
+        print("  !! STOP: YOUR LOCAL CHECKOUT IS OUT OF DATE !!")
+        print()
+        print(f"  Local VERSION  : {current_version}")
+        print(f"  Remote VERSION : {remote_version}")
+        print()
+        print("  You must pull the latest master before pushing the tag.")
+        print("  Run:")
+        print()
+        print("    git checkout master && git pull origin master")
+        print()
+        print("  Then re-run:  ./scripts/release.sh --push-tag")
+        print("=" * 68)
+        print()
+        sys.exit(1)
+
     # Guard: refuse to push the tag until the PR has been merged
-    if not is_tag_merged_to_master(repo_root, tag):
+    rc = run_cmd_rc(
+        ["git", "merge-base", "--is-ancestor", tag, "origin/master"],
+        cwd=repo_root,
+    )
+    if rc != 0:
         print(f"\nError: Tag '{tag}' has not been merged to master yet.")
         print("Merge the pull request first, then re-run:")
         print("  ./scripts/release.sh --push-tag")
