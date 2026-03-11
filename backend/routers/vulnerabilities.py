@@ -62,6 +62,9 @@ def get_vulnerabilities(
             v_cvss = v.cvss_base_score or 0
             if v_cvss > (gv.get("cvss_base_score") or 0):
                 gv["cvss_base_score"] = v.cvss_base_score
+            v_risk = v.risk_score or 0
+            if v_risk > (gv.get("risk_score") or 0):
+                gv["risk_score"] = v.risk_score
 
     # Sort packages within each group
     for vd in grouped_vulns.values():
@@ -82,8 +85,8 @@ def get_vulnerabilities(
     def _image_sort_key(vd: dict):
         if sort_by == "severity":
             rank = _severity_rank(vd.get("severity", "Unknown"))
-            cvss = vd.get("cvss_base_score") or 0
-            return (rank if not desc else -rank, -cvss)
+            risk = vd.get("risk_score") or 0
+            return (rank if not desc else -rank, -risk)
         if sort_by == "cvss_base_score":
             score = vd.get("cvss_base_score")
             null_last = 1 if score is None else 0
@@ -285,6 +288,9 @@ def get_vulnerabilities_across_running(
             v_cvss = v.cvss_base_score or 0
             if v_cvss > (gv.get("cvss_base_score") or 0):
                 gv["cvss_base_score"] = v.cvss_base_score
+            v_risk = v.risk_score or 0
+            if v_risk > (gv.get("risk_score") or 0):
+                gv["risk_score"] = v.risk_score
 
     for vd in grouped_vulns.values():
         vd["packages"].sort(key=lambda p: (
@@ -304,8 +310,8 @@ def get_vulnerabilities_across_running(
     def _clean_sort_key(vd: dict):
         if sort_by == "severity":
             rank = _severity_rank(vd.get("severity", "Unknown"))
-            cvss = vd.get("cvss_base_score") or 0
-            return (rank if not desc else -rank, -cvss)
+            risk = vd.get("risk_score") or 0
+            return (rank if not desc else -rank, -risk)
         if sort_by == "cvss_base_score":
             score = vd.get("cvss_base_score")
             null_last = 1 if score is None else 0

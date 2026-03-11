@@ -36,6 +36,10 @@ export function cvssClass(score: number | null): string {
     return "text-muted-foreground";
 }
 
+export function riskScoreTooltip(score: number): string {
+    return `Grype Risk Score: ${score.toFixed(1)} / 10 — composite of CVSS, EPSS, and KEV`;
+}
+
 export function epssClass(score: number | null): string {
     if (score === null) return "text-muted-foreground";
     if (score >= 0.5) return "font-bold text-red-700 dark:text-red-400";

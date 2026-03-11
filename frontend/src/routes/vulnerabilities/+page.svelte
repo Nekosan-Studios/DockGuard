@@ -49,6 +49,7 @@
         package_type: string | null;
         locations: string | null;
         epss_percentile: number | null;
+        risk_score: number | null;
         first_seen_at: string | null;
         vex_status: string | null;
         vex_justification: string | null;

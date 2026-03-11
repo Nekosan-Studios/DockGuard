@@ -42,6 +42,7 @@
         package_type: string | null;
         locations: string | null;
         epss_percentile: number | null;
+        risk_score: number | null;
         first_seen_at: string | null;
         vex_status: string | null;
         vex_justification: string | null;
@@ -127,7 +128,7 @@
         </Table.Cell>
     {/if}
 
-    <SeverityCell severity={vuln.severity} />
+    <SeverityCell severity={vuln.severity} riskScore={vuln.risk_score} />
 
     <Table.Cell class="font-mono">
         <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
