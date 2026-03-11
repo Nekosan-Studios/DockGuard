@@ -2,552 +2,1069 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/MattTW/DockGuard/vex/dockguard.vex.json",
   "author": "DockGuard maintainers",
-  "timestamp": "2026-03-07T00:00:00Z",
-  "version": 1,
+  "timestamp": "2026-03-10T00:00:00Z",
+  "version": 2,
   "statements": [
     {
-      "vulnerability": { "@id": "https://github.com/advisories/GHSA-9h8m-3fm2-qjrq" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://github.com/advisories/GHSA-9h8m-3fm2-qjrq"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Compiled into the Grype binary. DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only and does not use or configure OpenTelemetry SDK features."
     },
     {
-      "vulnerability": { "@id": "https://github.com/advisories/GHSA-h395-gr6q-cpjc" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://github.com/advisories/GHSA-h395-gr6q-cpjc"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Compiled into the Grype binary (rust-crate). DockGuard does not use Grype's JWT functionality; it invokes the Grype CLI for local image scanning only."
     },
     {
-      "vulnerability": { "@id": "https://github.com/advisories/GHSA-q9hv-hpm4-hj6x" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://github.com/advisories/GHSA-q9hv-hpm4-hj6x"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Compiled into the Grype binary (go-module). DockGuard does not use Cloudflare's CIRCL cryptographic primitives; Grype is invoked for local image scanning only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-25547" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-25547"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "node-brace-expansion is installed as a Debian dependency of Node.js but DockGuard's SvelteKit server does not use brace expansion functionality."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-26996" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-26996"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "node-minimatch is installed as a Debian dependency of Node.js but DockGuard's SvelteKit server does not use glob/minimatch pattern matching."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27903" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27903"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "node-minimatch is installed as a Debian dependency of Node.js but DockGuard's SvelteKit server does not use glob/minimatch pattern matching."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27904" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27904"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "node-minimatch is installed as a Debian dependency of Node.js but DockGuard's SvelteKit server does not use glob/minimatch pattern matching."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2017-17740" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2017-17740"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "libldap2 is a Debian base image dependency. DockGuard does not use LDAP."
+      "status_notes": "libldap2 is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use LDAP."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2015-3276" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2015-3276"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "libldap2 is a Debian base image dependency. DockGuard does not use LDAP."
+      "status_notes": "libldap2 is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use LDAP."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2017-14159" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2017-14159"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "libldap2 is a Debian base image dependency. DockGuard does not use LDAP."
+      "status_notes": "libldap2 is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use LDAP."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2020-15719" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2020-15719"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "libldap2 is a Debian base image dependency. DockGuard does not use LDAP."
+      "status_notes": "libldap2 is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use LDAP."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-22185" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-22185"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "libldap2 is a Debian base image dependency. DockGuard does not use LDAP."
+      "status_notes": "libldap2 is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use LDAP."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2018-5709" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2018-5709"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Kerberos libraries are Debian base image dependencies. DockGuard does not use Kerberos authentication."
+      "status_notes": "Kerberos libraries are DHI (Docker Hardened Images) base image dependencies. DockGuard does not use Kerberos authentication."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2024-26458" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2024-26458"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Kerberos libraries are Debian base image dependencies. DockGuard does not use Kerberos authentication."
+      "status_notes": "Kerberos libraries are DHI (Docker Hardened Images) base image dependencies. DockGuard does not use Kerberos authentication."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2024-26461" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2024-26461"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Kerberos libraries are Debian base image dependencies. DockGuard does not use Kerberos authentication."
+      "status_notes": "Kerberos libraries are DHI (Docker Hardened Images) base image dependencies. DockGuard does not use Kerberos authentication."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2011-3389" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2011-3389"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "libgnutls30t64 is a Debian base image dependency. Python and Node.js use their own TLS stacks (OpenSSL). DockGuard does not link against GnuTLS."
+      "status_notes": "libgnutls30t64 is a DHI (Docker Hardened Images) base image dependency. Python and Node.js use their own TLS stacks (OpenSSL). DockGuard does not link against GnuTLS."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2013-4392" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2013-4392"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "systemd/udev libraries are Debian base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
+      "status_notes": "systemd/udev libraries are DHI (Docker Hardened Images) base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2023-31437" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2023-31437"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "systemd/udev libraries are Debian base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
+      "status_notes": "systemd/udev libraries are DHI (Docker Hardened Images) base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2023-31438" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2023-31438"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "systemd/udev libraries are Debian base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
+      "status_notes": "systemd/udev libraries are DHI (Docker Hardened Images) base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2023-31439" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2023-31439"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "systemd/udev libraries are Debian base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
+      "status_notes": "systemd/udev libraries are DHI (Docker Hardened Images) base image dependencies. DockGuard uses supervisor as its process manager, not systemd."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2005-2541" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2005-2541"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "tar is a Debian base image dependency. DockGuard does not perform tar operations at runtime."
+      "status_notes": "tar is a DHI (Docker Hardened Images) base image dependency. DockGuard does not perform tar operations at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2011-4116" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2011-4116"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "perl-base is a Debian base image dependency. DockGuard does not use Perl."
+      "status_notes": "perl-base is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use Perl."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2011-3374" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2011-3374"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "apt is the Debian package manager. DockGuard does not run apt at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-2219" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-2219"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "dpkg is the Debian package manager. DockGuard does not run dpkg at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2007-5686" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Shadow utils (login.defs/passwd) are Debian base image dependencies not used by the DockGuard application."
-    },
-    {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2024-56433" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Shadow utils (login.defs/passwd) are Debian base image dependencies not used by the DockGuard application."
-    },
-    {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-12105" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-12105"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
       "status_notes": "Supervisor's XML-RPC interface is not exposed externally. DockGuard runs supervisor only as an internal process manager within the container."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2010-4756" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2010-4756"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for over a decade. Requires conditions that do not apply to a containerized application."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2018-20796" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2018-20796"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for years. Requires conditions that do not apply to a containerized application."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-9192" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-9192"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for years. Requires conditions that do not apply to a containerized application."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010022" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010022"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Disputed glibc CVE about stack-clash protection. Debian has classified this as not-fixed. Not exploitable in a containerized home-lab application."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010023" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010023"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Disputed glibc CVE. Debian has classified this as not-fixed. Not exploitable in a containerized home-lab application."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010024" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010024"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Disputed glibc CVE about ASLR information leak. Debian has classified this as not-fixed. Not exploitable in a containerized application."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010025" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2019-1010025"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Disputed glibc CVE. Debian has classified this as not-fixed. Not exploitable in a containerized home-lab application."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2022-0563" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2022-0563"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "util-linux CVE about partial escaping in chfn/chsh. DockGuard does not use interactive login utilities."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14104" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14104"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "util-linux is a Debian base image dependency. DockGuard does not use util-linux interactive utilities at runtime."
+      "status_notes": "util-linux is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use util-linux interactive utilities at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2017-18018" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2017-18018"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "coreutils CVE about chown race condition. DockGuard does not use chown in TOCTOU-sensitive scenarios."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-5278" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-5278"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "coreutils is a Debian base image dependency. DockGuard does not use the affected coreutils functionality at runtime."
+      "status_notes": "coreutils is a DHI (Docker Hardened Images) base image dependency. DockGuard does not use the affected coreutils functionality at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2021-45346" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2021-45346"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Negligible SQLite CVE (disputed memory leak). DockGuard uses SQLite via Python's sqlite3 module which does not trigger the affected code path."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-11468" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-11468"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Negligible Python 3.13 CVE. Debian classifies severity as negligible with wont-fix status."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-55130" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-55130"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only and serves its SvelteKit frontend via Node.js."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-55131" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-55131"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-59465" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-59465"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-59466" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-59466"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-21637" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-21637"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-55132" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-55132"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-22036" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-22036"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "node-undici HTTP client vulnerability. Awaiting Debian package update. DockGuard runs on local networks only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-23167" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-23167"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "node-undici HTTP client vulnerability. Awaiting Debian package update. DockGuard runs on local networks only."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-47279" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-47279"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "node-undici HTTP client vulnerability (Low severity). Awaiting Debian package update."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-8194" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-8194"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix for the 3.13 series. Fix requires Python 3.15 stable which has not been released."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13836" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13836"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix for the 3.13 series. Fix requires Python 3.15 stable which has not been released."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-12781" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-12781"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Fix available in Python 3.15.0 (not yet released stable). Awaiting upstream release."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15366" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15366"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Fix available only in pre-release 3.15.0a6. Awaiting stable release."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15367" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15367"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Fix available only in pre-release 3.15.0a6. Awaiting stable release."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-6069" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-6069"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-6075" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-6075"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-8291" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-8291"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-12084" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-12084"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13837" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13837"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15282" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15282"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0672" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0672"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0865" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0865"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-1299" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-1299"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-2297" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-2297"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "Python 3.13 vulnerability. Fix available in Python 3.15.0 (not yet released stable). Awaiting upstream release."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15281" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15281"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "glibc vulnerability in libc-bin/libc6. Debian marks as wont-fix. DockGuard depends on glibc indirectly through Python and Node.js."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0915" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0915"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "glibc vulnerability in libc-bin/libc6. Debian marks as wont-fix. DockGuard depends on glibc indirectly through Python and Node.js."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0861" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-0861"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "glibc vulnerability in libc-bin/libc6. Debian marks as wont-fix. DockGuard depends on glibc indirectly through Python and Node.js."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13151" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13151"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "libtasn1-6 vulnerability. Debian marks as wont-fix. Used indirectly by GnuTLS and system crypto libraries."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-59375" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-59375"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "libexpat1 vulnerability. Debian marks as wont-fix. Used indirectly by Python for XML parsing."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-66382" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-66382"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "libexpat1 vulnerability. Debian marks as wont-fix. Used indirectly by Python for XML parsing."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-25210" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-25210"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "libexpat1 vulnerability. Debian marks as wont-fix. Used indirectly by Python for XML parsing."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-24515" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-24515"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "libexpat1 vulnerability (Low severity). Debian marks as wont-fix. Used indirectly by Python."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-23949" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-23949"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "python3-jaraco.context and python3-pkg-resources vulnerability. Debian marks as wont-fix. These are Debian-packaged Python setuptools dependencies."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14819" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14819"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "curl/libcurl vulnerability. Debian marks as wont-fix. curl is installed in the image and available at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14524" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14524"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "curl/libcurl vulnerability. Debian marks as wont-fix. curl is installed in the image and available at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13034" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-13034"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "curl/libcurl vulnerability. Debian marks as wont-fix. curl is installed in the image and available at runtime."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15224" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15224"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "curl/libcurl vulnerability (Negligible severity). curl is installed in the image."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-10966" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-10966"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "curl/libcurl vulnerability (Negligible severity). curl is installed in the image."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14017" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-14017"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "curl/libcurl vulnerability (Negligible severity). curl is installed in the image."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15079" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-15079"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "curl/libcurl vulnerability (Negligible severity). curl is installed in the image."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-6141" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-6141"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "ncurses vulnerability. Debian marks as wont-fix. ncurses is used by terminal applications within the container."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-7709" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2025-7709"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "libsqlite3-0 vulnerability. Debian marks as wont-fix. DockGuard uses SQLite for its database via Python's sqlite3 module."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27171" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27171"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "zlib1g vulnerability. Debian marks as wont-fix. zlib is used by Python and Node.js for compression."
     },
     {
-      "vulnerability": { "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-3184" },
-      "products": [{ "@id": "pkg:oci/dockguard" }],
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-3184"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
       "status": "under_investigation",
       "status_notes": "util-linux vulnerability (Unknown severity). Debian marks as wont-fix. Awaiting further analysis."
+    },
+    {
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-25679"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "status_notes": "Compiled into the Grype binary (go-module: stdlib). DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only and does not exercise Go's URL parsing in a way that exposes this vulnerability."
+    },
+    {
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27139"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "status_notes": "Compiled into the Grype binary (go-module: stdlib). DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only. DockGuard does not use directory listing operations through Grype's internal Go stdlib."
+    },
+    {
+      "vulnerability": {
+        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27142"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/dockguard"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "status_notes": "Compiled into the Grype binary (go-module: stdlib). DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only and does not generate or serve HTML content through Grype's internal Go stdlib."
     }
   ]
 }

@@ -19,12 +19,13 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: Backend & Base Image ──────────────────────────────────────
-FROM python:3.13-slim
+FROM dhi.io/python:3.13-dev
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    gzip \
     supervisor \
     nodejs \
     && rm -rf /var/lib/apt/lists/*
@@ -43,9 +44,6 @@ COPY pyproject.toml uv.lock ./
 
 # Install Python dependencies & pre-compile bytecode so first startup is fast
 RUN uv sync --no-dev --frozen --compile-bytecode
-
-# Patch Python tooling vulnerabilities (pip, wheel, jaraco-context)
-RUN pip install --upgrade pip wheel 'jaraco-context>=6.1.0'
 
 # Copy VERSION file (may be overwritten by build arg below)
 COPY VERSION ./
