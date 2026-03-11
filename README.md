@@ -16,8 +16,6 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 
 ## Screenshots
 
-> _Screenshots coming soon. Drop images into `docs/screenshots/` to populate these placeholders._
-
 **Dashboard**
 ![Dashboard](docs/screenshots/dashboard.png)
 
