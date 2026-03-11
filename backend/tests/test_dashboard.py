@@ -73,6 +73,36 @@ def test_dashboard_summary_trend_includes_recent_scans(api_client):
     assert data["trend"][0]["critical"] == 1
 
 
+def test_dashboard_summary_trend_current_day_adjustment(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    # Seed a scan from yesterday for the running container
+    seed_scan(
+        test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL],
+        scanned_at=yesterday,
+    )
+    # It is currently running, so its critical_count will be calculated for "today"
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    data = client.get("/dashboard/summary").json()
+    
+    # Trend should have two entries: yesterday's actual scan, and today's carried-forward state
+    assert len(data["trend"]) == 2
+    
+    yesterday_iso = yesterday.date().isoformat()
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    
+    dates = [t["date"] for t in data["trend"]]
+    assert yesterday_iso in dates
+    assert today_iso in dates
+    
+    # Both should have 1 critical vulnerability
+    assert data["trend"][0]["critical"] == 1
+    assert data["trend"][1]["critical"] == 1
+
+
 def test_dashboard_summary_docker_disconnected(api_client):
     client, _, (mock_cw, _) = api_client
     mock_cw.return_value.list_running_containers.side_effect = Exception("Docker not available")

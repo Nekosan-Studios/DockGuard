@@ -147,6 +147,19 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         for day in sorted(day_image_scan.keys())
     ]
 
+    # Override current day with the real-time exact critical count of currently running containers
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    found_today = False
+    for t in trend:
+        if t["date"] == today_iso:
+            t["critical"] = critical_count
+            found_today = True
+            break
+            
+    # If today is not in trend at all, append it so the chart is perfectly up to date
+    if not found_today and (running_images or trend):
+        trend.append({"date": today_iso, "critical": critical_count})
+
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None
     grype_version = (app_state.grype_version if app_state else None)
