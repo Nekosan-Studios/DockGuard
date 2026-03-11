@@ -67,11 +67,10 @@ services:
     restart: unless-stopped
 ```
 
-2. Review where the database is stored on your filesystem, map to your desired location if you don't want to use ./data
-
-Point to your docker socket if it is not at the default
-
-Update the Timezone "TZ" environment variable to your local timezone.
+2. Review the compose file and adjust as needed:
+   - Change `./data` to your preferred location for the scan database
+   - Update the Docker socket path if it is not at the default `/var/run/docker.sock`
+   - Set the `TZ` environment variable to your local timezone
 
 3. Start it:
 
