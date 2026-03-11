@@ -4,7 +4,7 @@ Thanks for your interest in contributing. DockGuard is a small project and contr
 
 ## Reporting Bugs
 
-Please open a [GitHub issue](https://github.com/matttw/dockguard/issues) with:
+Please open a [GitHub issue](https://github.com/Nekosan-Studios/dockguard/issues) with:
 
 - A clear description of what happened vs. what you expected
 - Steps to reproduce

@@ -56,7 +56,7 @@ That's it. Dockguard only supports local docker instances, so run it where your 
 ```yaml
 services:
   dockguard:
-    image: ghcr.io/matttw/dockguard:latest
+    image: ghcr.io/nekosan-studios/dockguard:latest
     ports:
       - "8764:8764"
     volumes:
