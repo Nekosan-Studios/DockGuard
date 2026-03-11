@@ -122,7 +122,11 @@ class TestCheckVexForImage:
         mock_referrers_resp.status_code = 200
         mock_referrers_resp.json.return_value = {"manifests": []}
 
-        mock_client.get.side_effect = [mock_token_resp, mock_referrers_resp]
+        # .att tag: not found either
+        mock_att_resp = MagicMock()
+        mock_att_resp.status_code = 404
+
+        mock_client.get.side_effect = [mock_token_resp, mock_referrers_resp, mock_att_resp]
 
         result = check_vex_for_image("nginx:latest", "sha256:abc123")
         assert result.found is False
@@ -301,11 +305,97 @@ class TestCheckVexForImage:
         mock_fallback_resp.status_code = 200
         mock_fallback_resp.json.return_value = {"manifests": []}
 
-        mock_client.get.side_effect = [mock_token_resp, mock_referrers_resp, mock_fallback_resp]
+        # .att tag: also not found
+        mock_att_resp = MagicMock()
+        mock_att_resp.status_code = 404
+
+        mock_client.get.side_effect = [
+            mock_token_resp,
+            mock_referrers_resp,   # referrers API → 404
+            mock_fallback_resp,    # OCI tag scheme → 200, empty manifests
+            mock_att_resp,         # cosign .att tag → 404
+        ]
 
         result = check_vex_for_image("nginx:latest", "sha256:abc123")
         assert result.found is False
         assert result.error is None
+
+    @patch("backend.vex_discovery.httpx.Client")
+    @patch("backend.vex_discovery._get_docker_auth", return_value=None)
+    def test_cosign_att_tag_fallback(self, mock_auth, MockClient):
+        """Test cosign legacy .att tag fallback (sha256-{hash}.att).
+
+        cosign attest stores attestations as a standalone OCI manifest tagged
+        sha256-{hash}.att rather than through the OCI referrers API. DockGuard
+        must fetch that manifest directly and parse its layer blobs for VEX.
+        """
+        mock_client = MagicMock()
+        MockClient.return_value.__enter__ = MagicMock(return_value=mock_client)
+        MockClient.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Token (Docker Hub single-call flow)
+        mock_token_resp = MagicMock()
+        mock_token_resp.status_code = 200
+        mock_token_resp.json.return_value = {"token": "test-token"}
+
+        # Referrers API: 404 — registry doesn't know about referrers
+        mock_referrers_resp = MagicMock()
+        mock_referrers_resp.status_code = 404
+
+        # OCI tag scheme (sha256-abc123): 404
+        mock_oci_tag_resp = MagicMock()
+        mock_oci_tag_resp.status_code = 404
+
+        # Cosign .att manifest (sha256-abc123.att): found
+        mock_att_resp = MagicMock()
+        mock_att_resp.status_code = 200
+        mock_att_resp.json.return_value = {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "layers": [
+                {
+                    "mediaType": "application/vnd.dsse.envelope.v1+json",
+                    "digest": "sha256:attblobdigest",
+                    "size": 512,
+                }
+            ],
+        }
+
+        # Attestation blob: in-toto statement wrapping an OpenVEX predicate
+        mock_blob_resp = MagicMock()
+        mock_blob_resp.status_code = 200
+        mock_blob_resp.json.return_value = {
+            "predicateType": "https://openvex.dev/ns/v0.2.0",
+            "predicate": {
+                "statements": [
+                    {
+                        "vulnerability": {"name": "CVE-2024-9999"},
+                        "status": "not_affected",
+                        "justification": "vulnerable_code_not_present",
+                    }
+                ]
+            },
+        }
+
+        mock_client.get.side_effect = [
+            mock_token_resp,
+            mock_referrers_resp,   # referrers API → 404
+            mock_oci_tag_resp,     # OCI tag scheme → 404
+            mock_att_resp,         # cosign .att tag → 200
+            mock_blob_resp,        # attestation blob → 200
+        ]
+
+        result = check_vex_for_image("nginx:latest", "sha256:abc123")
+        assert result.found is True
+        assert len(result.statements) == 1
+        assert result.statements[0].vuln_id == "CVE-2024-9999"
+        assert result.statements[0].status == "not_affected"
+
+        # Confirm the .att tag URL was constructed correctly
+        att_call_url = mock_client.get.call_args_list[3][0][0]
+        assert att_call_url.endswith("manifests/sha256-abc123.att"), (
+            f"Expected .att tag URL, got: {att_call_url}"
+        )
 
     @patch("backend.vex_discovery.httpx.Client")
     @patch("backend.vex_discovery._get_docker_auth", return_value=None)

@@ -293,10 +293,8 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
 
             # Filter for VEX artifacts
             vex_descriptors = [d for d in referrers if _is_vex_artifact(d)]
-            if not vex_descriptors:
-                return VexResult(found=False, source=url)
 
-            # Fetch and parse VEX documents
+            # Fetch and parse VEX documents found via the referrers API / tag scheme
             all_statements: list[VexStatement] = []
             for desc in vex_descriptors:
                 digest = desc.get("digest", "")
@@ -333,6 +331,38 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
 
                     stmts = _extract_vex_from_blob(blob_data)
                     all_statements.extend(stmts)
+
+            # Cosign legacy .att tag fallback.
+            # `cosign attest` (without explicit OCI-referrers flags) stores the
+            # attestation as a standalone OCI manifest whose tag is
+            # sha256-{hash}.att rather than via the referrers API.  The manifest
+            # itself IS the attestation: its layers contain the predicate blobs.
+            if not all_statements:
+                att_tag = image_digest.replace(":", "-") + ".att"
+                att_url = f"{scheme}://{registry}/v2/{repo}/manifests/{att_tag}"
+                att_resp = client.get(
+                    att_url,
+                    headers={**headers, "Accept": "application/vnd.oci.image.manifest.v1+json"},
+                )
+                if att_resp.status_code == 200:
+                    try:
+                        att_manifest = att_resp.json()
+                        for layer in att_manifest.get("layers", []):
+                            blob_digest = layer.get("digest", "")
+                            if not blob_digest:
+                                continue
+                            blob_url = f"{scheme}://{registry}/v2/{repo}/blobs/{blob_digest}"
+                            blob_resp = client.get(blob_url, headers=headers)
+                            if blob_resp.status_code != 200:
+                                continue
+                            try:
+                                blob_data = blob_resp.json()
+                            except Exception:
+                                continue
+                            stmts = _extract_vex_from_blob(blob_data)
+                            all_statements.extend(stmts)
+                    except Exception:
+                        pass
 
             if all_statements:
                 return VexResult(
