@@ -251,9 +251,22 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
             elif auth_header:
                 headers["Authorization"] = f"Basic {auth_header}"
 
-            # Try OCI Referrers API
-            url = f"{scheme}://{registry}/v2/{repo}/referrers/{image_digest}"
-            resp = client.get(url, headers=headers)
+            # Try OCI Referrers API.
+            # URL-encode the colon in the digest: GHCR's 303 redirect builds the
+            # Location URL by percent-encoding slashes but truncates on an
+            # unencoded ':', so "sha256:abc" becomes "sha256" in the redirect
+            # target and the hash is silently dropped.
+            encoded_digest = image_digest.replace(":", "%3A")
+            url = f"{scheme}://{registry}/v2/{repo}/referrers/{encoded_digest}"
+
+            # Disable auto-redirect for this request.  GHCR returns 303 to a
+            # different hostname (github.com); httpx strips the Authorization
+            # header on cross-origin redirects, so we forward it manually.
+            resp = client.get(url, headers=headers, follow_redirects=False)
+            if resp.status_code in (301, 302, 303, 307, 308):
+                redirect_url = resp.headers.get("location", "")
+                if redirect_url:
+                    resp = client.get(redirect_url, headers=headers)
 
             referrers = []
             if resp.status_code == 200:
