@@ -10,7 +10,7 @@
 
 services:
   dockguard:
-    image: ghcr.io/matttw/dockguard:latest
+    image: ghcr.io/nekosan-studios/dockguard:latest
     ports:
       - "8764:8764"   # Web dashboard
       - "8765:8765"   # Backend API

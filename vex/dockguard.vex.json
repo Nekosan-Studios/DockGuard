@@ -1,6 +1,6 @@
 {
   "@context": "https://openvex.dev/ns/v0.2.0",
-  "@id": "https://github.com/MattTW/DockGuard/vex/dockguard.vex.json",
+  "@id": "https://github.com/Nekosan-Studios/DockGuard/vex/dockguard.vex.json",
   "author": "DockGuard maintainers",
   "timestamp": "2026-03-10T00:00:00Z",
   "version": 3,
