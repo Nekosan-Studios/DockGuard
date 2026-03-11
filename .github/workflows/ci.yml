@@ -24,7 +24,11 @@ on:
 permissions:
   contents: read
   packages: write
-  id-token: write    # cosign keyless signing (OIDC)
+  id-token: write       # cosign keyless signing (OIDC)
+  attestations: write   # SLSA provenance and SBOM attestations
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── Job 1: Run tests (PRs and optional manual dispatch) ─────────────
@@ -52,7 +56,7 @@ jobs:
       - name: Install grype (for e2e tests)
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
-            | sh -s -- -b /usr/local/bin v0.109.0
+            | sh -s -- -b /usr/local/bin v0.109.1
 
       - name: Run pytest (including e2e)
         run: uv run pytest -m ""
@@ -71,6 +75,10 @@ jobs:
 
       - name: Run Svelte check
         run: npm run check
+        working-directory: frontend
+
+      - name: Run Vitest unit tests
+        run: npm run test:unit -- run
         working-directory: frontend
 
   # ── Job 2: Build & push Docker image ────────────────────────────────
@@ -94,6 +102,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to dhi.io
+        uses: docker/login-action@v3
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Resolve version from tag
         id: version
@@ -140,6 +155,8 @@ jobs:
             APP_VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: true   # SLSA Level 2 build provenance attestation
+          sbom: true         # SPDX SBOM via BuildKit/Syft
 
       - name: Attest VEX document
         if: steps.build.outputs.digest != ''

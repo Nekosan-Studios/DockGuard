@@ -19,19 +19,20 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: Backend & Base Image ──────────────────────────────────────
-FROM python:3.13-slim
+FROM dhi.io/python:3.13-dev
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    gzip \
     supervisor \
     nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install grype
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
-    | sh -s -- -b /usr/local/bin v0.109.0
+    | sh -s -- -b /usr/local/bin v0.109.1
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -43,9 +44,6 @@ COPY pyproject.toml uv.lock ./
 
 # Install Python dependencies & pre-compile bytecode so first startup is fast
 RUN uv sync --no-dev --frozen --compile-bytecode
-
-# Patch Python tooling vulnerabilities (pip, wheel, jaraco-context)
-RUN pip install --upgrade pip wheel 'jaraco-context>=6.1.0'
 
 # Copy VERSION file (may be overwritten by build arg below)
 COPY VERSION ./
