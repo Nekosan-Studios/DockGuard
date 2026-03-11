@@ -1,21 +1,23 @@
-from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from ..database import db
-from ..config import ConfigManager
 from .. import scheduler as b_scheduler
+from ..config import ConfigManager
+from ..database import db
 
 router = APIRouter(tags=["Settings"])
 
+
 class SettingsUpdate(BaseModel):
-    settings: Dict[str, str]
+    settings: dict[str, str]
+
 
 @router.get("/settings")
 def get_settings(session: Session = Depends(db.get_session)):
     """Get all configurable settings."""
     return ConfigManager.get_all_settings(session)
+
 
 @router.patch("/settings")
 def update_settings(
@@ -29,7 +31,8 @@ def update_settings(
             if not success:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Setting '{key}' is overridden by an environment variable and cannot be modified via the API."
+                    detail=f"Setting '{key}' is overridden by an environment variable"
+                    " and cannot be modified via the API.",
                 )
         except KeyError:
             raise HTTPException(status_code=400, detail=f"Unknown setting: '{key}'")

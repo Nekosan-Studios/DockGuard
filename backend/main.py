@@ -1,17 +1,17 @@
-import colorlog
 import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import colorlog
 from fastapi import FastAPI
 
 from .database import db
+from .routers import containers, internal, settings, tasks, vulnerabilities
 from .scheduler import ContainerScheduler
 
-from .routers import vulnerabilities, containers, tasks, settings, internal
-
 logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -35,6 +35,7 @@ async def lifespan(_: FastAPI):
     yield
     scheduler.shutdown()
 
+
 app = FastAPI(lifespan=lifespan)
 # Fastapi router attribute usually aliased so it matches earlier imports if needed.
 router = app.router
@@ -49,7 +50,7 @@ app.include_router(internal.router)
 
 _APP_VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip()
 
+
 @app.get("/version")
 def get_version():
     return {"version": _APP_VERSION}
-

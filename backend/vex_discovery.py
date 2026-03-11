@@ -62,7 +62,7 @@ def _parse_image_ref(image_name: str) -> tuple[str, str]:
     ref = image_name.split("@")[0]  # remove digest if present
     # Find the last colon that separates name:tag
     last_colon = ref.rfind(":")
-    if last_colon != -1 and "/" not in ref[last_colon + 1:]:
+    if last_colon != -1 and "/" not in ref[last_colon + 1 :]:
         ref = ref[:last_colon]
 
     parts = ref.split("/")
@@ -84,7 +84,7 @@ def _get_docker_auth(registry: str) -> str | None:
         return None
     try:
         config = json.loads(config_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return None
 
     auths = config.get("auths", {})
@@ -180,12 +180,14 @@ def _parse_openvex(doc: dict) -> list[VexStatement]:
         if not vuln_id:
             continue
 
-        statements.append(VexStatement(
-            vuln_id=vuln_id,
-            status=status,
-            justification=justification,
-            notes=notes,
-        ))
+        statements.append(
+            VexStatement(
+                vuln_id=vuln_id,
+                status=status,
+                justification=justification,
+                notes=notes,
+            )
+        )
     return statements
 
 
@@ -284,10 +286,13 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                 if not digest:
                     continue
                 manifest_url = f"{scheme}://{registry}/v2/{repo}/manifests/{digest}"
-                manifest_resp = client.get(manifest_url, headers={
-                    **headers,
-                    "Accept": desc.get("mediaType", "application/vnd.oci.image.manifest.v1+json"),
-                })
+                manifest_resp = client.get(
+                    manifest_url,
+                    headers={
+                        **headers,
+                        "Accept": desc.get("mediaType", "application/vnd.oci.image.manifest.v1+json"),
+                    },
+                )
                 if manifest_resp.status_code != 200:
                     continue
                 try:

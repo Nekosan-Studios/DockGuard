@@ -1,15 +1,17 @@
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
+from ..api_helpers import _as_utc, _severity_rank
 from ..database import db
 from ..docker_watcher import DockerWatcher
-from ..models import AppState, Scan, Vulnerability, SystemTask
-from ..api_helpers import _severity_rank, _as_utc
+from ..models import AppState, Scan, SystemTask, Vulnerability
 
 router = APIRouter(tags=["Containers"])
+
 
 @router.get("/containers/running")
 def get_running_containers(session: Session = Depends(db.get_session)):
@@ -20,22 +22,16 @@ def get_running_containers(session: Session = Depends(db.get_session)):
         return {"containers": []}
 
     image_names = [img["image_name"] for img in running]
-    latest_scan_id_subq = (
-        select(func.max(Scan.id))
-        .where(Scan.image_name.in_(image_names))
-        .group_by(Scan.image_name)
-    )
-    scans_by_image = {
-        s.image_name: s
-        for s in session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
-    }
+    latest_scan_id_subq = select(func.max(Scan.id)).where(Scan.image_name.in_(image_names)).group_by(Scan.image_name)
+    scans_by_image = {s.image_name: s for s in session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()}
 
     scan_ids = [s.id for s in scans_by_image.values()]
     severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
     if scan_ids:
         rows = session.exec(
-            select(Vulnerability.scan_id, Vulnerability.vuln_id, Vulnerability.severity)
-            .where(Vulnerability.scan_id.in_(scan_ids))
+            select(Vulnerability.scan_id, Vulnerability.vuln_id, Vulnerability.severity).where(
+                Vulnerability.scan_id.in_(scan_ids)
+            )
         ).all()
         best_severity: dict[tuple, str] = {}
         for scan_id, vuln_id, severity in rows:
@@ -49,38 +45,45 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     for img in running:
         scan = scans_by_image.get(img["image_name"])
         if not scan:
-            containers.append({
-                "container_name": img["container_name"],
-                "image_name": img["image_name"],
-                "image_repository": None,
-                "image_digest": None,
-                "scan_id": None,
-                "scanned_at": None,
-                "is_distro_eol": False,
-                "distro_display": None,
-                "vulns_by_severity": {},
-                "total": 0,
-                "has_scan": False,
-            })
+            containers.append(
+                {
+                    "container_name": img["container_name"],
+                    "image_name": img["image_name"],
+                    "image_repository": None,
+                    "image_digest": None,
+                    "scan_id": None,
+                    "scanned_at": None,
+                    "is_distro_eol": False,
+                    "distro_display": None,
+                    "vulns_by_severity": {},
+                    "total": 0,
+                    "has_scan": False,
+                }
+            )
             continue
 
         vulns_by_severity = severity_by_scan.get(scan.id, {})
-        containers.append({
-            "container_name": img["container_name"],
-            "image_name": scan.image_name,
-            "image_repository": scan.image_repository,
-            "image_digest": scan.image_digest,
-            "scan_id": scan.id,
-            "scanned_at": _as_utc(scan.scanned_at),
-            "is_distro_eol": scan.is_distro_eol,
-            "distro_display": f"{scan.distro_name} {scan.distro_version}" if scan.distro_name and scan.distro_version else scan.distro_name,
-            "vulns_by_severity": vulns_by_severity,
-            "total": sum(vulns_by_severity.values()),
-            "has_scan": True,
-            "has_vex": scan.vex_status == "found",
-        })
+        containers.append(
+            {
+                "container_name": img["container_name"],
+                "image_name": scan.image_name,
+                "image_repository": scan.image_repository,
+                "image_digest": scan.image_digest,
+                "scan_id": scan.id,
+                "scanned_at": _as_utc(scan.scanned_at),
+                "is_distro_eol": scan.is_distro_eol,
+                "distro_display": f"{scan.distro_name} {scan.distro_version}"
+                if scan.distro_name and scan.distro_version
+                else scan.distro_name,
+                "vulns_by_severity": vulns_by_severity,
+                "total": sum(vulns_by_severity.values()),
+                "has_scan": True,
+                "has_vex": scan.vex_status == "found",
+            }
+        )
 
     return {"containers": containers}
+
 
 @router.get("/dashboard/summary")
 def get_dashboard_summary(session: Session = Depends(db.get_session)):
@@ -94,36 +97,28 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         docker_connected = False
     running_images = {img["image_name"] for img in running}
 
-    images_scanned = session.exec(
-        select(func.count(func.distinct(Scan.image_name)))
-    ).one()
+    images_scanned = session.exec(select(func.count(func.distinct(Scan.image_name)))).one()
 
     if running_images:
         latest_scan_id_subq = (
-            select(func.max(Scan.id))
-            .where(Scan.image_name.in_(running_images))
-            .group_by(Scan.image_name)
+            select(func.max(Scan.id)).where(Scan.image_name.in_(running_images)).group_by(Scan.image_name)
         )
         row = session.exec(
             select(
                 func.coalesce(func.sum(sa_case((Vulnerability.severity == "Critical", 1), else_=0)), 0),
-                func.coalesce(func.sum(sa_case((Vulnerability.is_kev == True, 1), else_=0)), 0),
+                func.coalesce(func.sum(sa_case((Vulnerability.is_kev, 1), else_=0)), 0),
             ).where(Vulnerability.scan_id.in_(latest_scan_id_subq))
         ).one()
         critical_count, kev_count = int(row[0]), int(row[1])
 
         eol_count = session.exec(
-            select(func.count(Scan.id))
-            .where(Scan.id.in_(latest_scan_id_subq))
-            .where(Scan.is_distro_eol == True)
+            select(func.count(Scan.id)).where(Scan.id.in_(latest_scan_id_subq)).where(Scan.is_distro_eol)
         ).one()
     else:
         critical_count, kev_count, eol_count = 0, 0, 0
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-    recent_scans = session.exec(
-        select(Scan).where(Scan.scanned_at >= cutoff).order_by(Scan.scanned_at.asc())
-    ).all()
+    cutoff = datetime.now(UTC) - timedelta(days=30)
+    recent_scans = session.exec(select(Scan).where(Scan.scanned_at >= cutoff).order_by(Scan.scanned_at.asc())).all()
 
     day_image_scan: dict[str, dict[str, Scan]] = defaultdict(dict)
     for scan in recent_scans:
@@ -147,10 +142,23 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         for day in sorted(day_image_scan.keys())
     ]
 
+    # Override current day with the real-time exact critical count of currently running containers
+    today_iso = datetime.now(UTC).date().isoformat()
+    found_today = False
+    for t in trend:
+        if t["date"] == today_iso:
+            t["critical"] = critical_count
+            found_today = True
+            break
+
+    # If today is not in trend at all, append it so the chart is perfectly up to date
+    if not found_today and (running_images or trend):
+        trend.append({"date": today_iso, "critical": critical_count})
+
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None
-    grype_version = (app_state.grype_version if app_state else None)
-    db_schema = (app_state.db_schema if app_state else None)
+    grype_version = app_state.grype_version if app_state else None
+    db_schema = app_state.db_schema if app_state else None
     db_built = _as_utc(app_state.db_built) if app_state else None
 
     if not grype_version or not db_built:
@@ -158,7 +166,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         grype_version = grype_version or (latest_scan.grype_version if latest_scan else None)
         db_built = db_built or (_as_utc(latest_scan.db_built) if latest_scan else None)
 
-    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff_24h = datetime.now(UTC) - timedelta(hours=24)
     if running_images:
         new_vulns_24h = session.exec(
             select(func.count(Vulnerability.id))
@@ -168,15 +176,9 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
     else:
         new_vulns_24h = 0
 
-    active_tasks = session.exec(
-        select(func.count(SystemTask.id))
-        .where(SystemTask.status == "running")
-    ).one()
+    active_tasks = session.exec(select(func.count(SystemTask.id)).where(SystemTask.status == "running")).one()
 
-    queued_tasks = session.exec(
-        select(func.count(SystemTask.id))
-        .where(SystemTask.status == "queued")
-    ).one()
+    queued_tasks = session.exec(select(func.count(SystemTask.id)).where(SystemTask.status == "queued")).one()
 
     return {
         "running_containers": len(running),
@@ -195,15 +197,14 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "eol_count": int(eol_count),
     }
 
+
 @router.get("/activity/recent")
 def get_recent_activity(
     limit: int = 5,
     session: Session = Depends(db.get_session),
 ):
     """Most recent scans with per-severity vulnerability counts."""
-    scans = session.exec(
-        select(Scan).order_by(Scan.scanned_at.desc()).limit(limit)
-    ).all()
+    scans = session.exec(select(Scan).order_by(Scan.scanned_at.desc()).limit(limit)).all()
 
     scan_ids = [s.id for s in scans]
     severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
@@ -218,14 +219,16 @@ def get_recent_activity(
     result = []
     for scan in scans:
         vulns_by_severity = severity_by_scan.get(scan.id, {})
-        result.append({
-            "scan_id": scan.id,
-            "scanned_at": _as_utc(scan.scanned_at),
-            "image_name": scan.image_name,
-            "image_digest": scan.image_digest,
-            "container_name": scan.container_name,
-            "vulns_by_severity": vulns_by_severity,
-            "total": sum(vulns_by_severity.values()),
-        })
+        result.append(
+            {
+                "scan_id": scan.id,
+                "scanned_at": _as_utc(scan.scanned_at),
+                "image_name": scan.image_name,
+                "image_digest": scan.image_digest,
+                "container_name": scan.container_name,
+                "vulns_by_severity": vulns_by_severity,
+                "total": sum(vulns_by_severity.values()),
+            }
+        )
 
     return {"activities": result}

@@ -28,10 +28,19 @@ GRYPE_JSON_NGINX = {
                 "description": "A critical buffer overflow vulnerability.",
                 "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2024-0001",
                 "urls": ["https://nvd.nist.gov/vuln/detail/CVE-2024-0001", "https://example.com/advisory"],
-                "cvss": [{"metrics": {"baseScore": 9.8}, "version": "3.1", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+                "cvss": [
+                    {
+                        "metrics": {"baseScore": 9.8},
+                        "version": "3.1",
+                        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                    }
+                ],
                 "epss": [{"epss": 0.94, "percentile": 0.99, "date": "2024-01-15"}],
                 "knownExploited": [{"cve": "CVE-2024-0001", "vendorProject": "Example"}],
-                "cwes": [{"cwe": "CWE-119", "source": "nvd", "type": "primary"}, {"cwe": "CWE-787", "source": "nvd", "type": "secondary"}],
+                "cwes": [
+                    {"cwe": "CWE-119", "source": "nvd", "type": "primary"},
+                    {"cwe": "CWE-787", "source": "nvd", "type": "secondary"},
+                ],
                 "risk": 9.5,
                 "fix": {"versions": ["1.2.3"], "state": "fixed"},
             },
@@ -68,7 +77,13 @@ GRYPE_JSON_NGINX = {
                 "description": "A high severity use-after-free vulnerability.",
                 "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2024-0002",
                 "urls": [],
-                "cvss": [{"metrics": {"baseScore": 7.5}, "version": "3.1", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}],
+                "cvss": [
+                    {
+                        "metrics": {"baseScore": 7.5},
+                        "version": "3.1",
+                        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+                    }
+                ],
                 "epss": [{"epss": 0.12, "percentile": 0.75, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [{"cwe": "CWE-416", "source": "nvd", "type": "primary"}],
@@ -107,7 +122,13 @@ GRYPE_JSON_NGINX = {
                 "description": "A medium severity information disclosure.",
                 "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2024-0003",
                 "urls": [],
-                "cvss": [{"metrics": {"baseScore": 5.3}, "version": "3.1", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"}],
+                "cvss": [
+                    {
+                        "metrics": {"baseScore": 5.3},
+                        "version": "3.1",
+                        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+                    }
+                ],
                 "epss": [{"epss": 0.02, "percentile": 0.40, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [],
@@ -183,7 +204,13 @@ GRYPE_JSON_REDIS = {
                 "description": "Critical RCE in redis.",
                 "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2024-0010",
                 "urls": [],
-                "cvss": [{"metrics": {"baseScore": 9.1}, "version": "3.1", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"}],
+                "cvss": [
+                    {
+                        "metrics": {"baseScore": 9.1},
+                        "version": "3.1",
+                        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+                    }
+                ],
                 "epss": [{"epss": 0.55, "percentile": 0.95, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [{"cwe": "CWE-94", "source": "nvd", "type": "primary"}],
@@ -208,7 +235,13 @@ GRYPE_JSON_REDIS = {
                 "description": "Critical integer overflow in redis.",
                 "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2024-0011",
                 "urls": [],
-                "cvss": [{"metrics": {"baseScore": 9.0}, "version": "3.1", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"}],
+                "cvss": [
+                    {
+                        "metrics": {"baseScore": 9.0},
+                        "version": "3.1",
+                        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+                    }
+                ],
                 "epss": [{"epss": 0.30, "percentile": 0.88, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [{"cwe": "CWE-190", "source": "nvd", "type": "primary"}],

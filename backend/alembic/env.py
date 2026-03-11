@@ -1,11 +1,17 @@
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
-from alembic import context
 import backend.database as _db
-from backend.models import Scan, Vulnerability, AppState, Setting, SystemTask  # noqa: F401
+from backend.models import (  # noqa: F401
+    AppState,
+    Scan,
+    Setting,
+    SystemTask,
+    Vulnerability,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", f"sqlite:///{_db.DATABASE_PATH}")

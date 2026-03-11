@@ -6,6 +6,7 @@ from ..database import db
 
 router = APIRouter(prefix="/db", tags=["Internal"])
 
+
 @router.get("/tables")
 def get_db_tables(session: Session = Depends(db.get_session)):
     """List application database tables (excludes alembic internals)."""
@@ -23,7 +24,8 @@ def get_db_table_rows(
 ):
     """Return up to `limit` rows from a table (read-only)."""
     valid_tables = {
-        r[0] for r in session.execute(
+        r[0]
+        for r in session.execute(
             sa_text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'alembic%'")
         ).fetchall()
     }

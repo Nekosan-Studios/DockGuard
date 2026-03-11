@@ -1,12 +1,11 @@
 """Tests for VEX discovery module."""
 
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 from backend.vex_discovery import (
+    _is_vex_artifact,
     _parse_image_ref,
     _parse_openvex,
-    _is_vex_artifact,
     check_vex_for_image,
 )
 
@@ -159,9 +158,7 @@ class TestCheckVexForImage:
         mock_manifest_resp = MagicMock()
         mock_manifest_resp.status_code = 200
         mock_manifest_resp.json.return_value = {
-            "layers": [
-                {"digest": "sha256:blobdigest", "mediaType": "application/vex+json"}
-            ]
+            "layers": [{"digest": "sha256:blobdigest", "mediaType": "application/vex+json"}]
         }
 
         # VEX blob

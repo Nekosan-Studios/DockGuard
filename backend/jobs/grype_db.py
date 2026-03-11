@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Session
 
@@ -10,15 +10,19 @@ from backend.models import AppState, SystemTask
 
 logger = logging.getLogger(__name__)
 
-async def fetch_grype_info() -> tuple[str | None, str | None, "datetime | None"]:
+
+async def fetch_grype_info() -> tuple[str | None, str | None, datetime | None]:
     """Run grype version + grype db status to get current grype version, DB schema, and DB built date."""
     grype_version: str | None = None
     db_schema: str | None = None
-    db_built: "datetime | None" = None
+    db_built: datetime | None = None
 
     try:
         ver_result = await asyncio.to_thread(
-            subprocess.run, ["grype", "version"], capture_output=True, text=True,
+            subprocess.run,
+            ["grype", "version"],
+            capture_output=True,
+            text=True,
         )
         for line in ver_result.stdout.splitlines():
             if line.startswith("Version:"):
@@ -29,7 +33,10 @@ async def fetch_grype_info() -> tuple[str | None, str | None, "datetime | None"]
 
     try:
         db_result = await asyncio.to_thread(
-            subprocess.run, ["grype", "db", "status"], capture_output=True, text=True,
+            subprocess.run,
+            ["grype", "db", "status"],
+            capture_output=True,
+            text=True,
         )
         for line in db_result.stdout.splitlines():
             if line.startswith("Schema:"):
@@ -57,9 +64,14 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
 
     Always persists the check timestamp to AppState regardless of outcome.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     with Session(db.engine) as session:
+        state = session.get(AppState, 1)
+        old_db_built = state.db_built if state else None
+        if old_db_built and old_db_built.tzinfo is None:
+            old_db_built = old_db_built.replace(tzinfo=UTC)
+
         task = SystemTask(
             task_type="scheduled_db_update",
             task_name="Check Grype DB Update",
@@ -99,11 +111,20 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
                     capture_output=True,
                     text=True,
                 )
-                logger.info("grype db update completed — clearing seen digests to trigger full rescan")
             except Exception as upd_exc:
                 logger.warning("grype db update failed (will still rescan): %s", upd_exc)
-            seen_digests.clear()
-            result_msg = "New DB available. Triggered full rescan."
+
+            _, _, new_db_built = await fetch_grype_info()
+
+            if old_db_built and new_db_built and new_db_built <= old_db_built:
+                logger.info(
+                    "Grype DB cache was empty, but downloaded DB is not newer than last known. Skipping rescan."
+                )
+                result_msg = "DB cache rebuilt, but no newer data. Skipped rescan."
+            else:
+                logger.info("grype db update completed — clearing seen digests to trigger full rescan")
+                seen_digests.clear()
+                result_msg = "New DB available. Triggered full rescan."
         else:
             err_text = result.stderr.strip()
             logger.error(
@@ -119,7 +140,11 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
     with Session(db.engine) as session:
         state = session.get(AppState, 1)
         if state is None:
-            session.add(AppState(id=1, last_db_checked_at=now, grype_version=grype_version, db_schema=db_schema, db_built=db_built))
+            session.add(
+                AppState(
+                    id=1, last_db_checked_at=now, grype_version=grype_version, db_schema=db_schema, db_built=db_built
+                )
+            )
         else:
             state.last_db_checked_at = now
             if grype_version:
@@ -129,15 +154,15 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
             if db_built:
                 state.db_built = db_built
             session.add(state)
-        
+
         # Update the task
         task = session.get(SystemTask, task_id)
         if task:
             task.status = "failed" if has_error else "completed"
-            task.finished_at = datetime.now(timezone.utc)
+            task.finished_at = datetime.now(UTC)
             task.error_message = error_msg
             task.result_details = result_msg
             session.add(task)
-            
+
         session.commit()
     logger.debug("Persisted last_db_checked_at = %s, grype_version = %s, db_built = %s", now, grype_version, db_built)

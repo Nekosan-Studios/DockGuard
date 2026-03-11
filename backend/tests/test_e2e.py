@@ -6,6 +6,7 @@ These tests exercise the full pipeline:
 Excluded from the default test run (see addopts in pyproject.toml). Run with:
     uv run pytest -v -m e2e
 """
+
 import time
 
 import pytest
@@ -31,9 +32,7 @@ def test_new_running_image_gets_scanned(e2e_client, test_container):
             break
         time.sleep(2)
 
-    assert response is not None, (
-        f"No successful scan appeared for '{image_name}' within 120 seconds"
-    )
+    assert response is not None, f"No successful scan appeared for '{image_name}' within 120 seconds"
     assert response.status_code == 200
     body = response.json()
     assert body["scan_id"] is not None, "scan_id should be set"

@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session
 
 from backend.models import AppState, SystemTask
-from backend.tests.conftest import seed_scan, VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM
+from backend.tests.conftest import VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM, seed_scan
 
 
 def _make_running_container(container_name, image_name, image_id):
@@ -19,6 +19,7 @@ def _make_running_container(container_name, image_name, image_id):
 # ---------------------------------------------------------------------------
 # GET /dashboard/summary
 # ---------------------------------------------------------------------------
+
 
 def test_dashboard_summary_empty_db(api_client):
     client, _, (mock_cw, _) = api_client
@@ -63,14 +64,50 @@ def test_dashboard_summary_kev_count(api_client):
 def test_dashboard_summary_trend_includes_recent_scans(api_client):
     client, test_db, (mock_cw, _) = api_client
     seed_scan(
-        test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL],
-        scanned_at=datetime.now(timezone.utc) - timedelta(days=1),
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        scanned_at=datetime.now(UTC) - timedelta(days=1),
     )
     mock_cw.return_value.list_running_containers.return_value = []
 
     data = client.get("/dashboard/summary").json()
     assert len(data["trend"]) >= 1
     assert data["trend"][0]["critical"] == 1
+
+
+def test_dashboard_summary_trend_current_day_adjustment(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    # Seed a scan from yesterday for the running container
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        scanned_at=yesterday,
+    )
+    # It is currently running, so its critical_count will be calculated for "today"
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    data = client.get("/dashboard/summary").json()
+
+    # Trend should have two entries: yesterday's actual scan, and today's carried-forward state
+    assert len(data["trend"]) == 2
+
+    yesterday_iso = yesterday.date().isoformat()
+    today_iso = datetime.now(UTC).date().isoformat()
+
+    dates = [t["date"] for t in data["trend"]]
+    assert yesterday_iso in dates
+    assert today_iso in dates
+
+    # Both should have 1 critical vulnerability
+    assert data["trend"][0]["critical"] == 1
+    assert data["trend"][1]["critical"] == 1
 
 
 def test_dashboard_summary_docker_disconnected(api_client):
@@ -107,8 +144,8 @@ def test_dashboard_summary_grype_info_fallback_to_latest_scan(api_client):
 def test_dashboard_summary_active_and_queued_tasks(api_client):
     client, test_db, (mock_cw, _) = api_client
     with Session(test_db.engine) as session:
-        session.add(SystemTask(task_type="scan", task_name="Scan A", status="running", created_at=datetime.now(timezone.utc)))
-        session.add(SystemTask(task_type="scan", task_name="Scan B", status="queued", created_at=datetime.now(timezone.utc)))
+        session.add(SystemTask(task_type="scan", task_name="Scan A", status="running", created_at=datetime.now(UTC)))
+        session.add(SystemTask(task_type="scan", task_name="Scan B", status="queued", created_at=datetime.now(UTC)))
         session.commit()
     mock_cw.return_value.list_running_containers.return_value = []
 
@@ -120,17 +157,20 @@ def test_dashboard_summary_active_and_queued_tasks(api_client):
 
 def test_dashboard_summary_eol_count(api_client):
     client, test_db, (mock_cw, _) = api_client
-    from backend.models import Scan
     from backend.grype_scanner import _parse_image_repository
+    from backend.models import Scan
+
     with Session(test_db.engine) as session:
-        session.add(Scan(
-            scanned_at=datetime.now(timezone.utc),
-            image_name="nginx:latest",
-            image_repository=_parse_image_repository("nginx:latest"),
-            image_digest="sha256:aaaa",
-            grype_version="0.85.0",
-            is_distro_eol=True,
-        ))
+        session.add(
+            Scan(
+                scanned_at=datetime.now(UTC),
+                image_name="nginx:latest",
+                image_repository=_parse_image_repository("nginx:latest"),
+                image_digest="sha256:aaaa",
+                grype_version="0.85.0",
+                is_distro_eol=True,
+            )
+        )
         session.commit()
     mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
@@ -143,6 +183,7 @@ def test_dashboard_summary_eol_count(api_client):
 # ---------------------------------------------------------------------------
 # GET /activity/recent
 # ---------------------------------------------------------------------------
+
 
 def test_get_recent_activity_empty(api_client):
     client, _, _ = api_client
@@ -177,8 +218,8 @@ def test_get_recent_activity_respects_limit(api_client):
 
 def test_get_recent_activity_ordered_most_recent_first(api_client):
     client, test_db, _ = api_client
-    t1 = datetime.now(timezone.utc) - timedelta(hours=2)
-    t2 = datetime.now(timezone.utc) - timedelta(hours=1)
+    t1 = datetime.now(UTC) - timedelta(hours=2)
+    t2 = datetime.now(UTC) - timedelta(hours=1)
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [], scanned_at=t1)
     seed_scan(test_db, "redis:7", "sha256:cccc", [], scanned_at=t2)
 

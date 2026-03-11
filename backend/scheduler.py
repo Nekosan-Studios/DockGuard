@@ -1,24 +1,25 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlmodel import Session, select
-
-from .database import Database
-from .models import SystemTask
-from .config import ConfigManager
 
 from backend.jobs.containers import check_running_containers
 from backend.jobs.grype_db import check_db_update
 from backend.jobs.maintenance import purge_old_data
 from backend.models import Scan
 
+from .config import ConfigManager
+from .database import Database
+from .models import SystemTask
+
 logger = logging.getLogger(__name__)
 
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
-_active_scheduler: "ContainerScheduler | None" = None
+_active_scheduler: ContainerScheduler | None = None
+
 
 class ContainerScheduler:
     """Manages APScheduler and triggers background jobs for DockGuard."""
@@ -27,7 +28,7 @@ class ContainerScheduler:
         global _active_scheduler
         self.db = db
         self._seen_digests: set[str] = set()
-        
+
         with Session(self.db.engine) as session:
             self.scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
             self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
@@ -38,7 +39,7 @@ class ContainerScheduler:
         self._scheduler = AsyncIOScheduler()
         self._bootstrap_seen_digests()
         self._cleanup_stray_tasks()
-        
+
         self._scheduler.add_job(
             self._run_check_running_containers,
             IntervalTrigger(seconds=self.scan_interval),
@@ -81,12 +82,16 @@ class ContainerScheduler:
 
             if scan_interval != self.scan_interval:
                 self.scan_interval = scan_interval
-                self._scheduler.reschedule_job("check_running_containers", trigger=IntervalTrigger(seconds=self.scan_interval))
+                self._scheduler.reschedule_job(
+                    "check_running_containers", trigger=IntervalTrigger(seconds=self.scan_interval)
+                )
                 logger.info("Scheduler updated check_running_containers interval to %ds", self.scan_interval)
 
             if db_check_interval != self.db_check_interval:
                 self.db_check_interval = db_check_interval
-                self._scheduler.reschedule_job("check_db_update", trigger=IntervalTrigger(seconds=self.db_check_interval))
+                self._scheduler.reschedule_job(
+                    "check_db_update", trigger=IntervalTrigger(seconds=self.db_check_interval)
+                )
                 logger.info("Scheduler updated check_db_update interval to %ds", self.db_check_interval)
 
             if data_retention_days != self.data_retention_days:
@@ -105,11 +110,9 @@ class ContainerScheduler:
     def _cleanup_stray_tasks(self) -> None:
         """Mark tasks that were running/queued before a restart as failed."""
         with Session(self.db.engine) as session:
-            stray_tasks = session.exec(
-                select(SystemTask).where(SystemTask.status.in_(["queued", "running"]))
-            ).all()
+            stray_tasks = session.exec(select(SystemTask).where(SystemTask.status.in_(["queued", "running"]))).all()
             if stray_tasks:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 for task in stray_tasks:
                     task.status = "failed"
                     task.finished_at = now
@@ -120,9 +123,9 @@ class ContainerScheduler:
 
     async def _run_check_running_containers(self) -> None:
         await check_running_containers(self.db, self._seen_digests, self._scan_semaphore)
-        
+
     async def _run_check_db_update(self) -> None:
         await check_db_update(self.db, self._seen_digests)
-        
+
     async def _run_purge_old_data(self) -> None:
         await purge_old_data(self.db, self.data_retention_days)
