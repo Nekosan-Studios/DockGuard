@@ -190,6 +190,90 @@ class TestCheckVexForImage:
 
     @patch("backend.vex_discovery.httpx.Client")
     @patch("backend.vex_discovery._get_docker_auth", return_value=None)
+    def test_ghcr_303_redirect_followed_with_auth(self, mock_auth, MockClient):
+        """Test that a 303 redirect (e.g. GHCR → github.com) is followed with
+        the Authorization header intact and the referrers list is parsed."""
+        mock_client = MagicMock()
+        MockClient.return_value.__enter__ = MagicMock(return_value=mock_client)
+        MockClient.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Simulate GHCR token flow: GET /v2/ → 401, then GET /token → 200
+        mock_challenge_resp = MagicMock()
+        mock_challenge_resp.status_code = 401
+        mock_challenge_resp.headers = {
+            "www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io"'
+        }
+
+        mock_token_resp = MagicMock()
+        mock_token_resp.status_code = 200
+        mock_token_resp.json.return_value = {"token": "test-bearer-token"}
+
+        # Referrers API: 303 See Other (GHCR behaviour)
+        mock_referrers_resp = MagicMock()
+        mock_referrers_resp.status_code = 303
+        mock_referrers_resp.headers = {
+            "location": "https://github.com/-/v2/packages/container/package/owner%2Frepo%2Freferrers%2Fsha256%3Aabc123"
+        }
+
+        # Redirected referrers response with one VEX artifact
+        mock_redirect_resp = MagicMock()
+        mock_redirect_resp.status_code = 200
+        mock_redirect_resp.json.return_value = {
+            "manifests": [
+                {
+                    "artifactType": "application/vex+json",
+                    "digest": "sha256:vexdigest",
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                }
+            ]
+        }
+
+        # Manifest
+        mock_manifest_resp = MagicMock()
+        mock_manifest_resp.status_code = 200
+        mock_manifest_resp.json.return_value = {
+            "layers": [{"digest": "sha256:blobdigest", "mediaType": "application/vex+json"}]
+        }
+
+        # VEX blob
+        mock_blob_resp = MagicMock()
+        mock_blob_resp.status_code = 200
+        mock_blob_resp.json.return_value = {
+            "statements": [
+                {
+                    "vulnerability": {"name": "CVE-2024-1234"},
+                    "status": "not_affected",
+                    "justification": "vulnerable_code_not_present",
+                }
+            ]
+        }
+
+        mock_client.get.side_effect = [
+            mock_challenge_resp,   # GET /v2/ → 401 challenge
+            mock_token_resp,       # GET /token → 200, returns bearer token
+            mock_referrers_resp,   # GET /referrers → 303
+            mock_redirect_resp,    # manual follow of redirect → 200
+            mock_manifest_resp,
+            mock_blob_resp,
+        ]
+
+        result = check_vex_for_image("ghcr.io/owner/repo:latest", "sha256:abc123")
+        assert result.found is True
+        assert len(result.statements) == 1
+        assert result.statements[0].vuln_id == "CVE-2024-1234"
+
+        calls = mock_client.get.call_args_list
+        # call[2] is the referrers request, call[3] is the manual redirect follow
+        referrers_call_url = calls[2][0][0]
+        assert "%3A" in referrers_call_url, "digest colon should be %-encoded in the referrers URL"
+
+        redirect_call_kwargs = calls[3][1]
+        assert redirect_call_kwargs.get("headers", {}).get("Authorization") == "Bearer test-bearer-token", (
+            "Authorization header must be forwarded to the redirect target"
+        )
+
+    @patch("backend.vex_discovery.httpx.Client")
+    @patch("backend.vex_discovery._get_docker_auth", return_value=None)
     def test_referrers_404_fallback(self, mock_auth, MockClient):
         """Test fallback to tag scheme when referrers API returns 404."""
         mock_client = MagicMock()
