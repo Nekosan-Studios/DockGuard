@@ -8,6 +8,7 @@ def test_patch_settings(api_client):
 # GET /settings
 # ---------------------------------------------------------------------------
 
+
 def test_get_settings_returns_all_known_keys(api_client):
     client, _, _ = api_client
     response = client.get("/settings")
@@ -37,6 +38,7 @@ def test_get_settings_db_source_after_patch(api_client):
 # ---------------------------------------------------------------------------
 # PATCH /settings — error cases
 # ---------------------------------------------------------------------------
+
 
 def test_patch_settings_unknown_key_returns_400(api_client):
     client, _, _ = api_client

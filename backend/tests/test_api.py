@@ -1,5 +1,4 @@
-from datetime import datetime, timedelta, timezone
-
+from datetime import UTC, datetime, timedelta
 
 from backend.tests.conftest import (
     VULN_CRITICAL,
@@ -23,6 +22,7 @@ def _make_running_container(container_name: str, image_name: str, image_id: str)
 # ---------------------------------------------------------------------------
 # GET /images/vulnerabilities
 # ---------------------------------------------------------------------------
+
 
 def test_get_vulnerabilities_returns_all(api_client):
     client, test_db, _ = api_client
@@ -52,8 +52,8 @@ def test_get_vulnerabilities_not_found(api_client):
 
 def test_get_vulnerabilities_returns_latest_scan_only(api_client):
     client, test_db, _ = api_client
-    t1 = datetime.now(timezone.utc) - timedelta(hours=1)
-    t2 = datetime.now(timezone.utc)
+    t1 = datetime.now(UTC) - timedelta(hours=1)
+    t2 = datetime.now(UTC)
     # older scan: 3 vulns
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM], scanned_at=t1)
     # newer scan: 1 vuln
@@ -66,6 +66,7 @@ def test_get_vulnerabilities_returns_latest_scan_only(api_client):
 # ---------------------------------------------------------------------------
 # GET /images/vulnerabilities/critical
 # ---------------------------------------------------------------------------
+
 
 def test_get_critical_vulnerabilities_returns_only_critical(api_client):
     client, test_db, _ = api_client
@@ -87,6 +88,7 @@ def test_get_critical_vulnerabilities_not_found(api_client):
 # ---------------------------------------------------------------------------
 # GET /vulnerabilities/critical/running
 # ---------------------------------------------------------------------------
+
 
 def test_get_critical_running_with_running_containers(api_client):
     client, test_db, (mock_cw, mock_vw) = api_client
@@ -129,6 +131,7 @@ def test_get_critical_running_no_scan_for_running_image(api_client):
 # GET /vulnerabilities/count
 # ---------------------------------------------------------------------------
 
+
 def test_get_total_count(api_client):
     client, test_db, _ = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM])
@@ -141,8 +144,8 @@ def test_get_total_count(api_client):
 
 def test_get_total_count_uses_latest_scan_per_image(api_client):
     client, test_db, _ = api_client
-    t1 = datetime.now(timezone.utc) - timedelta(hours=1)
-    t2 = datetime.now(timezone.utc)
+    t1 = datetime.now(UTC) - timedelta(hours=1)
+    t2 = datetime.now(UTC)
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM], scanned_at=t1)
     seed_scan(test_db, "nginx:latest", "sha256:bbbb", [VULN_CRITICAL], scanned_at=t2)
 
@@ -162,6 +165,7 @@ def test_get_total_count_empty_db(api_client):
 # GET /images/vulnerabilities/history
 # ---------------------------------------------------------------------------
 
+
 def test_get_history_by_image_ref(api_client):
     client, test_db, _ = api_client
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
@@ -176,9 +180,9 @@ def test_get_history_by_image_ref(api_client):
 
 def test_get_history_by_image_repository_returns_all_tags(api_client):
     client, test_db, _ = api_client
-    t1 = datetime.now(timezone.utc) - timedelta(days=2)
-    t2 = datetime.now(timezone.utc) - timedelta(days=1)
-    t3 = datetime.now(timezone.utc)
+    t1 = datetime.now(UTC) - timedelta(days=2)
+    t2 = datetime.now(UTC) - timedelta(days=1)
+    t3 = datetime.now(UTC)
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM], scanned_at=t1)
     seed_scan(test_db, "nginx:1.25", "sha256:bbbb", [VULN_HIGH], scanned_at=t2)
     seed_scan(test_db, "nginx:latest", "sha256:cccc", [VULN_CRITICAL], scanned_at=t3)
@@ -207,8 +211,8 @@ def test_get_history_by_digest(api_client):
 
 def test_get_history_multiple_scans_chronological_order(api_client):
     client, test_db, _ = api_client
-    t1 = datetime.now(timezone.utc) - timedelta(days=1)
-    t2 = datetime.now(timezone.utc)
+    t1 = datetime.now(UTC) - timedelta(days=1)
+    t2 = datetime.now(UTC)
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM], scanned_at=t1)
     seed_scan(test_db, "nginx:latest", "sha256:bbbb", [VULN_CRITICAL, VULN_HIGH], scanned_at=t2)
 
@@ -230,6 +234,7 @@ def test_get_history_not_found(api_client):
 # ---------------------------------------------------------------------------
 # GET /containers/running
 # ---------------------------------------------------------------------------
+
 
 def test_get_running_containers_no_running(api_client):
     client, test_db, (mock_cw, mock_vw) = api_client
@@ -307,8 +312,8 @@ def test_get_running_containers_multiple_mixed(api_client):
 
 def test_get_running_containers_uses_latest_scan(api_client):
     client, test_db, (mock_cw, mock_vw) = api_client
-    t1 = datetime.now(timezone.utc) - timedelta(hours=1)
-    t2 = datetime.now(timezone.utc)
+    t1 = datetime.now(UTC) - timedelta(hours=1)
+    t2 = datetime.now(UTC)
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM], scanned_at=t1)
     seed_scan(test_db, "nginx:latest", "sha256:bbbb", [VULN_CRITICAL], scanned_at=t2)
     mock_cw.return_value.list_running_containers.return_value = [
@@ -320,17 +325,20 @@ def test_get_running_containers_uses_latest_scan(api_client):
     c = data["containers"][0]
     assert c["total"] == 1
     assert c["image_digest"] == "sha256:bbbb"
+
+
 # ---------------------------------------------------------------------------
 # GET /vulnerabilities
 # ---------------------------------------------------------------------------
 
+
 def test_get_vulnerabilities_across_running_returns_total_instances_and_unique_count(api_client):
     client, test_db, (mock_cw, mock_vw) = api_client
-    
+
     # Same CVE (VULN_CRITICAL) mapped to two different images.
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
     seed_scan(test_db, "redis:7", "sha256:cccc", [VULN_CRITICAL])
-    
+
     # 3 total instances of the same CVE across 2 images.
     mock_vw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx-1", "nginx:latest", "sha256:aaaa"),
@@ -341,11 +349,11 @@ def test_get_vulnerabilities_across_running_returns_total_instances_and_unique_c
     response = client.get("/vulnerabilities?report=all")
     assert response.status_code == 200
     data = response.json()
-    
+
     # There is only 1 unique vulnerability (grouped by CVE)
     assert data["total_count"] == 1
     assert data["count"] == 1
-    
+
     # But there are 3 raw occurrences/instances of this vulnerability
     assert data["total_instances"] == 3
 
@@ -353,6 +361,7 @@ def test_get_vulnerabilities_across_running_returns_total_instances_and_unique_c
 # ---------------------------------------------------------------------------
 # GET /images/vulnerabilities — sort validation and sort columns
 # ---------------------------------------------------------------------------
+
 
 def test_get_vulnerabilities_invalid_sort_by_returns_422(api_client):
     client, test_db, _ = api_client
@@ -469,6 +478,7 @@ def test_get_vulnerabilities_grouped_same_cve_different_packages(api_client):
 # GET /vulnerabilities — sort validation and report filters
 # ---------------------------------------------------------------------------
 
+
 def test_get_vulnerabilities_across_running_invalid_sort_by(api_client):
     client, _, (_, mock_vw) = api_client
     mock_vw.return_value.list_running_containers.return_value = []
@@ -501,8 +511,10 @@ def test_get_vulnerabilities_across_running_report_kev(api_client):
 
 
 def test_get_vulnerabilities_across_running_report_new(api_client):
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from sqlmodel import Session, select
+
     from backend.models import Vulnerability as V
 
     client, test_db, (_, mock_vw) = api_client
@@ -512,7 +524,7 @@ def test_get_vulnerabilities_across_running_report_new(api_client):
     with Session(test_db.engine) as session:
         vulns = session.exec(select(V).where(V.scan_id == scan.id)).all()
         for v in vulns:
-            v.first_seen_at = datetime.now(timezone.utc)
+            v.first_seen_at = datetime.now(UTC)
         session.commit()
 
     mock_vw.return_value.list_running_containers.return_value = [
@@ -525,6 +537,7 @@ def test_get_vulnerabilities_across_running_report_new(api_client):
 
 def test_get_vulnerabilities_across_running_report_vex_annotated(api_client):
     from sqlmodel import Session, select
+
     from backend.models import Vulnerability as V
 
     client, test_db, (_, mock_vw) = api_client
@@ -562,6 +575,7 @@ def test_get_vulnerabilities_across_running_sort_columns(api_client):
 
 def test_get_vulnerabilities_across_running_description_truncated(api_client):
     from sqlmodel import Session, select
+
     from backend.models import Vulnerability as V
 
     client, test_db, (_, mock_vw) = api_client
@@ -586,23 +600,27 @@ def test_get_vulnerabilities_across_running_description_truncated(api_client):
 
 
 def test_get_vulnerabilities_across_running_eol_images(api_client):
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from sqlmodel import Session
-    from backend.models import Scan
+
     from backend.grype_scanner import _parse_image_repository
+    from backend.models import Scan
 
     client, test_db, (_, mock_vw) = api_client
     with Session(test_db.engine) as session:
-        session.add(Scan(
-            scanned_at=datetime.now(timezone.utc),
-            image_name="nginx:latest",
-            image_repository=_parse_image_repository("nginx:latest"),
-            image_digest="sha256:aaaa",
-            grype_version="0.85.0",
-            is_distro_eol=True,
-            distro_name="debian",
-            distro_version="10",
-        ))
+        session.add(
+            Scan(
+                scanned_at=datetime.now(UTC),
+                image_name="nginx:latest",
+                image_repository=_parse_image_repository("nginx:latest"),
+                image_digest="sha256:aaaa",
+                grype_version="0.85.0",
+                is_distro_eol=True,
+                distro_name="debian",
+                distro_version="10",
+            )
+        )
         session.commit()
 
     mock_vw.return_value.list_running_containers.return_value = [

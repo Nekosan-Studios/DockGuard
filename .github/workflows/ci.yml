@@ -53,6 +53,9 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen
 
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
       - name: Install grype (for e2e tests)
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
@@ -71,6 +74,14 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+        working-directory: frontend
+
+      - name: Lint (eslint)
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Format check (prettier)
+        run: npm run format:check
         working-directory: frontend
 
       - name: Run Svelte check

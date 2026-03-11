@@ -3,6 +3,7 @@
 These tests exercise the real lifespan pipeline (alembic migrations, logging
 config, scheduler wiring) using a throwaway SQLite file via tmp_path.
 """
+
 import logging
 
 from sqlalchemy import inspect as sa_inspect
@@ -51,9 +52,5 @@ def test_scheduler_job_registered(integration_client):
     assert sched_module._active_scheduler is not None, "_active_scheduler was never set"
     jobs = sched_module._active_scheduler.get_jobs()
     job_ids = [j.id for j in jobs]
-    assert "check_running_containers" in job_ids, (
-        f"Expected job 'check_running_containers', found: {job_ids}"
-    )
-    assert "check_db_update" in job_ids, (
-        f"Expected job 'check_db_update', found: {job_ids}"
-    )
+    assert "check_running_containers" in job_ids, f"Expected job 'check_running_containers', found: {job_ids}"
+    assert "check_db_update" in job_ids, f"Expected job 'check_db_update', found: {job_ids}"

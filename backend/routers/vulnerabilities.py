@@ -1,16 +1,24 @@
-import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, func, select
 
+from ..api_helpers import (
+    _DESC_LIMIT,
+    _VALID_SORT_COLS,
+    _as_utc,
+    _latest_scan_for_ref,
+    _parse_image_query,
+    _serialise_vuln,
+    _severity_rank,
+)
 from ..database import db
 from ..docker_watcher import DockerWatcher
 from ..models import Scan, Vulnerability
-from ..api_helpers import _VALID_SORT_COLS, _severity_rank, _serialise_vuln, _latest_scan_for_ref, _as_utc, _DESC_LIMIT, _parse_image_query
 
 router = APIRouter(tags=["Vulnerabilities"])
+
 
 @router.get("/images/vulnerabilities")
 def get_vulnerabilities(
@@ -25,9 +33,9 @@ def get_vulnerabilities(
     """Vulnerabilities for the most recent scan of an image, with server-side sort and pagination."""
     if sort_by not in _VALID_SORT_COLS:
         from fastapi import HTTPException as _HTTPException
+
         raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
 
-    t0 = time.perf_counter()
     scan = _latest_scan_for_ref(image_ref, session)
     q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     if severity:
@@ -68,11 +76,13 @@ def get_vulnerabilities(
 
     # Sort packages within each group
     for vd in grouped_vulns.values():
-        vd["packages"].sort(key=lambda p: (
-            _severity_rank(p.get("severity", "Unknown")),
-            -(p.get("cvss_base_score") or 0),
-            p.get("package_name", ""),
-        ))
+        vd["packages"].sort(
+            key=lambda p: (
+                _severity_rank(p.get("severity", "Unknown")),
+                -(p.get("cvss_base_score") or 0),
+                p.get("package_name", ""),
+            )
+        )
         rep = vd["packages"][0]
         vd["package_name"] = rep["package_name"]
         vd["installed_version"] = rep["installed_version"]
@@ -104,7 +114,10 @@ def get_vulnerabilities(
             ts_raw = vd.get("first_seen_at")
             ts = ts_raw.isoformat() if hasattr(ts_raw, "isoformat") else (ts_raw or "")
             null_last = 1 if not ts else 0
-            return (null_last, ts if not desc else ("" if not ts else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in ts[:20])))
+            return (
+                null_last,
+                ts if not desc else ("" if not ts else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in ts[:20])),
+            )
         if sort_by == "vuln_id":
             s = vd.get("vuln_id", "")
             return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
@@ -115,14 +128,16 @@ def get_vulnerabilities(
 
     all_vulns = sorted(grouped_vulns.values(), key=_image_sort_key)
     total_count = len(all_vulns)
-    page_vulns = all_vulns[offset: offset + limit]
+    page_vulns = all_vulns[offset : offset + limit]
     has_more = (offset + limit) < total_count
 
     return {
         "scan_id": scan.id,
         "scanned_at": _as_utc(scan.scanned_at),
         "is_distro_eol": scan.is_distro_eol,
-        "distro_display": f"{scan.distro_name} {scan.distro_version}" if scan.distro_name and scan.distro_version else scan.distro_name,
+        "distro_display": f"{scan.distro_name} {scan.distro_version}"
+        if scan.distro_name and scan.distro_version
+        else scan.distro_name,
         "has_vex": scan.vex_status == "found",
         "total_count": total_count,
         "count": len(page_vulns),
@@ -130,15 +145,14 @@ def get_vulnerabilities(
         "vulnerabilities": page_vulns,
     }
 
+
 @router.get("/vulnerabilities/count")
 def get_total_vulnerability_count(session: Session = Depends(db.get_session)):
     """Total vulnerability count across the latest scan of every image."""
     latest_scan_ids = select(func.max(Scan.id)).group_by(Scan.image_name)
-    count = session.exec(
-        select(func.count(Vulnerability.id))
-        .where(Vulnerability.scan_id.in_(latest_scan_ids))
-    ).one()
+    count = session.exec(select(func.count(Vulnerability.id)).where(Vulnerability.scan_id.in_(latest_scan_ids))).one()
     return {"total_vulnerability_count": count}
+
 
 @router.get("/images/vulnerabilities/critical")
 def get_critical_vulnerabilities(
@@ -148,12 +162,15 @@ def get_critical_vulnerabilities(
     """Critical vulnerabilities for the most recent scan of an image."""
     scan = _latest_scan_for_ref(image_ref, session)
     vulns = session.exec(
-        select(Vulnerability)
-        .where(Vulnerability.scan_id == scan.id)
-        .where(Vulnerability.severity == "Critical")
+        select(Vulnerability).where(Vulnerability.scan_id == scan.id).where(Vulnerability.severity == "Critical")
     ).all()
     serialised = [_serialise_vuln(v) for v in vulns]
-    return {"scan_id": scan.id, "scanned_at": _as_utc(scan.scanned_at), "count": len(serialised), "vulnerabilities": serialised}
+    return {
+        "scan_id": scan.id,
+        "scanned_at": _as_utc(scan.scanned_at),
+        "count": len(serialised),
+        "vulnerabilities": serialised,
+    }
 
 
 @router.get("/vulnerabilities/critical/running")
@@ -161,6 +178,7 @@ def get_critical_vulnerabilities_running(session: Session = Depends(db.get_sessi
     """Critical vulnerabilities across all currently running containers."""
     watcher = DockerWatcher()
     from fastapi import HTTPException as _HTTPException
+
     running_images = {img["image_name"] for img in watcher.list_running_containers()}
     if not running_images:
         return {"running_images": [], "count": 0, "vulnerabilities": []}
@@ -172,44 +190,46 @@ def get_critical_vulnerabilities_running(session: Session = Depends(db.get_sessi
         except _HTTPException:
             continue
         vulns = session.exec(
-            select(Vulnerability)
-            .where(Vulnerability.scan_id == scan.id)
-            .where(Vulnerability.severity == "Critical")
+            select(Vulnerability).where(Vulnerability.scan_id == scan.id).where(Vulnerability.severity == "Critical")
         ).all()
         results.extend(vulns)
 
     return {"running_images": list(running_images), "count": len(results), "vulnerabilities": results}
 
+
 @router.get("/vulnerabilities")
 def get_vulnerabilities_across_running(
     report: str = Query(
-        "all",
-        description="Filter report type. Options: 'critical', 'kev', 'new', 'vex_annotated', 'all'"
+        "all", description="Filter report type. Options: 'critical', 'kev', 'new', 'vex_annotated', 'all'"
     ),
     new_hours: int = Query(default=24, ge=1, le=336, description="Hours lookback for 'new' report (default 24)"),
     sort_by: str = Query("severity", description="Column to sort by"),
     sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
     limit: int = Query(default=100, le=500, description="Max rows per page"),
     offset: int = Query(default=0, ge=0, description="Row offset for pagination"),
-    session: Session = Depends(db.get_session)
+    session: Session = Depends(db.get_session),
 ):
     """Vulnerabilities across all running containers, grouped by vulnerability, with server-side sort and pagination."""
     if sort_by not in _VALID_SORT_COLS:
         from fastapi import HTTPException as _HTTPException
+
         raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
 
     watcher = DockerWatcher()
     running = watcher.list_running_containers()
     if not running:
-        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "eol_images": [], "vulnerabilities": []}
+        return {
+            "report": report,
+            "total_count": 0,
+            "count": 0,
+            "has_more": False,
+            "eol_images": [],
+            "vulnerabilities": [],
+        }
 
     image_names = {img["image_name"] for img in running}
 
-    latest_scan_id_subq = (
-        select(func.max(Scan.id))
-        .where(Scan.image_name.in_(image_names))
-        .group_by(Scan.image_name)
-    )
+    latest_scan_id_subq = select(func.max(Scan.id)).where(Scan.image_name.in_(image_names)).group_by(Scan.image_name)
     scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
 
     image_to_containers = defaultdict(list)
@@ -217,27 +237,38 @@ def get_vulnerabilities_across_running(
         image_to_containers[c["image_name"]].append(c["container_name"])
 
     scan_id_to_images = {s.id: s.image_name for s in scans}
-    
+
     eol_images = []
     for s in scans:
         if s.is_distro_eol:
             for c_name in image_to_containers[s.image_name]:
-                eol_images.append({
-                    "container_name": c_name,
-                    "distro": f"{s.distro_name} {s.distro_version}" if s.distro_name and s.distro_version else s.distro_name,
-                })
+                eol_images.append(
+                    {
+                        "container_name": c_name,
+                        "distro": f"{s.distro_name} {s.distro_version}"
+                        if s.distro_name and s.distro_version
+                        else s.distro_name,
+                    }
+                )
 
     if not scan_id_to_images:
-        return {"report": report, "total_count": 0, "count": 0, "has_more": False, "eol_images": [], "vulnerabilities": []}
+        return {
+            "report": report,
+            "total_count": 0,
+            "count": 0,
+            "has_more": False,
+            "eol_images": [],
+            "vulnerabilities": [],
+        }
 
     q = select(Vulnerability).where(Vulnerability.scan_id.in_(scan_id_to_images.keys()))
 
     if report == "critical":
         q = q.where(Vulnerability.severity == "Critical")
     elif report == "kev":
-        q = q.where(Vulnerability.is_kev == True)
+        q = q.where(Vulnerability.is_kev)
     elif report == "new":
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=new_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=new_hours)
         q = q.where(Vulnerability.first_seen_at >= cutoff)
     elif report == "vex_annotated":
         q = q.where(Vulnerability.vex_status.isnot(None))
@@ -293,11 +324,13 @@ def get_vulnerabilities_across_running(
                 gv["risk_score"] = v.risk_score
 
     for vd in grouped_vulns.values():
-        vd["packages"].sort(key=lambda p: (
-            _severity_rank(p.get("severity", "Unknown")),
-            -(p.get("cvss_base_score") or 0),
-            p.get("package_name", ""),
-        ))
+        vd["packages"].sort(
+            key=lambda p: (
+                _severity_rank(p.get("severity", "Unknown")),
+                -(p.get("cvss_base_score") or 0),
+                p.get("package_name", ""),
+            )
+        )
         rep = vd["packages"][0]
         vd["package_name"] = rep["package_name"]
         vd["installed_version"] = rep["installed_version"]
@@ -329,7 +362,10 @@ def get_vulnerabilities_across_running(
             ts_raw = vd.get("first_seen_at")
             ts = ts_raw.isoformat() if hasattr(ts_raw, "isoformat") else (ts_raw or "")
             null_last = 1 if not ts else 0
-            return (null_last, ts if not desc else ("" if not ts else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in ts[:20])))
+            return (
+                null_last,
+                ts if not desc else ("" if not ts else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in ts[:20])),
+            )
         if sort_by == "vuln_id":
             s = vd.get("vuln_id", "")
             return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
@@ -346,7 +382,7 @@ def get_vulnerabilities_across_running(
                 vd["description"] = vd["description"][:_DESC_LIMIT] + "…"
 
     total_count = len(all_vulns)
-    page_vulns = all_vulns[offset: offset + limit]
+    page_vulns = all_vulns[offset : offset + limit]
     has_more = (offset + limit) < total_count
 
     return {
@@ -358,6 +394,7 @@ def get_vulnerabilities_across_running(
         "eol_images": eol_images,
         "vulnerabilities": page_vulns,
     }
+
 
 @router.get("/images/vulnerabilities/history")
 def get_vulnerability_count_history(
@@ -374,6 +411,7 @@ def get_vulnerability_count_history(
 ):
     """Vulnerability counts over time for an image."""
     from fastapi import HTTPException as _HTTPException
+
     filter_type, value = _parse_image_query(image)
 
     stmt = select(Scan)
@@ -390,16 +428,15 @@ def get_vulnerability_count_history(
 
     history = []
     for scan in scans:
-        count = session.exec(
-            select(func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id == scan.id)
-        ).one()
-        history.append({
-            "scan_id": scan.id,
-            "scanned_at": _as_utc(scan.scanned_at),
-            "image_ref": scan.image_name,
-            "image_digest": scan.image_digest,
-            "total": count,
-        })
+        count = session.exec(select(func.count(Vulnerability.id)).where(Vulnerability.scan_id == scan.id)).one()
+        history.append(
+            {
+                "scan_id": scan.id,
+                "scanned_at": _as_utc(scan.scanned_at),
+                "image_ref": scan.image_name,
+                "image_digest": scan.image_digest,
+                "total": count,
+            }
+        )
 
     return {"image": image, "history": history}

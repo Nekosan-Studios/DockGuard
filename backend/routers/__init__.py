@@ -1,4 +1,4 @@
-from . import vulnerabilities, containers, tasks, settings, internal
+from . import containers, internal, settings, tasks, vulnerabilities
 
 __all__ = [
     "vulnerabilities",

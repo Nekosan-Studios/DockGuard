@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Session
 
@@ -11,14 +11,15 @@ from backend.models import SystemTask
 
 logger = logging.getLogger(__name__)
 
+
 async def check_running_containers(
     db: Database,
     seen_digests: set[str],
     scan_semaphore: asyncio.Semaphore,
 ) -> None:
     """Scheduled job: detect new/updated running containers and trigger scans."""
-    now = datetime.now(timezone.utc)
-    
+    now = datetime.now(UTC)
+
     with Session(db.engine) as session:
         task = SystemTask(
             task_type="scheduled_check_containers",
@@ -45,29 +46,26 @@ async def check_running_containers(
             seen_digests.add(image_id)
             logger.info(
                 "New running image detected: %s (%s) — scheduling Grype scan",
-                img["image_name"], img["hash"],
+                img["image_name"],
+                img["hash"],
             )
-            
+
             # Create a queued task for the scan
             with Session(db.engine) as session:
                 scan_task = SystemTask(
                     task_type="scan",
                     task_name=f"Scan {img['image_name']}",
                     status="queued",
-                    created_at=datetime.now(timezone.utc)
+                    created_at=datetime.now(UTC),
                 )
                 session.add(scan_task)
                 session.commit()
                 scan_task_id = scan_task.id
-            
+
             new_scans_queued += 1
             asyncio.create_task(
                 scanner.scan_image_async(
-                    img["image_name"],
-                    img["grype_ref"],
-                    scan_semaphore,
-                    img["container_name"],
-                    scan_task_id
+                    img["image_name"], img["grype_ref"], scan_semaphore, img["container_name"], scan_task_id
                 )
             )
 
@@ -75,8 +73,10 @@ async def check_running_containers(
             task = session.get(SystemTask, task_id)
             if task:
                 task.status = "completed"
-                task.finished_at = datetime.now(timezone.utc)
-                task.result_details = f"Detected {len(running)} running containers. Queued {new_scans_queued} new scans."
+                task.finished_at = datetime.now(UTC)
+                task.result_details = (
+                    f"Detected {len(running)} running containers. Queued {new_scans_queued} new scans."
+                )
                 session.add(task)
                 session.commit()
 
@@ -86,7 +86,7 @@ async def check_running_containers(
             task = session.get(SystemTask, task_id)
             if task:
                 task.status = "failed"
-                task.finished_at = datetime.now(timezone.utc)
+                task.finished_at = datetime.now(UTC)
                 task.error_message = str(e)
                 session.add(task)
                 session.commit()

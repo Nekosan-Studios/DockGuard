@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
-from typing import Optional
-from sqlmodel import Session, select
+from datetime import UTC, datetime
+
 from fastapi import HTTPException
+from sqlmodel import Session, select
 
 from .models import Scan, Vulnerability
 
@@ -9,16 +9,23 @@ _DESC_LIMIT = 1000
 _LOC_LIMIT = 5
 
 _VALID_SORT_COLS = {
-    "severity", "cvss_base_score", "epss_score", "is_kev",
-    "first_seen_at", "vuln_id", "package_name",
+    "severity",
+    "cvss_base_score",
+    "epss_score",
+    "is_kev",
+    "first_seen_at",
+    "vuln_id",
+    "package_name",
 }
 _SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Negligible", "Unknown"]
+
 
 def _severity_rank(s: str) -> int:
     try:
         return _SEVERITY_ORDER.index(s)
     except ValueError:
         return 99
+
 
 def _serialise_vuln(v: Vulnerability) -> dict:
     d = v.model_dump()
@@ -30,10 +37,12 @@ def _serialise_vuln(v: Vulnerability) -> dict:
             d["locations"] = "\n".join(paths[:_LOC_LIMIT])
     return d
 
-def _as_utc(dt: Optional[datetime]) -> Optional[datetime]:
+
+def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None or dt.tzinfo is not None:
         return dt
-    return dt.replace(tzinfo=timezone.utc)
+    return dt.replace(tzinfo=UTC)
+
 
 def _latest_scan_for_ref(image_ref: str, session: Session) -> Scan:
     if image_ref.startswith("sha256:"):
@@ -45,10 +54,11 @@ def _latest_scan_for_ref(image_ref: str, session: Session) -> Scan:
         raise HTTPException(status_code=404, detail=f"No scans found for '{image_ref}'")
     return scan
 
+
 def _parse_image_query(image: str) -> tuple[str, str]:
     if image.startswith("sha256:"):
         return "digest", image
     last_colon = image.rfind(":")
-    if last_colon != -1 and "/" not in image[last_colon + 1:]:
+    if last_colon != -1 and "/" not in image[last_colon + 1 :]:
         return "image_ref", image
     return "image_repository", image

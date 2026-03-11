@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Session
 
@@ -10,7 +10,7 @@ def _make_task(status="completed", task_type="scan", task_name="Scan nginx:lates
         task_type=task_type,
         task_name=task_name,
         status=status,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -19,6 +19,7 @@ def _make_task(status="completed", task_type="scan", task_name="Scan nginx:lates
 # Note: api_client starts the full app lifespan including the scheduler, which
 # may insert SystemTask rows into test_db. Tests cannot assume the DB is empty.
 # ---------------------------------------------------------------------------
+
 
 def test_get_tasks_returns_list(api_client):
     client, _, _ = api_client
@@ -56,8 +57,8 @@ def test_get_tasks_timestamps_serialised(api_client):
     client, test_db, _ = api_client
     with Session(test_db.engine) as session:
         task = _make_task(task_name="ts-sentinel")
-        task.started_at = datetime.now(timezone.utc)
-        task.finished_at = datetime.now(timezone.utc)
+        task.started_at = datetime.now(UTC)
+        task.finished_at = datetime.now(UTC)
         session.add(task)
         session.commit()
 
@@ -72,6 +73,7 @@ def test_get_tasks_timestamps_serialised(api_client):
 # GET /tasks/scheduled
 # The api_client fixture starts the full app lifespan so the scheduler IS active.
 # ---------------------------------------------------------------------------
+
 
 def test_get_scheduled_tasks_returns_jobs(api_client):
     client, _, _ = api_client

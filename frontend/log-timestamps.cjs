@@ -1,6 +1,6 @@
 // Prepend ISO-8601 timestamps to console output.
 // Loaded via: node --require ./log-timestamps.cjs build/index.js
-'use strict';
+"use strict";
 
 const orig = {
   log: console.log,
@@ -8,9 +8,9 @@ const orig = {
   error: console.error,
 };
 
-const levels = { log: 'INFO    ', warn: 'WARN    ', error: 'ERROR   ' };
+const levels = { log: "INFO    ", warn: "WARN    ", error: "ERROR   " };
 
-for (const method of ['log', 'warn', 'error']) {
+for (const method of ["log", "warn", "error"]) {
   console[method] = (...args) => {
     orig[method](new Date().toISOString(), levels[method], ...args);
   };

@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Session, func, select
 
@@ -26,13 +26,12 @@ def _parse_image_repository(image_ref: str) -> str:
     last_colon = image_ref.rfind(":")
     if last_colon == -1:
         return image_ref
-    if "/" not in image_ref[last_colon + 1:]:
+    if "/" not in image_ref[last_colon + 1 :]:
         return image_ref[:last_colon]
     return image_ref
 
 
 class GrypeScanner:
-
     def __init__(self, watcher: DockerWatcher | None, database: Database):
         self.watcher = watcher
         self.db = database
@@ -50,7 +49,14 @@ class GrypeScanner:
             except Exception:
                 logger.exception("Failed to scan image %s", image["name"])
 
-    async def scan_image_async(self, image_name: str, grype_ref: str, semaphore: asyncio.Semaphore, container_name: str | None = None, task_id: int | None = None) -> None:
+    async def scan_image_async(
+        self,
+        image_name: str,
+        grype_ref: str,
+        semaphore: asyncio.Semaphore,
+        container_name: str | None = None,
+        task_id: int | None = None,
+    ) -> None:
         """Run a Grype scan asynchronously to avoid blocking the event loop."""
         async with semaphore:
             if task_id:
@@ -58,13 +64,15 @@ class GrypeScanner:
                     task = session.get(SystemTask, task_id)
                     if task:
                         task.status = "running"
-                        task.started_at = datetime.now(timezone.utc)
+                        task.started_at = datetime.now(UTC)
                         session.add(task)
                         session.commit()
-            
+
             await asyncio.to_thread(self.scan_image_sync, image_name, grype_ref, container_name, task_id)
 
-    def scan_image_sync(self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None) -> None:
+    def scan_image_sync(
+        self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None
+    ) -> None:
         """Scan a single image, check VEX, and update the task status."""
         try:
             self.scan_image(image_name, grype_ref, container_name)
@@ -75,7 +83,7 @@ class GrypeScanner:
                     task = session.get(SystemTask, task_id)
                     if task:
                         task.status = "completed"
-                        task.finished_at = datetime.now(timezone.utc)
+                        task.finished_at = datetime.now(UTC)
                         task.result_details = "Scan completed successfully."
                         session.add(task)
                         session.commit()
@@ -86,7 +94,7 @@ class GrypeScanner:
                     task = session.get(SystemTask, task_id)
                     if task:
                         task.status = "failed"
-                        task.finished_at = datetime.now(timezone.utc)
+                        task.finished_at = datetime.now(UTC)
                         task.error_message = str(e)
                         session.add(task)
                         session.commit()
@@ -122,8 +130,8 @@ class GrypeScanner:
         db_status = db_info.get("status", db_info)
 
         image_repository = _parse_image_repository(image_name)
-        scanned_at = datetime.now(timezone.utc)
-        
+        scanned_at = datetime.now(UTC)
+
         # Check if any package has a distro-eol alert
         distro_eol = any(
             any(alert.get("type") == "distro-eol" for alert in pkg.get("alerts", []))
@@ -208,9 +216,7 @@ class GrypeScanner:
                 upstreams = artifact.get("upstreams", [])
                 upstream_name = upstreams[0].get("name") or None if upstreams else None
 
-                new_locs = [
-                    loc["path"] for loc in artifact.get("locations", []) if loc.get("path")
-                ]
+                new_locs = [loc["path"] for loc in artifact.get("locations", []) if loc.get("path")]
 
                 if key in vuln_map:
                     # Merge locations into the existing row
@@ -276,10 +282,10 @@ class GrypeScanner:
                 watcher = DockerWatcher()
             else:
                 watcher = self.watcher
-                
+
             if not watcher.client:
                 return config_digest
-                
+
             image = watcher.client.images.get(image_name)
             for rd in image.attrs.get("RepoDigests", []):
                 if rd.startswith(image_name.split(":")[0]):
@@ -302,7 +308,7 @@ class GrypeScanner:
 
                 digest = self._resolve_repo_digest(image_name, scan.image_digest)
                 vex_result = check_vex_for_image(image_name, digest)
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
 
                 if vex_result.error:
                     scan.vex_status = "error"
@@ -312,9 +318,7 @@ class GrypeScanner:
                     scan.vex_status = "found"
                     scan.vex_source = vex_result.source
                     scan.vex_checked_at = now
-                    vulns = session.exec(
-                        select(Vulnerability).where(Vulnerability.scan_id == scan.id)
-                    ).all()
+                    vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id == scan.id)).all()
                     stmt_map = {s.vuln_id: s for s in vex_result.statements}
                     matched = 0
                     for v in vulns:
@@ -325,7 +329,12 @@ class GrypeScanner:
                             v.vex_statement = vex_stmt.notes
                             session.add(v)
                             matched += 1
-                    logger.info("VEX found for %s: %d statements, %d matched vulns", image_name, len(vex_result.statements), matched)
+                    logger.info(
+                        "VEX found for %s: %d statements, %d matched vulns",
+                        image_name,
+                        len(vex_result.statements),
+                        matched,
+                    )
                 else:
                     scan.vex_status = "none"
                     scan.vex_checked_at = now

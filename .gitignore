@@ -27,6 +27,7 @@ htmlcov/
 !frontend/.env.test
 
 # Frontend (SvelteKit / Vite)
+frontend/coverage/
 frontend/.svelte-kit/
 frontend/.output/
 frontend/build/

@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, patch
 
 import docker
-
 from backend.docker_watcher import DockerWatcher
 
 
@@ -18,7 +17,9 @@ def _make_mock_container(image_id: str) -> MagicMock:
     return container
 
 
-def _make_mock_running_container(name: str, image_id: str, tags: list[str], config_image: str | None = None) -> MagicMock:
+def _make_mock_running_container(
+    name: str, image_id: str, tags: list[str], config_image: str | None = None
+) -> MagicMock:
     container = MagicMock()
     container.name = name
     container.image.id = image_id
@@ -101,6 +102,7 @@ def test_list_images_docker_unavailable(mock_from_env, mock_client):
 # list_running_containers
 # ---------------------------------------------------------------------------
 
+
 @patch("docker.from_env")
 def test_list_running_containers_tagged(mock_from_env):
     image_id = "sha256:abcdef123456789000000000000000000000000000000000000000000000000"
@@ -178,7 +180,9 @@ def test_list_running_containers_prefers_config_image(mock_from_env):
     mock_client = MagicMock()
     mock_client.containers.list.return_value = [
         _make_mock_running_container(
-            "/my-nginx", image_id, ["nginx:latest", "localhost:5555/test-nginx:latest"],
+            "/my-nginx",
+            image_id,
+            ["nginx:latest", "localhost:5555/test-nginx:latest"],
             config_image="localhost:5555/test-nginx:latest",
         ),
     ]

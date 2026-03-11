@@ -1,9 +1,9 @@
-from backend.tests.conftest import seed_scan, VULN_CRITICAL
-
+from backend.tests.conftest import VULN_CRITICAL, seed_scan
 
 # ---------------------------------------------------------------------------
 # GET /db/tables
 # ---------------------------------------------------------------------------
+
 
 def test_get_db_tables_returns_app_tables(api_client):
     client, _, _ = api_client
@@ -24,6 +24,7 @@ def test_get_db_tables_excludes_alembic(api_client):
 # ---------------------------------------------------------------------------
 # GET /db/table/{table_name}
 # ---------------------------------------------------------------------------
+
 
 def test_get_db_table_rows_returns_data(api_client):
     client, test_db, _ = api_client

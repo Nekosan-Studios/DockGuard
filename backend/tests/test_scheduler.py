@@ -1,21 +1,21 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 from sqlmodel import Session, select
 
-from backend.models import Scan, Vulnerability
-from backend.scheduler import ContainerScheduler
 from backend.jobs.containers import check_running_containers
 from backend.jobs.grype_db import check_db_update
 from backend.jobs.maintenance import purge_old_data
-from backend.tests.conftest import seed_scan, VULN_CRITICAL, VULN_HIGH
-
+from backend.models import Scan, Vulnerability
+from backend.scheduler import ContainerScheduler
+from backend.tests.conftest import VULN_CRITICAL, VULN_HIGH, seed_scan
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_running_container(image_name: str, image_id: str, container_name: str = "test-container") -> dict:
     return {
@@ -30,6 +30,7 @@ def _make_running_container(image_name: str, image_id: str, container_name: str 
 # ---------------------------------------------------------------------------
 # ContainerScheduler: bootstraps seen digests from DB
 # ---------------------------------------------------------------------------
+
 
 def test_create_scheduler_loads_known_digests_from_db(test_db):
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
@@ -49,6 +50,7 @@ def test_create_scheduler_empty_db_has_no_digests(test_db):
 # ---------------------------------------------------------------------------
 # check_running_containers: new image triggers scan task
 # ---------------------------------------------------------------------------
+
 
 @patch("backend.jobs.containers.GrypeScanner.scan_image_async", new_callable=MagicMock)
 @patch("backend.jobs.containers.asyncio.create_task")
@@ -131,6 +133,7 @@ def test_docker_unavailable_does_not_crash(mock_watcher_cls, mock_create_task, m
 # check_db_update: clears seen_digests when grype DB update is available
 # ---------------------------------------------------------------------------
 
+
 @patch("backend.jobs.grype_db.subprocess.run")
 def test_db_check_update_available_clears_seen_digests(mock_run, test_db):
     """returncode == 100 (update available) → seen_digests is cleared entirely."""
@@ -148,7 +151,7 @@ def test_db_check_missing_but_not_newer_does_not_clear_seen_digests(mock_run, mo
     """returncode == 100 but downloaded DB is not newer → seen_digests is unchanged."""
     from backend.models import AppState
 
-    dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    dt = datetime(2025, 1, 1, tzinfo=UTC)
     with Session(test_db.engine) as session:
         session.add(AppState(id=1, db_built=dt))
         session.commit()
@@ -210,8 +213,9 @@ def test_db_check_subprocess_exception_does_not_clear_seen_digests(mock_run, tes
 # purge_old_data: stale scan/vulnerability/task cleanup
 # ---------------------------------------------------------------------------
 
+
 def _days_ago(n: int) -> datetime:
-    return datetime.now(timezone.utc) - timedelta(days=n)
+    return datetime.now(UTC) - timedelta(days=n)
 
 
 def test_purge_deletes_old_scans_and_vulns(test_db):
@@ -224,9 +228,7 @@ def test_purge_deletes_old_scans_and_vulns(test_db):
     with Session(test_db.engine) as session:
         assert session.get(Scan, old_scan.id) is None, "Old scan should have been purged"
         assert session.get(Scan, new_scan.id) is not None, "Recent scan must survive"
-        old_vulns = session.exec(
-            select(Vulnerability).where(Vulnerability.scan_id == old_scan.id)
-        ).all()
+        old_vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id == old_scan.id)).all()
         assert old_vulns == [], "Vulnerability rows for old scan should be deleted"
 
 
@@ -246,7 +248,6 @@ def test_purge_deletes_old_system_tasks(test_db):
     """SystemTask rows older than the retention window are removed; recent ones survive."""
     from backend.models import SystemTask as ST
 
-    now = datetime.now(timezone.utc)
     old_task = ST(
         task_type="scheduled_check_containers",
         task_name="Monitor Running Containers",
@@ -284,9 +285,7 @@ def test_purge_creates_completed_system_task_record(test_db):
     asyncio.run(purge_old_data(test_db, data_retention_days=30))
 
     with Session(test_db.engine) as session:
-        purge_tasks = session.exec(
-            select(ST).where(ST.task_type == "scheduled_purge")
-        ).all()
+        purge_tasks = session.exec(select(ST).where(ST.task_type == "scheduled_purge")).all()
     assert len(purge_tasks) == 1
     assert purge_tasks[0].status == "completed"
     assert purge_tasks[0].result_details is not None

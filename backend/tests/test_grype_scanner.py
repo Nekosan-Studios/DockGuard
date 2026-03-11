@@ -29,6 +29,7 @@ def _mock_subprocess(json_payload: dict, returncode: int = 0) -> CompletedProces
 # subprocess interaction
 # ---------------------------------------------------------------------------
 
+
 @patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_calls_subprocess_with_correct_args(mock_run, test_db):
     mock_run.return_value = _mock_subprocess(GRYPE_JSON_NGINX)
@@ -44,6 +45,7 @@ def test_scan_images_calls_subprocess_with_correct_args(mock_run, test_db):
 # ---------------------------------------------------------------------------
 # Scan persistence
 # ---------------------------------------------------------------------------
+
 
 @patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_stores_scan_row(mock_run, test_db):
@@ -94,6 +96,7 @@ def test_scan_images_stores_correct_vulnerability_count(mock_run, test_db):
 # ---------------------------------------------------------------------------
 # Field parsing
 # ---------------------------------------------------------------------------
+
 
 def test_store_scan_parses_cvss(test_db):
     scanner = _make_scanner(test_db)
@@ -187,11 +190,10 @@ def test_store_scan_no_vulnerabilities(test_db):
 # Error handling
 # ---------------------------------------------------------------------------
 
+
 @patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_grype_error_does_not_store(mock_run, test_db):
-    mock_run.return_value = CompletedProcess(
-        args=["grype"], returncode=1, stdout="", stderr="grype: command failed"
-    )
+    mock_run.return_value = CompletedProcess(args=["grype"], returncode=1, stdout="", stderr="grype: command failed")
     scanner = _make_scanner(test_db, images=[MOCK_DOCKER_IMAGES[0]])
     scanner.scan_images()
 
@@ -201,9 +203,7 @@ def test_scan_images_grype_error_does_not_store(mock_run, test_db):
 
 @patch("backend.grype_scanner.subprocess.run")
 def test_scan_images_invalid_json_does_not_store(mock_run, test_db):
-    mock_run.return_value = CompletedProcess(
-        args=["grype"], returncode=0, stdout="not valid json {{{", stderr=""
-    )
+    mock_run.return_value = CompletedProcess(args=["grype"], returncode=0, stdout="not valid json {{{", stderr="")
     scanner = _make_scanner(test_db, images=[MOCK_DOCKER_IMAGES[0]])
     scanner.scan_images()
 
@@ -214,6 +214,7 @@ def test_scan_images_invalid_json_does_not_store(mock_run, test_db):
 # ---------------------------------------------------------------------------
 # _parse_datetime
 # ---------------------------------------------------------------------------
+
 
 def test_parse_datetime_valid(test_db):
     scanner = _make_scanner(test_db)

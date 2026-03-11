@@ -34,7 +34,6 @@ def _connect_to_docker() -> docker.DockerClient:
 
 
 class DockerWatcher:
-
     def __init__(self):
         try:
             self.client = _connect_to_docker()
@@ -46,21 +45,20 @@ class DockerWatcher:
         if not self.client:
             return []
 
-        running_image_ids = {
-            container.image.id
-            for container in self.client.containers.list()
-        }
+        running_image_ids = {container.image.id for container in self.client.containers.list()}
 
         images = []
         for image in self.client.images.list():
             tag = image.tags[0] if image.tags else None
-            images.append({
-                "name": tag if tag else "<untagged>",
-                "grype_ref": tag if tag else f"docker:{image.id}",
-                "hash": image.id.replace("sha256:", "")[:12],
-                "image_id": image.id,  # full sha256:... for change detection
-                "running": image.id in running_image_ids,
-            })
+            images.append(
+                {
+                    "name": tag if tag else "<untagged>",
+                    "grype_ref": tag if tag else f"docker:{image.id}",
+                    "hash": image.id.replace("sha256:", "")[:12],
+                    "image_id": image.id,  # full sha256:... for change detection
+                    "running": image.id in running_image_ids,
+                }
+            )
 
         return images
 
@@ -85,13 +83,15 @@ class DockerWatcher:
             # point to the same digest.
             config_image = container.attrs.get("Config", {}).get("Image", "")
             tag = config_image if config_image else (image.tags[0] if image.tags else None)
-            containers.append({
-                "container_name": container.name.lstrip("/"),
-                "image_name": tag if tag else "<untagged>",
-                "grype_ref": tag if tag else f"docker:{image.id}",
-                "hash": image.id.replace("sha256:", "")[:12],
-                "image_id": image.id,
-            })
+            containers.append(
+                {
+                    "container_name": container.name.lstrip("/"),
+                    "image_name": tag if tag else "<untagged>",
+                    "grype_ref": tag if tag else f"docker:{image.id}",
+                    "hash": image.id.replace("sha256:", "")[:12],
+                    "image_id": image.id,
+                }
+            )
 
         return containers
 
