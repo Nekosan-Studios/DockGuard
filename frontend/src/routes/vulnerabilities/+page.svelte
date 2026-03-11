@@ -353,7 +353,7 @@
                         <colgroup>
                             <col style="width:13%" />
                             <col style="width:10%" />
-                            <col style="width:7%" />
+                            <col style="width:8%" />
                             <col style="width:10%" />
                             <col style="width:7%" />
                             <col style="width:7%" />
@@ -362,7 +362,7 @@
                             <col style="width:4%" />
                             {#if hasAnyVex}<col style="width:4%" />{/if}
                             <col style="width:10%" />
-                            <col style="width:{hasAnyVex ? '18' : '22'}%" />
+                            <col style="width:{hasAnyVex ? '17' : '21'}%" />
                         </colgroup>
                         <Table.Header>
                             <Table.Row class="bg-muted/50">
