@@ -102,7 +102,7 @@
           <p>No scheduled tasks found.</p>
         </div>
       {:else}
-        <div class="rounded-md border">
+        <div class="overflow-x-auto rounded-md border">
           <Table.Root>
             <Table.Header>
               <Table.Row>
@@ -149,21 +149,21 @@
           <p>No recent tasks in the database.</p>
         </div>
       {:else}
-        <div class="rounded-md border">
+        <div class="overflow-x-auto rounded-md border">
           <Table.Root>
             <Table.Header>
               <Table.Row>
-                <Table.Head>Status</Table.Head>
-                <Table.Head>Task Name</Table.Head>
-                <Table.Head>Created</Table.Head>
-                <Table.Head>Finished</Table.Head>
-                <Table.Head>Results / Errors</Table.Head>
+                <Table.Head class="py-1.5">Status</Table.Head>
+                <Table.Head class="py-1.5">Task Name</Table.Head>
+                <Table.Head class="py-1.5">Created</Table.Head>
+                <Table.Head class="py-1.5">Finished</Table.Head>
+                <Table.Head class="py-1.5">Results / Errors</Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>
               {#each sortedTasks as task (task.id)}
                 <Table.Row>
-                  <Table.Cell>
+                  <Table.Cell class="py-1.5">
                     <Badge
                       variant={getStatusVariant(task.status)}
                       class={getStatusClass(task.status)}
@@ -171,10 +171,10 @@
                       {task.status}
                     </Badge>
                   </Table.Cell>
-                  <Table.Cell class="font-medium">{task.task_name}</Table.Cell>
-                  <Table.Cell>{formatDate(task.created_at)}</Table.Cell>
-                  <Table.Cell>{formatDate(task.finished_at)}</Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell class="py-1.5 font-medium">{task.task_name}</Table.Cell>
+                  <Table.Cell class="py-1.5">{formatDate(task.created_at)}</Table.Cell>
+                  <Table.Cell class="py-1.5">{formatDate(task.finished_at)}</Table.Cell>
+                  <Table.Cell class="py-1.5">
                     {#if task.status === "failed"}
                       <span class="text-destructive text-sm"
                         >{task.error_message || "Unknown error"}</span

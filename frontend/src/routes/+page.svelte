@@ -116,7 +116,7 @@
       {/if}
     </span>
 
-    <span class="text-border select-none">|</span>
+    <span class="text-border select-none hidden sm:inline">|</span>
 
     <!-- Grype version -->
     <span class="flex items-center gap-1.5">
@@ -126,7 +126,7 @@
       >
     </span>
 
-    <span class="text-border select-none">|</span>
+    <span class="text-border select-none hidden sm:inline">|</span>
 
     <!-- Vuln DB built -->
     <span class="flex items-center gap-1.5">
@@ -136,7 +136,7 @@
       >
     </span>
 
-    <span class="text-border select-none">|</span>
+    <span class="text-border select-none hidden sm:inline">|</span>
 
     <!-- Last DB check -->
     <span class="flex items-center gap-1.5">
