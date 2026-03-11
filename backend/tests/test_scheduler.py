@@ -142,6 +142,28 @@ def test_db_check_update_available_clears_seen_digests(mock_run, test_db):
     assert len(seen_digests) == 0
 
 
+@patch("backend.jobs.grype_db.fetch_grype_info")
+@patch("backend.jobs.grype_db.subprocess.run")
+def test_db_check_missing_but_not_newer_does_not_clear_seen_digests(mock_run, mock_fetch, test_db, caplog):
+    """returncode == 100 but downloaded DB is not newer → seen_digests is unchanged."""
+    from backend.models import AppState
+
+    dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    with Session(test_db.engine) as session:
+        session.add(AppState(id=1, db_built=dt))
+        session.commit()
+
+    seen_digests = {"sha256:aaaa"}
+    mock_run.return_value = MagicMock(returncode=100)
+    mock_fetch.return_value = ("v0.1.0", "v5", dt)
+
+    with caplog.at_level(logging.INFO, logger="backend.jobs.grype_db"):
+        asyncio.run(check_db_update(test_db, seen_digests))
+
+    assert "sha256:aaaa" in seen_digests
+    assert "Skipping rescan" in caplog.text
+
+
 @patch("backend.jobs.grype_db.subprocess.run")
 def test_db_check_current_does_not_clear_seen_digests(mock_run, test_db, caplog):
     """returncode == 0 (DB current) → seen_digests is unchanged."""

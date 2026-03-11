@@ -60,6 +60,11 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
     now = datetime.now(timezone.utc)
 
     with Session(db.engine) as session:
+        state = session.get(AppState, 1)
+        old_db_built = state.db_built if state else None
+        if old_db_built and old_db_built.tzinfo is None:
+            old_db_built = old_db_built.replace(tzinfo=timezone.utc)
+
         task = SystemTask(
             task_type="scheduled_db_update",
             task_name="Check Grype DB Update",
@@ -99,11 +104,18 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
                     capture_output=True,
                     text=True,
                 )
-                logger.info("grype db update completed — clearing seen digests to trigger full rescan")
             except Exception as upd_exc:
                 logger.warning("grype db update failed (will still rescan): %s", upd_exc)
-            seen_digests.clear()
-            result_msg = "New DB available. Triggered full rescan."
+            
+            _, _, new_db_built = await fetch_grype_info()
+
+            if old_db_built and new_db_built and new_db_built <= old_db_built:
+                logger.info("Grype DB cache was empty, but downloaded DB is not newer than last known. Skipping rescan.")
+                result_msg = "DB cache rebuilt, but no newer data. Skipped rescan."
+            else:
+                logger.info("grype db update completed — clearing seen digests to trigger full rescan")
+                seen_digests.clear()
+                result_msg = "New DB available. Triggered full rescan."
         else:
             err_text = result.stderr.strip()
             logger.error(

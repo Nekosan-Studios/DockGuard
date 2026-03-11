@@ -65,6 +65,9 @@ COPY frontend/log-timestamps.cjs ./frontend/
 # Create data directory
 RUN mkdir -p /app/data
 
+# Persist Grype DB cache
+ENV GRYPE_DB_CACHE_DIR=/app/data/grype_db
+
 EXPOSE 8765 8764
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
