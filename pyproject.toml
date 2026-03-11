@@ -1,6 +1,6 @@
 [project]
 name = "dockguard"
-version = "0.2.2"
+version = "0.2.4"
 requires-python = ">=3.14.3"
 dependencies = [
     "fastapi",
