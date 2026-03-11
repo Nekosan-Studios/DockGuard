@@ -113,6 +113,25 @@ The app runs `alembic upgrade head` automatically on startup, so committed migra
 uv run alembic -c backend/alembic.ini downgrade -1
 ```
 
+## Releasing a New Version
+
+1. Update `VERSION` (root) to the new version number. This is the only file that needs changing — `pyproject.toml` and `frontend/package.json` are pinned to `0.0.0` permanently as they serve no functional purpose.
+
+2. Commit and push to master:
+   ```bash
+   git add VERSION
+   git commit -m "chore: bump version to x.y.z"
+   git push origin master
+   ```
+
+3. Create and push a version tag:
+   ```bash
+   git tag vx.y.z
+   git push origin vx.y.z
+   ```
+
+   Pushing a `v*` tag triggers the CI workflow, which builds the Docker image and pushes it to GHCR tagged as both `vx.y.z` and `latest`.
+
 ## Docker Dev Build
 
 To build and run the container locally from source:
