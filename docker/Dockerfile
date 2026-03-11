@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install grype
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
-    | sh -s -- -b /usr/local/bin v0.109.0
+    | sh -s -- -b /usr/local/bin v0.109.1
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

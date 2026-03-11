@@ -1,0 +1,88 @@
+name: Check for Grype Updates
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Daily, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-grype:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest Grype release
+        id: latest
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/anchore/grype/releases/latest \
+            | jq -r '.tag_name')
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest grype: $LATEST"
+
+      - name: Get current pinned Grype version
+        id: current
+        run: |
+          CURRENT=$(grep -oP 'v[0-9]+\.[0-9]+\.[0-9]+' docker/Dockerfile | grep -m1 '')
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Current grype: $CURRENT"
+
+      - name: Check if update needed
+        id: check
+        run: |
+          if [ "${{ steps.latest.outputs.version }}" != "${{ steps.current.outputs.version }}" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "Update needed: ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date: ${{ steps.current.outputs.version }}"
+          fi
+
+      - name: Create update PR
+        if: steps.check.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT: ${{ steps.current.outputs.version }}
+          LATEST: ${{ steps.latest.outputs.version }}
+        run: |
+          BRANCH="chore/grype-${LATEST}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          # Update both pin locations (Dockerfile and CI workflow)
+          sed -i "s|sh -s -- -b /usr/local/bin ${CURRENT}|sh -s -- -b /usr/local/bin ${LATEST}|g" \
+            docker/Dockerfile .github/workflows/ci.yml
+
+          git add docker/Dockerfile .github/workflows/ci.yml
+          git commit -m "chore: bump grype ${CURRENT} → ${LATEST}"
+          git push origin "$BRANCH"
+
+          # Build PR body line-by-line (heredocs at col-0 confuse YAML parsers)
+          echo "## Grype version update"                                              > /tmp/pr_body.md
+          echo ""                                                                     >> /tmp/pr_body.md
+          echo "Bumps the pinned Grype scanner from \`${CURRENT}\` to \`${LATEST}\`." >> /tmp/pr_body.md
+          echo ""                                                                     >> /tmp/pr_body.md
+          echo "**Files updated:**"                                                   >> /tmp/pr_body.md
+          echo "- \`docker/Dockerfile\` — distributed container image"               >> /tmp/pr_body.md
+          echo "- \`.github/workflows/ci.yml\` — e2e test job"                       >> /tmp/pr_body.md
+          echo ""                                                                     >> /tmp/pr_body.md
+          echo "**Release notes:** https://github.com/anchore/grype/releases/tag/${LATEST}" >> /tmp/pr_body.md
+          echo ""                                                                     >> /tmp/pr_body.md
+          echo "**After merging:** rebuild locally and run \`grype dockguard:test\` to" >> /tmp/pr_body.md
+          echo "confirm whether any CVEs in \`vex/dockguard.vex.json\` were resolved." >> /tmp/pr_body.md
+          echo "If Go stdlib or GHSA entries are patched, remove those VEX statements" >> /tmp/pr_body.md
+          echo "and bump the VEX document version."                                  >> /tmp/pr_body.md
+          echo ""                                                                     >> /tmp/pr_body.md
+          echo "_Automated by the [Check for Grype Updates](/.github/workflows/update-grype.yml) workflow._" >> /tmp/pr_body.md
+
+          gh pr create \
+            --title "chore: bump grype ${CURRENT} → ${LATEST}" \
+            --body-file /tmp/pr_body.md \
+            --label "dependencies" \
+            --head "$BRANCH" \
+            --base master

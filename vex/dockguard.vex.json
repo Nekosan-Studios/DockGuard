@@ -3,21 +3,8 @@
   "@id": "https://github.com/MattTW/DockGuard/vex/dockguard.vex.json",
   "author": "DockGuard maintainers",
   "timestamp": "2026-03-10T00:00:00Z",
-  "version": 2,
+  "version": 3,
   "statements": [
-    {
-      "vulnerability": {
-        "@id": "https://github.com/advisories/GHSA-9h8m-3fm2-qjrq"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/dockguard"
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Compiled into the Grype binary. DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only and does not use or configure OpenTelemetry SDK features."
-    },
     {
       "vulnerability": {
         "@id": "https://github.com/advisories/GHSA-h395-gr6q-cpjc"
@@ -30,19 +17,6 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
       "status_notes": "Compiled into the Grype binary (rust-crate). DockGuard does not use Grype's JWT functionality; it invokes the Grype CLI for local image scanning only."
-    },
-    {
-      "vulnerability": {
-        "@id": "https://github.com/advisories/GHSA-q9hv-hpm4-hj6x"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/dockguard"
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Compiled into the Grype binary (go-module). DockGuard does not use Cloudflare's CIRCL cryptographic primitives; Grype is invoked for local image scanning only."
     },
     {
       "vulnerability": {
@@ -1026,45 +1000,6 @@
       ],
       "status": "under_investigation",
       "status_notes": "util-linux vulnerability (Unknown severity). Debian marks as wont-fix. Awaiting further analysis."
-    },
-    {
-      "vulnerability": {
-        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-25679"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/dockguard"
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Compiled into the Grype binary (go-module: stdlib). DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only and does not exercise Go's URL parsing in a way that exposes this vulnerability."
-    },
-    {
-      "vulnerability": {
-        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27139"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/dockguard"
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Compiled into the Grype binary (go-module: stdlib). DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only. DockGuard does not use directory listing operations through Grype's internal Go stdlib."
-    },
-    {
-      "vulnerability": {
-        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-27142"
-      },
-      "products": [
-        {
-          "@id": "pkg:oci/dockguard"
-        }
-      ],
-      "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Compiled into the Grype binary (go-module: stdlib). DockGuard invokes Grype as a CLI subprocess for vulnerability scanning only and does not generate or serve HTML content through Grype's internal Go stdlib."
     }
   ]
 }
