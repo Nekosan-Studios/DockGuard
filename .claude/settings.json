@@ -15,7 +15,6 @@
       "Bash(npx svelte-check --threshold error)",
       "Bash(uv run alembic -c backend/alembic.ini heads)",
       "Bash(uv run alembic -c backend/alembic.ini current)",
-      "Bash(sqlite3 backend/dockguard.db \"SELECT id, image_name, image_digest, vex_status, vex_source, vex_checked_at FROM scan WHERE image_name LIKE ''%test-nginx%'' ORDER BY scanned_at DESC LIMIT 5;\")"
       "Bash(grype config)",
       "Read(//private/tmp/**)"
     ]
