@@ -9,6 +9,16 @@ repository, including:
 3. Updating `frontend/package.json` and `frontend/package-lock.json` via npm.
 4. Committing the changes.
 5. Creating a git tag for the new version.
+6. Pushing the release branch (but NOT the tag — see --push-tag).
+
+Release workflow (master is a protected branch):
+  Step 1:  ./scripts/release.sh --minor   # (or --major / --patch)
+           Creates the version bump commit + tag locally, then pushes the
+           branch so you can open a pull request.
+  Step 2:  Merge the pull request on GitHub.
+  Step 3:  ./scripts/release.sh --push-tag
+           Verifies the tag has been merged to master, then pushes it.
+           This triggers the CI Docker build / release pipeline.
 """
 
 import argparse
@@ -19,7 +29,7 @@ from pathlib import Path
 
 
 def run_cmd(cmd, cwd=None, check=True):
-    """Run a shell command and return its output."""
+    """Run a shell command and return its stdout."""
     try:
         result = subprocess.run(
             cmd,
@@ -35,6 +45,12 @@ def run_cmd(cmd, cwd=None, check=True):
         if check:
             sys.exit(1)
         return ""
+
+
+def run_cmd_rc(cmd, cwd=None):
+    """Run a shell command and return its exit code (no exception on failure)."""
+    result = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True)
+    return result.returncode
 
 
 def get_current_version(repo_root):
@@ -116,6 +132,14 @@ def update_frontend_package(repo_root, new_version):
     return [frontend_dir / "package.json", frontend_dir / "package-lock.json"]
 
 
+def update_uv_lock(repo_root):
+    """Regenerate uv.lock so it reflects the new project version."""
+    lock_file = repo_root / "uv.lock"
+    print("Regenerating uv.lock...")
+    run_cmd(["uv", "lock"], cwd=repo_root)
+    return lock_file
+
+
 def get_bump_type_interactive():
     """Prompt the user for the bump type."""
     print("\nSelect version bump type:")
@@ -137,19 +161,84 @@ def get_bump_type_interactive():
         print("Invalid choice. Please select 1, 2, 3, or 4.")
 
 
+def get_current_branch(repo_root):
+    """Return the current branch name, or exit if in detached HEAD state."""
+    branch = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
+    if branch == "HEAD":
+        print("Error: You are in a detached HEAD state. Please checkout a branch first.")
+        sys.exit(1)
+    return branch
+
+
+def is_tag_merged_to_master(repo_root, tag):
+    """Return True if the tagged commit is an ancestor of origin/master."""
+    print("Fetching latest origin/master...")
+    run_cmd(["git", "fetch", "origin", "master"], cwd=repo_root)
+    rc = run_cmd_rc(
+        ["git", "merge-base", "--is-ancestor", tag, "origin/master"],
+        cwd=repo_root,
+    )
+    return rc == 0
+
+
+def cmd_push_tag(repo_root):
+    """Push the release tag after verifying it has been merged to master."""
+    current_version = get_current_version(repo_root)
+    tag = f"v{current_version}"
+
+    # Ensure the tag exists locally
+    existing = run_cmd(["git", "tag", "-l", tag], cwd=repo_root)
+    if not existing:
+        print(f"Error: Local tag '{tag}' not found.")
+        print("Run the bump script first (e.g. ./scripts/release.sh --minor).")
+        sys.exit(1)
+
+    # Guard: refuse to push the tag until the PR has been merged
+    if not is_tag_merged_to_master(repo_root, tag):
+        print(f"\nError: Tag '{tag}' has not been merged to master yet.")
+        print("Merge the pull request first, then re-run:")
+        print("  ./scripts/release.sh --push-tag")
+        sys.exit(1)
+
+    print(f"\nTag '{tag}' is merged to master. Pushing tag...")
+    run_cmd(["git", "push", "origin", tag], cwd=repo_root)
+    print(f"\nSuccess! Tag '{tag}' pushed.")
+    print("CI will now build and publish the release Docker image.")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Bump DockGuard version.")
+    parser = argparse.ArgumentParser(
+        description="Bump DockGuard version.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Release workflow (protected master branch):
+  Step 1:  ./scripts/release.sh --minor      # bump, commit, tag, push branch
+  Step 2:  Open a pull request and merge it.
+  Step 3:  ./scripts/release.sh --push-tag   # verify merged, then push tag → triggers CI
+""",
+    )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--major", action="store_true", help="Bump major version (X.y.z -> X+1.0.0)")
     group.add_argument("--minor", action="store_true", help="Bump minor version (x.Y.z -> x.Y+1.0)")
     group.add_argument("--patch", action="store_true", help="Bump patch version (x.y.Z -> x.y.Z+1)")
     group.add_argument("--version", type=str, help="Set exact version (e.g., 1.2.3)")
-    group.add_argument("--no-commit", action="store_true", help="Skip creating a git commit and tag")
+    group.add_argument("--no-commit", action="store_true", help="Update files only; skip git commit, tag, and push")
+    group.add_argument(
+        "--push-tag",
+        action="store_true",
+        help="Push the existing local release tag (after PR is merged to master)",
+    )
 
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
 
+    # ── --push-tag mode ───────────────────────────────────────────────────────
+    if args.push_tag:
+        cmd_push_tag(repo_root)
+        return
+
+    # ── Version bump mode ─────────────────────────────────────────────────────
     current_version_str = get_current_version(repo_root)
     print(f"Current version: {current_version_str}")
 
@@ -213,6 +302,9 @@ def main():
     frontend_files = update_frontend_package(repo_root, new_version_str)
     modified_files.extend(frontend_files)
 
+    # 4. Regenerate uv.lock (it tracks the project's own version)
+    modified_files.append(update_uv_lock(repo_root))
+
     if args.no_commit:
         print("\nSkipping git commit as requested.")
         print("Modified files:")
@@ -221,7 +313,6 @@ def main():
         return
 
     print("\n--- Committing changes ---")
-    # Commit changes
     for file_path in modified_files:
         run_cmd(["git", "add", str(file_path)], cwd=repo_root)
 
@@ -232,10 +323,19 @@ def main():
     print(f"Creating tag: v{new_version_str}")
     run_cmd(["git", "tag", f"v{new_version_str}"], cwd=repo_root)
 
-    print("\nSuccess! Version bump complete.")
-    print("To push these changes to triggering CI builders:")
-    print("  git push origin master")
-    print("  git push origin --tags")
+    # Push the branch (not the tag) so a pull request can be opened
+    branch = get_current_branch(repo_root)
+    print(f"\n--- Pushing branch '{branch}' ---")
+    run_cmd(["git", "push", "origin", branch], cwd=repo_root)
+
+    print(f"""
+Success! Version bumped to v{new_version_str}.
+
+Next steps:
+  1. Open a pull request for branch '{branch}' and merge it to master.
+  2. After the PR is merged, push the release tag to trigger CI:
+       ./scripts/release.sh --push-tag
+""")
 
 
 if __name__ == "__main__":
