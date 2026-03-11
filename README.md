@@ -98,7 +98,7 @@ Most settings can be changed directly in the **Settings** page of the dashboard.
 
 ## License
 
-This project is licensed under the [Polyform Shield License 1.0.0](LICENSE.MD).
+This project is licensed under the [Polyform Shield License 1.0.0](LICENSE.md).
 
 Why this license?
 We believe in the "Fair Source" philosophy. We want this tool to be accessible to everyone—from hobbyists in their homelabs to developers at large corporations—while ensuring the project's long-term sustainability.
