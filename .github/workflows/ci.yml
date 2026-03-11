@@ -27,6 +27,9 @@ permissions:
   id-token: write       # cosign keyless signing (OIDC)
   attestations: write   # SLSA provenance and SBOM attestations
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Job 1: Run tests (PRs and optional manual dispatch) ─────────────
   test:
