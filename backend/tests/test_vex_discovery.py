@@ -208,11 +208,13 @@ class TestCheckVexForImage:
         mock_token_resp.status_code = 200
         mock_token_resp.json.return_value = {"token": "test-bearer-token"}
 
-        # Referrers API: 303 See Other (GHCR behaviour)
+        # Referrers API: 303 See Other (GHCR behaviour).
+        # The Location URL intentionally omits the hash (simulating the GHCR
+        # server-side bug) — the code under test must repair it.
         mock_referrers_resp = MagicMock()
         mock_referrers_resp.status_code = 303
         mock_referrers_resp.headers = {
-            "location": "https://github.com/-/v2/packages/container/package/owner%2Frepo%2Freferrers%2Fsha256%3Aabc123"
+            "location": "https://github.com/-/v2/packages/container/package/owner%2Frepo%2Freferrers%2Fsha256"
         }
 
         # Redirected referrers response with one VEX artifact
@@ -264,9 +266,14 @@ class TestCheckVexForImage:
 
         calls = mock_client.get.call_args_list
         # call[2] is the referrers request, call[3] is the manual redirect follow
-        referrers_call_url = calls[2][0][0]
-        assert "%3A" in referrers_call_url, "digest colon should be %-encoded in the referrers URL"
 
+        # The redirect URL must have the hash appended (GHCR truncation repair)
+        redirect_call_url = calls[3][0][0]
+        assert redirect_call_url == (
+            "https://github.com/-/v2/packages/container/package/owner%2Frepo%2Freferrers%2Fsha256%3Aabc123"
+        ), f"GHCR truncated redirect URL was not repaired; got: {redirect_call_url}"
+
+        # Authorization header must survive the cross-origin redirect
         redirect_call_kwargs = calls[3][1]
         assert redirect_call_kwargs.get("headers", {}).get("Authorization") == "Bearer test-bearer-token", (
             "Authorization header must be forwarded to the redirect target"
