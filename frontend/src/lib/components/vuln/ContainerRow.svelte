@@ -369,19 +369,19 @@
               <div class="overflow-x-auto">
                 <Table.Root class="w-full min-w-[1000px] table-fixed text-xs">
                   <colgroup>
-                    <col style="width:13%" />
-                    <col style="width:8%" />
                     <col style="width:12%" />
+                    <col style="width:10%" />
+                    <col style="width:10%" />
                     <col style="width:8%" />
                     <col style="width:8%" />
                     <col style="width:5%" />
                     <col style="width:6%" />
-                    <col style="width:4%" />
+                    <col style="width:5%" />
                     {#if hasVexData}
                       <col style="width:4%" />
                     {/if}
-                    <col style="width:10%" />
-                    <col style="width:{hasVexData ? '22' : '26'}%" />
+                    <col style="width:9%" />
+                    <col style="width:{hasVexData ? '23' : '27'}%" />
                   </colgroup>
                   <Table.Header>
                     <Table.Row class="bg-muted/30">
@@ -394,17 +394,6 @@
                             : false}
                           onclick={(e: MouseEvent) =>
                             toggleVulnSort("vuln_id", e)}
-                        />
-                      </Table.Head>
-                      <Table.Head class="text-center">
-                        <SortButton
-                          label="Priority"
-                          size="sm"
-                          sortDirection={sortCol === "severity"
-                            ? sortDir
-                            : false}
-                          onclick={(e: MouseEvent) =>
-                            toggleVulnSort("severity", e)}
                         />
                       </Table.Head>
                       <Table.Head>
@@ -420,6 +409,27 @@
                       </Table.Head>
                       <Table.Head class="text-center">Version</Table.Head>
                       <Table.Head class="text-center">Fixed In</Table.Head>
+                      <Table.Head class="text-center">
+                        <Tooltip.Root>
+                          <Tooltip.Trigger>
+                            {#snippet child({ props })}
+                              <SortButton
+                                label="Priority"
+                                size="sm"
+                                sortDirection={sortCol === "severity"
+                                  ? sortDir
+                                  : false}
+                                {...props}
+                                onclick={(e: MouseEvent) =>
+                                  toggleVulnSort("severity", e)}
+                              />
+                            {/snippet}
+                          </Tooltip.Trigger>
+                          <Tooltip.Content>
+                            Priority based on severity and exploitability.
+                          </Tooltip.Content>
+                        </Tooltip.Root>
+                      </Table.Head>
                       <Table.Head class="text-center">
                         <Tooltip.Root>
                           <Tooltip.Trigger>

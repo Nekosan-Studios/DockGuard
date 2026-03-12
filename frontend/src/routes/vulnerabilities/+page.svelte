@@ -329,18 +329,18 @@
         <div class="overflow-x-auto rounded-md border">
           <Table.Root class="w-full min-w-[1100px] table-fixed text-xs">
             <colgroup>
-              <col style="width:13%" />
+              <col style="width:12%" />
+              <col style="width:9%" />
               <col style="width:10%" />
+              <col style="width:9%" />
               <col style="width:8%" />
-              <col style="width:10%" />
-              <col style="width:7%" />
-              <col style="width:7%" />
+              <col style="width:8%" />
               <col style="width:5%" />
               <col style="width:5%" />
-              <col style="width:4%" />
+              <col style="width:5%" />
               {#if hasAnyVex}<col style="width:4%" />{/if}
-              <col style="width:10%" />
-              <col style="width:{hasAnyVex ? '17' : '21'}%" />
+              <col style="width:9%" />
+              <col style="width:{hasAnyVex ? '16' : '20'}%" />
             </colgroup>
             <Table.Header>
               <Table.Row class="bg-muted/50">
@@ -355,14 +355,6 @@
                 <Table.Head>
                   <span class="text-xs font-medium">Containers</span>
                 </Table.Head>
-                <Table.Head class="text-center">
-                  <SortButton
-                    label="Priority"
-                    size="sm"
-                    sortDirection={activeSortDir("severity")}
-                    onclick={() => toggleSort("severity")}
-                  />
-                </Table.Head>
                 <Table.Head>
                   <SortButton
                     label="Package"
@@ -373,6 +365,24 @@
                 </Table.Head>
                 <Table.Head class="text-center">Version</Table.Head>
                 <Table.Head class="text-center">Fixed In</Table.Head>
+                <Table.Head class="text-center">
+                  <Tooltip.Root>
+                    <Tooltip.Trigger>
+                      {#snippet child({ props })}
+                        <SortButton
+                          label="Priority"
+                          size="sm"
+                          sortDirection={activeSortDir("severity")}
+                          {...props}
+                          onclick={() => toggleSort("severity")}
+                        />
+                      {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>
+                      Priority based on severity and exploitability.
+                    </Tooltip.Content>
+                  </Tooltip.Root>
+                </Table.Head>
                 <Table.Head class="text-center">
                   <Tooltip.Root>
                     <Tooltip.Trigger>

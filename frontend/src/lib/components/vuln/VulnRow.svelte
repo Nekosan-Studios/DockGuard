@@ -126,8 +126,6 @@
     </Table.Cell>
   {/if}
 
-  <PriorityCell riskScore={vuln.risk_score} />
-
   <Table.Cell class="font-mono">
     <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
       <Tooltip.Root>
@@ -256,6 +254,7 @@
     {/if}
   </Table.Cell>
 
+  <PriorityCell riskScore={vuln.risk_score} />
   <CvssCell score={vuln.cvss_base_score} cvssVector={vuln.cvss_vector} />
   <EpssCell score={vuln.epss_score} percentile={vuln.epss_percentile} />
   <KevCell isKev={vuln.is_kev} />

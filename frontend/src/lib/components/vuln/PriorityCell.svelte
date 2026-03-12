@@ -19,13 +19,13 @@
   <Tooltip.Root>
     <Tooltip.Trigger class="cursor-default">
       <span
-        class="inline-flex flex-col items-center rounded-full border px-1.5 py-0.5 font-medium {PRIORITY_CLASSES[
+        class="inline-flex items-center justify-center gap-1 rounded-full border px-2 py-0.5 font-medium min-w-[60px] {PRIORITY_CLASSES[
           priority
         ]}"
       >
-        <span class="leading-tight">{priority}</span>
+        <span class="text-[11px] leading-none">{priority}</span>
         {#if riskScore != null}
-          <span class="font-mono opacity-60 text-[9px] leading-tight"
+          <span class="font-mono opacity-70 text-[9px] leading-none"
             >{riskScore.toFixed(1)}</span
           >
         {/if}
