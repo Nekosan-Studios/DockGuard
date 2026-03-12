@@ -21,7 +21,7 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
     const target = saved && VALID_REPORTS.has(saved) ? saved : "urgent";
     const dest = new URL(url);
     dest.searchParams.set("report", target);
-    redirect(302, dest.toString());
+    redirect(302, `${dest.pathname}?${dest.searchParams.toString()}`);
   }
 
   const report = reportParam;
