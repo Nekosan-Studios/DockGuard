@@ -2,7 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
+import base64
+import json
+
 from backend.vex_discovery import (
+    _extract_vex_from_blob,
     _is_vex_artifact,
     _parse_image_ref,
     _parse_openvex,
@@ -91,6 +95,94 @@ class TestParseOpenvex:
         stmts = _parse_openvex(doc)
         assert len(stmts) == 1
         assert stmts[0].vuln_id == "CVE-2024-9999"
+
+
+class TestExtractVexFromBlob:
+    """Tests for _extract_vex_from_blob covering all supported wire formats."""
+
+    def _make_intoto(self, statements: list) -> dict:
+        return {
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://openvex.dev/ns/v0.2.0",
+            "subject": [],
+            "predicate": {"statements": statements},
+        }
+
+    def test_raw_dsse_envelope_cosign_attest(self):
+        """Raw DSSE envelope produced by `cosign attest --type openvex`.
+
+        Top-level keys are 'payload' (base64-encoded in-toto statement) and
+        'payloadType'.  This is the format stored in .att OCI layer blobs.
+        """
+        intoto = self._make_intoto(
+            [{"vulnerability": {"name": "CVE-2024-1111"}, "status": "not_affected"}]
+        )
+        blob = {
+            "payload": base64.b64encode(json.dumps(intoto).encode()).decode(),
+            "payloadType": "application/vnd.in-toto+json",
+            "signatures": [{"sig": "fakesig", "cert": "fakecert"}],
+        }
+        stmts = _extract_vex_from_blob(blob)
+        assert len(stmts) == 1
+        assert stmts[0].vuln_id == "CVE-2024-1111"
+        assert stmts[0].status == "not_affected"
+
+    def test_raw_dsse_non_vex_predicate_skipped(self):
+        """A raw DSSE with a non-VEX predicateType should yield no statements."""
+        intoto = {
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [],
+            "predicate": {"builder": {}},
+        }
+        blob = {
+            "payload": base64.b64encode(json.dumps(intoto).encode()).decode(),
+            "payloadType": "application/vnd.in-toto+json",
+            "signatures": [],
+        }
+        stmts = _extract_vex_from_blob(blob)
+        assert stmts == []
+
+    def test_sigstore_bundle_dsse_envelope(self):
+        """Sigstore bundle format: DSSE nested under 'dsseEnvelope' key."""
+        intoto = self._make_intoto(
+            [{"vulnerability": {"name": "CVE-2024-2222"}, "status": "fixed"}]
+        )
+        blob = {
+            "dsseEnvelope": {
+                "payload": base64.b64encode(json.dumps(intoto).encode()).decode(),
+                "payloadType": "application/vnd.in-toto+json",
+            }
+        }
+        stmts = _extract_vex_from_blob(blob)
+        assert len(stmts) == 1
+        assert stmts[0].vuln_id == "CVE-2024-2222"
+        assert stmts[0].status == "fixed"
+
+    def test_intoto_wrapper(self):
+        """In-toto statement already decoded (has 'predicate' key at top level)."""
+        blob = {
+            "predicateType": "https://openvex.dev/ns/v0.2.0",
+            "predicate": {
+                "statements": [
+                    {"vulnerability": {"name": "CVE-2024-3333"}, "status": "affected"}
+                ]
+            },
+        }
+        stmts = _extract_vex_from_blob(blob)
+        assert len(stmts) == 1
+        assert stmts[0].vuln_id == "CVE-2024-3333"
+
+    def test_plain_openvex(self):
+        """Plain OpenVEX document with top-level 'statements' array."""
+        blob = {
+            "statements": [
+                {"vulnerability": "CVE-2024-4444", "status": "under_investigation"}
+            ]
+        }
+        stmts = _extract_vex_from_blob(blob)
+        assert len(stmts) == 1
+        assert stmts[0].vuln_id == "CVE-2024-4444"
 
 
 class TestCheckVexForImage:

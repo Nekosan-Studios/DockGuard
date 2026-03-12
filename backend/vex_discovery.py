@@ -197,7 +197,21 @@ def _extract_vex_from_blob(blob_data: dict) -> list[VexStatement]:
     1. Plain OpenVEX document (has "statements" key)
     2. In-toto statement wrapper (has "predicate" with VEX inside)
     3. Sigstore bundle (has "dsseEnvelope" with base64-encoded in-toto payload)
+    4. Raw DSSE envelope (has top-level "payload"+"payloadType") — produced by
+       ``cosign attest``; the payload is a base64-encoded in-toto statement.
     """
+    # Format 4: Raw DSSE envelope (cosign attest output)
+    # Top-level keys: "payload" (base64url), "payloadType", "signatures"
+    if "payload" in blob_data and "payloadType" in blob_data:
+        try:
+            payload = base64.b64decode(blob_data["payload"])
+            intoto = json.loads(payload)
+            predicate_type = intoto.get("predicateType", "")
+            if "openvex" in predicate_type or "vex" in predicate_type or predicate_type in _VEX_PREDICATE_TYPES:
+                return _parse_openvex(intoto.get("predicate", {}))
+        except Exception:
+            pass
+
     # Format 3: Sigstore bundle with DSSE envelope
     dsse = blob_data.get("dsseEnvelope")
     if dsse and isinstance(dsse, dict):
