@@ -8,7 +8,7 @@
   import { slide } from "svelte/transition";
   import { formatDistanceToNow } from "date-fns";
   import { SvelteSet, SvelteURLSearchParams } from "svelte/reactivity";
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import {
     PRIORITY_CLASSES,
     PRIORITY_ORDER,
@@ -34,6 +34,8 @@
     has_vex?: boolean;
     vulns_by_severity: Record<string, number>;
     vulns_by_priority: Record<string, number>;
+    vulns_by_severity_no_vex: Record<string, number>;
+    vulns_by_priority_no_vex: Record<string, number>;
     total?: number;
     scanned_at?: string | null;
   }
@@ -100,6 +102,15 @@
     };
   });
 
+  $effect(() => {
+    const currentHideVex = hideVexResolved; // register reactivity
+    untrack(() => {
+      if (typeof currentHideVex !== "undefined" && expanded) {
+        fetchVulns(0, sortCol, sortDir, partiallyLoadedPriority);
+      }
+    });
+  });
+
   onDestroy(() => observer?.disconnect());
 
   // ── Data Fetching ─────────────────────────────────────────────────────────
@@ -121,6 +132,7 @@
         sort_dir: sDir,
       });
       if (priorityFilter) params.set("priority", priorityFilter);
+      if (hideVexResolved) params.set("hide_vex", "true");
 
       const res = await fetch(`/api/vulnerabilities?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -157,11 +169,12 @@
     // If expanding for the first time and we have no vulns loaded
     if (expanded && vulns.length === 0) {
       const total = container.total ?? 0;
+      const map = hideVexResolved
+        ? container.vulns_by_priority_no_vex
+        : container.vulns_by_priority;
       const topPriority =
         total >= AUTO_FILTER_THRESHOLD
-          ? PRIORITY_ORDER.find(
-              (p) => (container.vulns_by_priority[p] ?? 0) > 0
-            )
+          ? PRIORITY_ORDER.find((p) => (map ? (map[p] ?? 0) : 0) > 0)
           : undefined;
 
       if (topPriority) {
@@ -207,9 +220,10 @@
 
   // ── Derived View State ────────────────────────────────────────────────────
   function activePriorities() {
-    return PRIORITY_ORDER.filter(
-      (p) => (container.vulns_by_priority[p] ?? 0) > 0
-    );
+    const map = hideVexResolved
+      ? container.vulns_by_priority_no_vex
+      : container.vulns_by_priority;
+    return map ? PRIORITY_ORDER.filter((p) => (map[p] ?? 0) > 0) : [];
   }
 
   let visibleVulns = $derived.by(() => {
@@ -217,12 +231,6 @@
     if (activeFilters.size > 0) {
       v = v.filter((item) =>
         activeFilters.has(priorityFromRiskScore(item.risk_score))
-      );
-    }
-    if (hideVexResolved) {
-      v = v.filter(
-        (item) =>
-          item.vex_status !== "not_affected" && item.vex_status !== "fixed"
       );
     }
     return v;
@@ -293,7 +301,9 @@
                 ? 'ring-2 ring-offset-1 ring-current'
                 : 'opacity-80 hover:opacity-100'}"
             >
-              {container.vulns_by_priority[pri]}
+              {hideVexResolved
+                ? container.vulns_by_priority_no_vex[pri]
+                : container.vulns_by_priority[pri]}
               {pri}
             </button>
           {:else}
@@ -302,7 +312,9 @@
                 pri
               ]}"
             >
-              {container.vulns_by_priority[pri]}
+              {hideVexResolved
+                ? container.vulns_by_priority_no_vex[pri]
+                : container.vulns_by_priority[pri]}
               {pri}
             </span>
           {/if}

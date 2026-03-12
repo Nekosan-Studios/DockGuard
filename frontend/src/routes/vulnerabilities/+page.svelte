@@ -9,6 +9,7 @@
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import SortButton from "../containers/sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { goto } from "$app/navigation";
   import VulnRow from "$lib/components/vuln/VulnRow.svelte";
   import { page } from "$app/stores";
@@ -74,7 +75,7 @@
     currentOffset = data.vulnerabilities?.length ?? 0;
   });
 
-  let hasAnyVex = $derived(rows.some((v) => v.vex_status));
+  let hasAnyVex = $derived(data.has_any_vex ?? false);
 
   const MAX_ROWS = 400;
 
@@ -85,6 +86,7 @@
       const params = new URLSearchParams({
         report: reportValue,
         new_hours: newHoursValue,
+        hide_vex: String(hideVexValue),
         sort_by: sortByValue,
         sort_dir: sortDirValue,
         limit: "100", // PAGE_SIZE
@@ -155,6 +157,9 @@
   );
   let sortDirValue = $derived(
     ($page.url.searchParams.get("sort_dir") as "asc" | "desc") || "asc"
+  );
+  let hideVexValue = $derived(
+    $page.url.searchParams.get("hide_vex") === "true"
   );
   let reportLabel = $derived(
     reportValue === "new"
@@ -246,22 +251,55 @@
     <Card.Header
       class="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div class="space-y-1.5">
-        <div class="flex items-center gap-2">
-          <ShieldAlert class="h-5 w-5 text-muted-foreground" />
-          <Card.Title>{reportLabel}</Card.Title>
+      <div class="space-y-1.5 flex flex-row items-start lg:items-center gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <ShieldAlert class="h-5 w-5 text-muted-foreground" />
+            <Card.Title>{reportLabel}</Card.Title>
+          </div>
+          <Card.Description class="mt-1.5">
+            {#if data.apiError}
+              Unable to fetch vulnerabilities. Engine might be offline.
+            {:else if rows.length === 0}
+              No vulnerabilities found for this filter.
+            {:else}
+              Showing {rows.length.toLocaleString()} of {totalCount.toLocaleString()}
+              unique vulnerabilities ({totalInstances.toLocaleString()}
+              total instances) across running containers.
+            {/if}
+          </Card.Description>
         </div>
-        <Card.Description>
-          {#if data.apiError}
-            Unable to fetch vulnerabilities. Engine might be offline.
-          {:else if rows.length === 0}
-            No vulnerabilities found for this filter.
-          {:else}
-            Showing {rows.length.toLocaleString()} of {totalCount.toLocaleString()}
-            unique vulnerabilities ({totalInstances.toLocaleString()}
-            total instances) across running containers.
-          {/if}
-        </Card.Description>
+
+        {#if hasAnyVex}
+          <div class="border-l border-border/50 pl-4 ml-2 mt-2 lg:mt-0">
+            <label
+              class="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap"
+            >
+              <Checkbox
+                checked={hideVexValue}
+                onCheckedChange={(v) => {
+                  const u = new URL($page.url);
+                  if (v === true) {
+                    u.searchParams.set("hide_vex", "true");
+                  } else {
+                    u.searchParams.delete("hide_vex");
+                  }
+                  goto(u.toString());
+                }}
+              />
+              Hide VEX Resolved
+              <Tooltip.Root>
+                <Tooltip.Trigger class="cursor-default">
+                  <span class="text-muted-foreground/60 text-xs">ⓘ</span>
+                </Tooltip.Trigger>
+                <Tooltip.Content>
+                  Hide vulnerabilities where the supplier has declared them "not
+                  affected" or "fixed" via VEX attestations.
+                </Tooltip.Content>
+              </Tooltip.Root>
+            </label>
+          </div>
+        {/if}
       </div>
 
       <div class="flex items-center space-x-2">

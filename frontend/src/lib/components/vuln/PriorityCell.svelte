@@ -11,7 +11,11 @@
     riskScore = null,
     cvssVector = null,
     class: className = "",
-  }: { riskScore?: number | null; cvssVector?: string | null; class?: string } = $props();
+  }: {
+    riskScore?: number | null;
+    cvssVector?: string | null;
+    class?: string;
+  } = $props();
 
   // Decode a CVSS v3.x vector string into labeled components.
   // e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
@@ -81,7 +85,9 @@
       </span>
     </Tooltip.Trigger>
     <Tooltip.Content class={vectorComponents ? "max-w-xs" : ""}>
-      <p class={vectorComponents ? "font-semibold mb-1" : ""}>{priorityTooltip(riskScore)}</p>
+      <p class={vectorComponents ? "font-semibold mb-1" : ""}>
+        {priorityTooltip(riskScore)}
+      </p>
       {#if vectorComponents}
         <div class="mt-1.5 pt-1.5 border-t border-border/60">
           <dl class="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">

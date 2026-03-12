@@ -9,7 +9,11 @@
   import VexStatusCell from "./VexStatusCell.svelte";
   import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
-  import { PRIORITY_CLASSES, priorityFromRiskScore, cvssClass, toUtcDate } from "./utils.js";
+  import {
+    PRIORITY_CLASSES,
+    priorityFromRiskScore,
+    toUtcDate,
+  } from "./utils.js";
 
   // ── Interfaces ────────────────────────────────────────────────────────────
   export interface ContainerInfo {
@@ -208,9 +212,12 @@
                           priorityFromRiskScore(vuln.risk_score)
                         ]}"
                       >
-                        <span class="text-[10px] leading-none">{priorityFromRiskScore(vuln.risk_score)}</span>
+                        <span class="text-[10px] leading-none"
+                          >{priorityFromRiskScore(vuln.risk_score)}</span
+                        >
                         {#if vuln.risk_score != null}
-                          <span class="font-mono opacity-70 text-[9px] leading-none"
+                          <span
+                            class="font-mono opacity-70 text-[9px] leading-none"
                             >{vuln.risk_score.toFixed(1)}</span
                           >
                         {/if}
