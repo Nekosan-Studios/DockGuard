@@ -174,7 +174,12 @@
   onMount(() => {
     mounted = true;
     if (!$page.url.searchParams.has("report")) {
-      const saved = localStorage.getItem(LS_KEY);
+      let saved: string | null = null;
+      try {
+        saved = localStorage.getItem(LS_KEY);
+      } catch {
+        // storage unavailable (e.g., blocked in private browsing)
+      }
       const target = saved && VALID_REPORTS.has(saved) ? saved : "urgent";
       const u = new URL($page.url);
       u.searchParams.set("report", target);
@@ -184,7 +189,11 @@
 
   $effect(() => {
     if (mounted && VALID_REPORTS.has(reportValue)) {
-      localStorage.setItem(LS_KEY, reportValue);
+      try {
+        localStorage.setItem(LS_KEY, reportValue);
+      } catch {
+        // storage unavailable
+      }
     }
   });
 
