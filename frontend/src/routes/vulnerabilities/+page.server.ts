@@ -4,11 +4,31 @@ import type { PageServerLoad } from "./$types";
 const API_URL = env.API_URL ?? "http://localhost:8765";
 
 export const load: PageServerLoad = async ({ fetch, url }) => {
-  const report = url.searchParams.get("report") || "critical";
+  const reportParam = url.searchParams.get("report");
+  const report = reportParam || "urgent";
   const new_hours = url.searchParams.get("new_hours") || "24";
   const hide_vex = url.searchParams.get("hide_vex") || "false";
   const sort_by = url.searchParams.get("sort_by") || "severity";
   const sort_dir = url.searchParams.get("sort_dir") || "asc";
+
+  // No report param means the client will redirect to the last saved report.
+  // Return empty data to avoid a flash of the wrong report's data.
+  if (!reportParam) {
+    return {
+      report,
+      sort_by,
+      sort_dir,
+      pending: true,
+      vulnerabilities: [],
+      count: 0,
+      total_count: 0,
+      total_instances: 0,
+      has_more: false,
+      has_any_vex: false,
+      eol_images: [] as { container_name: string; distro: string | null }[],
+      apiError: false,
+    };
+  }
 
   const params = new URLSearchParams({
     report,
