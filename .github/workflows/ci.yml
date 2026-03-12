@@ -7,19 +7,6 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
-    inputs:
-      run_tests:
-        description: 'Run tests before building?'
-        required: true
-        default: 'false'
-        type: choice
-        options: ['true', 'false']
-      push_image:
-        description: 'Push image to GHCR?'
-        required: true
-        default: 'true'
-        type: choice
-        options: ['true', 'false']
 
 permissions:
   contents: read
@@ -33,9 +20,7 @@ env:
 jobs:
   # ── Job 1: Run tests (PRs and optional manual dispatch) ─────────────
   test:
-    if: >-
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' && inputs.run_tests == 'true')
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -134,12 +119,11 @@ jobs:
       - name: Resolve image tag
         id: tag
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BRANCH="${{ github.ref_name }}"
-            # Sanitize branch name for use as a Docker tag (slashes → dashes, etc.)
-            TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-          else
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="latest"
+          else
+            # workflow_dispatch: use sanitized branch name
+            TAG=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           fi
           echo "value=$TAG" >> "$GITHUB_OUTPUT"
 
@@ -159,7 +143,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_image == 'true' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |

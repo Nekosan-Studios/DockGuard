@@ -45,12 +45,9 @@ COPY pyproject.toml uv.lock ./
 # Install Python dependencies & pre-compile bytecode so first startup is fast
 RUN uv sync --no-dev --frozen --compile-bytecode
 
-# Copy VERSION file (may be overwritten by build arg below)
-COPY VERSION ./
-
-# Bake version from git tag when provided (e.g. --build-arg APP_VERSION=0.2.0)
+# Bake version from git tag when provided (e.g. --build-arg APP_VERSION=1.2.3)
 ARG APP_VERSION=""
-RUN if [ -n "$APP_VERSION" ]; then echo "$APP_VERSION" > VERSION; fi
+ENV APP_VERSION=${APP_VERSION}
 
 # Copy application source
 COPY backend/ ./backend/
