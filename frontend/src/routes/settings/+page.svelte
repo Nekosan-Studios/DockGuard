@@ -21,8 +21,6 @@
     $pageTitle = "Settings";
   }
 
-  let appVersion = "Development build";
-
   let isSaving = false;
   let saveMessage: { type: "success" | "error"; text: string } | null = null;
   let hasChanges = false;
@@ -32,15 +30,6 @@
 
   onMount(async () => {
     await settings.fetch();
-    try {
-      const res = await fetch("/api/version");
-      if (res.ok) {
-        const data = await res.json();
-        appVersion = data.version ?? "";
-      }
-    } catch {
-      // ignore – version is cosmetic
-    }
   });
 
   // Reactivity to update localValues when settings fetch
@@ -257,18 +246,4 @@
       </div>
     </form>
   {/if}
-
-  <div class="text-xs text-muted-foreground text-center pt-4 space-y-1">
-    <p>DockGuard v{appVersion}</p>
-    <p>
-      Copyright © 2026 Nekosan Studios ·
-      <a
-        href="https://polyformproject.org/licenses/shield/1.0.0/"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="underline hover:text-foreground transition-colors"
-        >Polyform Shield 1.0.0</a
-      >
-    </p>
-  </div>
 </div>
