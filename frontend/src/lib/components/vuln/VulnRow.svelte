@@ -97,7 +97,7 @@
   />
 
   {#if showContainers}
-    <Table.Cell class="align-top py-2">
+    <Table.Cell class="py-2">
       {#if vuln.containers && vuln.containers.length > 0}
         <div class="flex flex-wrap gap-1">
           {#each vuln.containers as container (container.container_name)}
@@ -239,9 +239,8 @@
     </div>
   </Table.Cell>
 
-  <Table.Cell
-    class="text-center font-mono text-muted-foreground"
-    title={rep.installed_version}>{rep.installed_version}</Table.Cell
+  <Table.Cell class="text-center font-mono" title={rep.installed_version}
+    >{rep.installed_version}</Table.Cell
   >
   <Table.Cell
     class="text-center font-mono"

@@ -327,20 +327,20 @@
         </div>
       {:else}
         <div class="overflow-x-auto rounded-md border">
-          <Table.Root class="w-full min-w-[1100px] table-fixed text-xs">
+          <Table.Root class="w-full min-w-[1200px] text-xs">
             <colgroup>
-              <col style="width:12%" />
-              <col style="width:9%" />
-              <col style="width:10%" />
-              <col style="width:9%" />
-              <col style="width:8%" />
-              <col style="width:8%" />
-              <col style="width:5%" />
-              <col style="width:5%" />
-              <col style="width:5%" />
-              {#if hasAnyVex}<col style="width:4%" />{/if}
-              <col style="width:9%" />
-              <col style="width:{hasAnyVex ? '16' : '20'}%" />
+              <col class="w-[140px]" />
+              <col class="w-[100px]" />
+              <col class="w-[140px]" />
+              <col class="w-[80px]" />
+              <col class="w-[110px]" />
+              <col class="w-[90px]" />
+              <col class="w-[80px]" />
+              <col class="w-[80px]" />
+              <col class="w-[80px]" />
+              {#if hasAnyVex}<col class="w-[80px]" />{/if}
+              <col class="w-[100px]" />
+              <col class="w-auto" />
             </colgroup>
             <Table.Header>
               <Table.Row class="bg-muted/50">

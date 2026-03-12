@@ -367,21 +367,21 @@
               </p>
             {:else}
               <div class="overflow-x-auto">
-                <Table.Root class="w-full min-w-[1000px] table-fixed text-xs">
+                <Table.Root class="w-full min-w-[1200px] text-xs">
                   <colgroup>
-                    <col style="width:12%" />
-                    <col style="width:10%" />
-                    <col style="width:10%" />
-                    <col style="width:8%" />
-                    <col style="width:8%" />
-                    <col style="width:5%" />
-                    <col style="width:6%" />
-                    <col style="width:5%" />
+                    <col class="w-[140px]" />
+                    <col class="w-[140px]" />
+                    <col class="w-[80px]" />
+                    <col class="w-[110px]" />
+                    <col class="w-[90px]" />
+                    <col class="w-[80px]" />
+                    <col class="w-[80px]" />
+                    <col class="w-[80px]" />
                     {#if hasVexData}
-                      <col style="width:4%" />
+                      <col class="w-[80px]" />
                     {/if}
-                    <col style="width:9%" />
-                    <col style="width:{hasVexData ? '23' : '27'}%" />
+                    <col class="w-[100px]" />
+                    <col class="w-auto" />
                   </colgroup>
                   <Table.Header>
                     <Table.Row class="bg-muted/30">
