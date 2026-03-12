@@ -260,7 +260,16 @@
   </div>
 
   {#if data.pending}
-    <!-- blank while client redirects to the correct report -->
+    <div class="flex items-center justify-center p-12 text-muted-foreground">
+      <Loader2 class="h-6 w-6 animate-spin mr-2" />
+      Loading…
+    </div>
+    <noscript>
+      <p class="text-center text-sm text-muted-foreground p-12">
+        JavaScript is required to view vulnerability reports. Please enable it
+        and reload.
+      </p>
+    </noscript>
   {:else}
     {#if data.eol_images && data.eol_images.length > 0}
       <div
