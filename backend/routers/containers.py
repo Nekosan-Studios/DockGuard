@@ -30,9 +30,9 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     priority_by_scan: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     if scan_ids:
         rows = session.exec(
-            select(Vulnerability.scan_id, Vulnerability.vuln_id, Vulnerability.severity, Vulnerability.risk_score).where(
-                Vulnerability.scan_id.in_(scan_ids)
-            )
+            select(
+                Vulnerability.scan_id, Vulnerability.vuln_id, Vulnerability.severity, Vulnerability.risk_score
+            ).where(Vulnerability.scan_id.in_(scan_ids))
         ).all()
         best_severity: dict[tuple, str] = {}
         best_risk: dict[tuple, float | None] = {}
@@ -116,9 +116,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         )
         row = session.exec(
             select(
-                func.coalesce(
-                    func.sum(sa_case((Vulnerability.risk_score >= 80, 1), else_=0)), 0
-                ),
+                func.coalesce(func.sum(sa_case((Vulnerability.risk_score >= 80, 1), else_=0)), 0),
                 func.coalesce(func.sum(sa_case((Vulnerability.is_kev, 1), else_=0)), 0),
             ).where(Vulnerability.scan_id.in_(latest_scan_id_subq))
         ).one()

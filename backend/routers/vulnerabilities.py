@@ -10,7 +10,6 @@ from ..api_helpers import (
     _as_utc,
     _latest_scan_for_ref,
     _parse_image_query,
-    _priority_bucket,
     _serialise_vuln,
     _severity_rank,
 )
