@@ -1,34 +1,41 @@
 import { env } from "$env/dynamic/private";
+import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 
 const API_URL = env.API_URL ?? "http://localhost:8765";
+const COOKIE_KEY = "dg_last_vuln_report";
+const VALID_REPORTS = new Set([
+  "urgent",
+  "all",
+  "new",
+  "fixable",
+  "kev",
+  "epss",
+]);
 
-export const load: PageServerLoad = async ({ fetch, url }) => {
+export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
   const reportParam = url.searchParams.get("report");
-  const report = reportParam || "urgent";
+
+  if (!reportParam) {
+    const saved = cookies.get(COOKIE_KEY);
+    const target = saved && VALID_REPORTS.has(saved) ? saved : "urgent";
+    const dest = new URL(url);
+    dest.searchParams.set("report", target);
+    redirect(302, dest.toString());
+  }
+
+  const report = reportParam;
   const new_hours = url.searchParams.get("new_hours") || "24";
   const hide_vex = url.searchParams.get("hide_vex") || "false";
   const sort_by = url.searchParams.get("sort_by") || "severity";
   const sort_dir = url.searchParams.get("sort_dir") || "asc";
 
-  // No report param means the client will redirect to the last saved report.
-  // Return empty data to avoid a flash of the wrong report's data.
-  if (!reportParam) {
-    return {
-      report,
-      sort_by,
-      sort_dir,
-      pending: true,
-      vulnerabilities: [],
-      count: 0,
-      total_count: 0,
-      total_instances: 0,
-      has_more: false,
-      has_any_vex: false,
-      eol_images: [] as { container_name: string; distro: string | null }[],
-      apiError: false,
-    };
-  }
+  // Keep cookie in sync with the currently viewed report.
+  cookies.set(COOKIE_KEY, report, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax",
+  });
 
   const params = new URLSearchParams({
     report,
