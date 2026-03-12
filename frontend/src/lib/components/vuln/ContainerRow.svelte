@@ -9,18 +9,16 @@
   import { formatDistanceToNow } from "date-fns";
   import { SvelteSet, SvelteURLSearchParams } from "svelte/reactivity";
   import { onDestroy } from "svelte";
-  import { SEVERITY_CLASSES, toUtcDate } from "./utils.js";
+  import {
+    PRIORITY_CLASSES,
+    PRIORITY_ORDER,
+    priorityFromRiskScore,
+    toUtcDate,
+  } from "./utils.js";
   import VulnRow from "./VulnRow.svelte";
   import type { Vulnerability } from "./VulnRow.svelte";
 
-  const SEVERITY_ORDER = [
-    "Critical",
-    "High",
-    "Medium",
-    "Low",
-    "Negligible",
-    "Unknown",
-  ];
+  // Priority order is imported from utils.ts
 
   // Constants matches parent logic
   const SUBVIEW_MAX_ROWS = 400;
@@ -35,6 +33,7 @@
     distro_display?: string;
     has_vex?: boolean;
     vulns_by_severity: Record<string, number>;
+    vulns_by_priority: Record<string, number>;
     total?: number;
     scanned_at?: string | null;
   }
@@ -63,12 +62,12 @@
     | "epss_score"
     | "is_kev"
     | "first_seen_at";
-  let sortCol = $state<VulnSortCol | null>(null);
+  let sortCol = $state<VulnSortCol | null>("severity");
   let sortDir = $state<"asc" | "desc">("asc");
 
   let activeFilters = new SvelteSet<string>();
   // The specific filter fetched if not fetching 'all'
-  let partiallyLoadedSeverity = $state<string | undefined>(undefined);
+  let partiallyLoadedPriority = $state<string | undefined>(undefined);
 
   // ── Sentinel & Observer logic ─────────────────────────────────────────────
   let sentinel: HTMLElement | null = $state(null);
@@ -87,7 +86,7 @@
               currentOffset,
               sortCol,
               sortDir,
-              partiallyLoadedSeverity
+              partiallyLoadedPriority
             );
           }
         },
@@ -108,7 +107,7 @@
     offset = 0,
     sCol: VulnSortCol | null = null,
     sDir: "asc" | "desc" = "asc",
-    severityFilter?: string
+    priorityFilter?: string
   ) {
     if (!container.has_scan) return;
     loadingMore = true;
@@ -121,7 +120,7 @@
         sort_by: sCol ?? "severity",
         sort_dir: sDir,
       });
-      if (severityFilter) params.set("severity", severityFilter);
+      if (priorityFilter) params.set("priority", priorityFilter);
 
       const res = await fetch(`/api/vulnerabilities?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -139,7 +138,7 @@
       hasMore = (payload.has_more ?? false) && !atSoftCap;
       sortCol = sCol;
       sortDir = sDir;
-      partiallyLoadedSeverity = severityFilter;
+      partiallyLoadedPriority = priorityFilter;
     } catch (err) {
       console.error("Failed to fetch vulns for", container.image_name, err);
       if (offset === 0) vulns = [];
@@ -158,34 +157,34 @@
     // If expanding for the first time and we have no vulns loaded
     if (expanded && vulns.length === 0) {
       const total = container.total ?? 0;
-      const topSeverity =
+      const topPriority =
         total >= AUTO_FILTER_THRESHOLD
-          ? SEVERITY_ORDER.find(
-              (s) => (container.vulns_by_severity[s] ?? 0) > 0
+          ? PRIORITY_ORDER.find(
+              (p) => (container.vulns_by_priority[p] ?? 0) > 0
             )
           : undefined;
 
-      if (topSeverity) {
-        activeFilters.add(topSeverity);
-        fetchVulns(0, null, "asc", topSeverity);
+      if (topPriority) {
+        activeFilters.add(topPriority);
+        fetchVulns(0, sortCol, sortDir, topPriority);
       } else {
-        fetchVulns(0, null, "asc", undefined);
+        fetchVulns(0, sortCol, sortDir, undefined);
       }
     }
   }
 
-  function toggleFilter(severity: string, e: MouseEvent) {
+  function toggleFilter(priority: string, e: MouseEvent) {
     e.stopPropagation();
-    if (activeFilters.has(severity)) {
-      activeFilters.delete(severity);
+    if (activeFilters.has(priority)) {
+      activeFilters.delete(priority);
     } else {
-      activeFilters.add(severity);
+      activeFilters.add(priority);
     }
 
     // Re-fetch from offset 0
-    const fetchSev =
+    const fetchPri =
       activeFilters.size === 1 ? [...activeFilters][0] : undefined;
-    fetchVulns(0, sortCol, sortDir, fetchSev);
+    fetchVulns(0, sortCol, sortDir, fetchPri);
   }
 
   function toggleVulnSort(col: VulnSortCol, e: MouseEvent) {
@@ -203,20 +202,22 @@
       newDir = "asc";
     }
 
-    fetchVulns(0, newCol, newDir, partiallyLoadedSeverity);
+    fetchVulns(0, newCol, newDir, partiallyLoadedPriority);
   }
 
   // ── Derived View State ────────────────────────────────────────────────────
-  function activeSeverities() {
-    return SEVERITY_ORDER.filter(
-      (s) => (container.vulns_by_severity[s] ?? 0) > 0
+  function activePriorities() {
+    return PRIORITY_ORDER.filter(
+      (p) => (container.vulns_by_priority[p] ?? 0) > 0
     );
   }
 
   let visibleVulns = $derived.by(() => {
     let v = [...vulns];
     if (activeFilters.size > 0) {
-      v = v.filter((item) => activeFilters.has(item.severity));
+      v = v.filter((item) =>
+        activeFilters.has(priorityFromRiskScore(item.risk_score))
+      );
     }
     if (hideVexResolved) {
       v = v.filter(
@@ -282,31 +283,31 @@
   <Table.Cell>
     {#if container.has_scan}
       <div class="flex flex-wrap gap-1">
-        {#each activeSeverities() as sev (sev)}
+        {#each activePriorities() as pri (pri)}
           {#if expanded}
             <button
-              onclick={(e) => toggleFilter(sev, e)}
-              class="inline-flex cursor-pointer items-center rounded-full border px-2 py-0.5 text-xs font-medium transition-all {SEVERITY_CLASSES[
-                sev
-              ]} {activeFilters.has(sev)
+              onclick={(e) => toggleFilter(pri, e)}
+              class="inline-flex cursor-pointer items-center rounded-full border px-2 py-0.5 text-xs font-medium transition-all {PRIORITY_CLASSES[
+                pri
+              ]} {activeFilters.has(pri)
                 ? 'ring-2 ring-offset-1 ring-current'
                 : 'opacity-80 hover:opacity-100'}"
             >
-              {container.vulns_by_severity[sev]}
-              {sev}
+              {container.vulns_by_priority[pri]}
+              {pri}
             </button>
           {:else}
             <span
-              class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {SEVERITY_CLASSES[
-                sev
+              class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {PRIORITY_CLASSES[
+                pri
               ]}"
             >
-              {container.vulns_by_severity[sev]}
-              {sev}
+              {container.vulns_by_priority[pri]}
+              {pri}
             </span>
           {/if}
         {/each}
-        {#if activeSeverities().length === 0}
+        {#if activePriorities().length === 0}
           <span class="text-muted-foreground text-xs">None found</span>
         {/if}
       </div>
@@ -397,7 +398,7 @@
                       </Table.Head>
                       <Table.Head class="text-center">
                         <SortButton
-                          label="Severity"
+                          label="Priority"
                           size="sm"
                           sortDirection={sortCol === "severity"
                             ? sortDir

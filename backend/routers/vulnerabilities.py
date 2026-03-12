@@ -24,6 +24,7 @@ router = APIRouter(tags=["Vulnerabilities"])
 def get_vulnerabilities(
     image_ref: str = Query(..., description="Image reference: name+tag (nginx:latest) or digest (sha256:...)"),
     severity: str | None = Query(None, description="Filter by severity (e.g. Critical, High)"),
+    priority: str | None = Query(None, description="Filter by priority bucket (Urgent, High, Medium, Low)"),
     sort_by: str = Query("severity", description="Column to sort by"),
     sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
     limit: int = Query(default=200, le=500, description="Max rows per page"),
@@ -40,6 +41,15 @@ def get_vulnerabilities(
     q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     if severity:
         q = q.where(Vulnerability.severity == severity)
+    if priority:
+        if priority == "Urgent":
+            q = q.where(Vulnerability.risk_score >= 80)
+        elif priority == "High":
+            q = q.where(Vulnerability.risk_score >= 50, Vulnerability.risk_score < 80)
+        elif priority == "Medium":
+            q = q.where(Vulnerability.risk_score >= 20, Vulnerability.risk_score < 50)
+        elif priority == "Low":
+            q = q.where((Vulnerability.risk_score < 20) | (Vulnerability.risk_score.is_(None)))
 
     vulns = session.exec(q).all()
 
@@ -94,9 +104,8 @@ def get_vulnerabilities(
 
     def _image_sort_key(vd: dict):
         if sort_by == "severity":
-            rank = _severity_rank(vd.get("severity", "Unknown"))
             risk = vd.get("risk_score") or 0
-            return (rank if not desc else -rank, -risk)
+            return -risk if not desc else risk
         if sort_by == "cvss_base_score":
             score = vd.get("cvss_base_score")
             null_last = 1 if score is None else 0
@@ -265,6 +274,8 @@ def get_vulnerabilities_across_running(
 
     if report == "critical":
         q = q.where(Vulnerability.severity == "Critical")
+    elif report == "urgent":
+        q = q.where(Vulnerability.risk_score >= 80)
     elif report == "kev":
         q = q.where(Vulnerability.is_kev)
     elif report == "new":
@@ -342,9 +353,8 @@ def get_vulnerabilities_across_running(
 
     def _clean_sort_key(vd: dict):
         if sort_by == "severity":
-            rank = _severity_rank(vd.get("severity", "Unknown"))
             risk = vd.get("risk_score") or 0
-            return (rank if not desc else -rank, -risk)
+            return -risk if not desc else risk
         if sort_by == "cvss_base_score":
             score = vd.get("cvss_base_score")
             null_last = 1 if score is None else 0

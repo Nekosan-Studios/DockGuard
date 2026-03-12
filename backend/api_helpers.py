@@ -27,6 +27,21 @@ def _severity_rank(s: str) -> int:
         return 99
 
 
+_PRIORITY_ORDER = ["Urgent", "High", "Medium", "Low"]
+
+
+def _priority_bucket(risk_score: float | None) -> str:
+    if risk_score is None:
+        return "Low"
+    if risk_score >= 80:
+        return "Urgent"
+    if risk_score >= 50:
+        return "High"
+    if risk_score >= 20:
+        return "Medium"
+    return "Low"
+
+
 def _serialise_vuln(v: Vulnerability) -> dict:
     d = v.model_dump()
     if d.get("description") and len(d["description"]) > _DESC_LIMIT:

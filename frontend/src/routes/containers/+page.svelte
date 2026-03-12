@@ -10,6 +10,7 @@
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import ContainerRow from "$lib/components/vuln/ContainerRow.svelte";
   import type { ContainerRecord } from "$lib/components/vuln/ContainerRow.svelte";
+  import { PRIORITY_ORDER } from "$lib/components/vuln/utils.js";
 
   let { data }: { data: PageData } = $props();
 
@@ -17,15 +18,6 @@
   let anyContainerHasVex = $derived(
     data.containers.some((c: { has_vex?: boolean }) => c.has_vex)
   );
-
-  const SEVERITY_ORDER = [
-    "Critical",
-    "High",
-    "Medium",
-    "Low",
-    "Negligible",
-    "Unknown",
-  ];
 
   // ── Parent table sort ──────────────────────────────────────────────────────
   type ParentSortCol = "container_name" | "vulns" | "scanned_at";
@@ -49,9 +41,9 @@
         case "container_name":
           return dir * a.container_name.localeCompare(b.container_name);
         case "vulns": {
-          for (const sev of SEVERITY_ORDER) {
+          for (const pri of PRIORITY_ORDER) {
             const diff =
-              (a.vulns_by_severity[sev] ?? 0) - (b.vulns_by_severity[sev] ?? 0);
+              (a.vulns_by_priority[pri] ?? 0) - (b.vulns_by_priority[pri] ?? 0);
             if (diff !== 0) return dir * diff;
           }
           return 0;
