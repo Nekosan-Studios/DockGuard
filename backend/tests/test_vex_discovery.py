@@ -1,9 +1,8 @@
 """Tests for VEX discovery module."""
 
-from unittest.mock import MagicMock, patch
-
 import base64
 import json
+from unittest.mock import MagicMock, patch
 
 from backend.vex_discovery import (
     _b64decode,
@@ -139,9 +138,7 @@ class TestExtractVexFromBlob:
         Top-level keys are 'payload' (base64-encoded in-toto statement) and
         'payloadType'.  This is the format stored in .att OCI layer blobs.
         """
-        intoto = self._make_intoto(
-            [{"vulnerability": {"name": "CVE-2024-1111"}, "status": "not_affected"}]
-        )
+        intoto = self._make_intoto([{"vulnerability": {"name": "CVE-2024-1111"}, "status": "not_affected"}])
         blob = {
             "payload": base64.b64encode(json.dumps(intoto).encode()).decode(),
             "payloadType": "application/vnd.in-toto+json",
@@ -170,9 +167,7 @@ class TestExtractVexFromBlob:
 
     def test_sigstore_bundle_dsse_envelope(self):
         """Sigstore bundle format: DSSE nested under 'dsseEnvelope' key."""
-        intoto = self._make_intoto(
-            [{"vulnerability": {"name": "CVE-2024-2222"}, "status": "fixed"}]
-        )
+        intoto = self._make_intoto([{"vulnerability": {"name": "CVE-2024-2222"}, "status": "fixed"}])
         blob = {
             "dsseEnvelope": {
                 "payload": base64.b64encode(json.dumps(intoto).encode()).decode(),
@@ -188,11 +183,7 @@ class TestExtractVexFromBlob:
         """In-toto statement already decoded (has 'predicate' key at top level)."""
         blob = {
             "predicateType": "https://openvex.dev/ns/v0.2.0",
-            "predicate": {
-                "statements": [
-                    {"vulnerability": {"name": "CVE-2024-3333"}, "status": "affected"}
-                ]
-            },
+            "predicate": {"statements": [{"vulnerability": {"name": "CVE-2024-3333"}, "status": "affected"}]},
         }
         stmts = _extract_vex_from_blob(blob)
         assert len(stmts) == 1
@@ -200,11 +191,7 @@ class TestExtractVexFromBlob:
 
     def test_plain_openvex(self):
         """Plain OpenVEX document with top-level 'statements' array."""
-        blob = {
-            "statements": [
-                {"vulnerability": "CVE-2024-4444", "status": "under_investigation"}
-            ]
-        }
+        blob = {"statements": [{"vulnerability": "CVE-2024-4444", "status": "under_investigation"}]}
         stmts = _extract_vex_from_blob(blob)
         assert len(stmts) == 1
         assert stmts[0].vuln_id == "CVE-2024-4444"
@@ -321,9 +308,7 @@ class TestCheckVexForImage:
         # Simulate GHCR token flow: GET /v2/ → 401, then GET /token → 200
         mock_challenge_resp = MagicMock()
         mock_challenge_resp.status_code = 401
-        mock_challenge_resp.headers = {
-            "www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io"'
-        }
+        mock_challenge_resp.headers = {"www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io"'}
 
         mock_token_resp = MagicMock()
         mock_token_resp.status_code = 200
@@ -372,10 +357,10 @@ class TestCheckVexForImage:
         }
 
         mock_client.get.side_effect = [
-            mock_challenge_resp,   # GET /v2/ → 401 challenge
-            mock_token_resp,       # GET /token → 200, returns bearer token
-            mock_referrers_resp,   # GET /referrers → 303
-            mock_redirect_resp,    # manual follow of redirect → 200
+            mock_challenge_resp,  # GET /v2/ → 401 challenge
+            mock_token_resp,  # GET /token → 200, returns bearer token
+            mock_referrers_resp,  # GET /referrers → 303
+            mock_redirect_resp,  # manual follow of redirect → 200
             mock_manifest_resp,
             mock_blob_resp,
         ]
@@ -428,9 +413,9 @@ class TestCheckVexForImage:
 
         mock_client.get.side_effect = [
             mock_token_resp,
-            mock_referrers_resp,   # referrers API → 404
-            mock_fallback_resp,    # OCI tag scheme → 200, empty manifests
-            mock_att_resp,         # cosign .att tag → 404
+            mock_referrers_resp,  # referrers API → 404
+            mock_fallback_resp,  # OCI tag scheme → 200, empty manifests
+            mock_att_resp,  # cosign .att tag → 404
         ]
 
         result = check_vex_for_image("nginx:latest", "sha256:abc123")
@@ -496,10 +481,10 @@ class TestCheckVexForImage:
 
         mock_client.get.side_effect = [
             mock_token_resp,
-            mock_referrers_resp,   # referrers API → 404
-            mock_oci_tag_resp,     # OCI tag scheme → 404
-            mock_att_resp,         # cosign .att tag → 200
-            mock_blob_resp,        # attestation blob → 200
+            mock_referrers_resp,  # referrers API → 404
+            mock_oci_tag_resp,  # OCI tag scheme → 404
+            mock_att_resp,  # cosign .att tag → 200
+            mock_blob_resp,  # attestation blob → 200
         ]
 
         result = check_vex_for_image("nginx:latest", "sha256:abc123")
@@ -510,9 +495,7 @@ class TestCheckVexForImage:
 
         # Confirm the .att tag URL was constructed correctly
         att_call_url = mock_client.get.call_args_list[3][0][0]
-        assert att_call_url.endswith("manifests/sha256-abc123.att"), (
-            f"Expected .att tag URL, got: {att_call_url}"
-        )
+        assert att_call_url.endswith("manifests/sha256-abc123.att"), f"Expected .att tag URL, got: {att_call_url}"
 
     @patch("backend.vex_discovery.httpx.Client")
     @patch("backend.vex_discovery._get_docker_auth", return_value=None)
@@ -593,11 +576,7 @@ class TestCheckVexForImage:
             "_type": "https://in-toto.io/Statement/v0.1",
             "predicateType": "https://openvex.dev/ns/v0.2.0",
             "subject": [],
-            "predicate": {
-                "statements": [
-                    {"vulnerability": {"name": "CVE-2024-7777"}, "status": "not_affected"}
-                ]
-            },
+            "predicate": {"statements": [{"vulnerability": {"name": "CVE-2024-7777"}, "status": "not_affected"}]},
         }
         mock_vex_blob_resp.json.return_value = {
             "payload": base64.b64encode(json.dumps(vex_intoto).encode()).decode(),
@@ -608,13 +587,13 @@ class TestCheckVexForImage:
         # All sub-manifests are fetched first (index expansion), then blobs
         mock_client.get.side_effect = [
             mock_token_resp,
-            mock_referrers_resp,       # referrers API → 404
-            mock_oci_tag_resp,         # OCI tag scheme → 404
-            mock_att_index_resp,       # .att tag → OCI index
-            mock_prov_manifest_resp,   # fetch sub-manifest 1 (provenance)
-            mock_vex_manifest_resp,    # fetch sub-manifest 2 (VEX)
-            mock_prov_blob_resp,       # process blob from manifest 1 — skipped (SLSA)
-            mock_vex_blob_resp,        # process blob from manifest 2 — VEX found
+            mock_referrers_resp,  # referrers API → 404
+            mock_oci_tag_resp,  # OCI tag scheme → 404
+            mock_att_index_resp,  # .att tag → OCI index
+            mock_prov_manifest_resp,  # fetch sub-manifest 1 (provenance)
+            mock_vex_manifest_resp,  # fetch sub-manifest 2 (VEX)
+            mock_prov_blob_resp,  # process blob from manifest 1 — skipped (SLSA)
+            mock_vex_blob_resp,  # process blob from manifest 2 — VEX found
         ]
 
         result = check_vex_for_image("nginx:latest", "sha256:abc123")

@@ -381,8 +381,7 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                     headers={
                         **headers,
                         "Accept": (
-                            "application/vnd.oci.image.index.v1+json,"
-                            "application/vnd.oci.image.manifest.v1+json"
+                            "application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json"
                         ),
                     },
                 )
