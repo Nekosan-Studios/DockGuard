@@ -253,8 +253,8 @@
     </div>
   </Table.Cell>
 
-  <PriorityCell riskScore={vuln.risk_score} />
-  <CvssCell score={vuln.cvss_base_score} cvssVector={vuln.cvss_vector} />
+  <PriorityCell riskScore={vuln.risk_score} cvssVector={vuln.cvss_vector} />
+  <CvssCell score={vuln.cvss_base_score} />
   <EpssCell score={vuln.epss_score} percentile={vuln.epss_percentile} />
   <KevCell isKev={vuln.is_kev} />
 
