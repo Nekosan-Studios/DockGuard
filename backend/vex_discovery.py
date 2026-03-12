@@ -188,19 +188,51 @@ def _is_vex_artifact(descriptor: dict) -> bool:
     return False
 
 
+def _normalise_vuln_id(raw: str) -> str:
+    """Extract a bare vulnerability identifier from a raw string.
+
+    OpenVEX documents frequently use full URLs as the ``@id`` for a
+    vulnerability, e.g.::
+
+        https://nvd.nist.gov/vuln/detail/CVE-2024-12345
+        https://github.com/advisories/GHSA-xxxx-yyyy-zzzz
+        https://osv.dev/vulnerability/GO-2024-1234
+
+    Grype (and most scanners) store just the short identifier
+    (``CVE-2024-12345``, ``GHSA-xxxx-yyyy-zzzz``, ``GO-2024-1234``).
+    This helper extracts the trailing path segment when the value looks
+    like a URL, and returns it unchanged otherwise.
+    """
+    if raw.startswith(("http://", "https://")):
+        # Last non-empty path segment
+        segment = raw.rstrip("/").rsplit("/", 1)[-1]
+        if segment:
+            return segment
+    return raw
+
+
 def _parse_openvex(doc: dict) -> list[VexStatement]:
     """Parse an OpenVEX document into VexStatements."""
+    raw_stmts = doc.get("statements", [])
+    logger.debug("_parse_openvex: doc keys=%s, %d raw statement(s)", list(doc.keys())[:15], len(raw_stmts))
     statements = []
-    for stmt in doc.get("statements", []):
+    for stmt in raw_stmts:
         status = stmt.get("status", "")
         justification = stmt.get("justification")
         notes = stmt.get("status_notes") or stmt.get("impact_statement")
 
         vuln_ref = stmt.get("vulnerability", {})
-        vuln_id = vuln_ref if isinstance(vuln_ref, str) else vuln_ref.get("name") or vuln_ref.get("id", "")
+        if isinstance(vuln_ref, str):
+            vuln_id = vuln_ref
+        else:
+            vuln_id = vuln_ref.get("name") or vuln_ref.get("@id") or vuln_ref.get("id", "")
+        vuln_id = _normalise_vuln_id(vuln_id)
+
         if not vuln_id:
+            logger.debug("_parse_openvex: skipping statement with no vuln_id: %s", stmt)
             continue
 
+        logger.debug("_parse_openvex: found %s status=%s", vuln_id, status)
         statements.append(
             VexStatement(
                 vuln_id=vuln_id,
@@ -209,6 +241,8 @@ def _parse_openvex(doc: dict) -> list[VexStatement]:
                 notes=notes,
             )
         )
+    if not raw_stmts:
+        logger.debug("_parse_openvex: no 'statements' key or empty list in doc")
     return statements
 
 
@@ -221,41 +255,61 @@ def _extract_vex_from_blob(blob_data: dict) -> list[VexStatement]:
     4. Raw DSSE envelope (has top-level "payload"+"payloadType") — produced by
        ``cosign attest``; the payload is a base64-encoded in-toto statement.
     """
+    logger.debug("_extract_vex_from_blob: top-level keys=%s", list(blob_data.keys())[:20])
+
     # Format 4: Raw DSSE envelope (cosign attest output)
     # Top-level keys: "payload" (base64url), "payloadType", "signatures"
     if "payload" in blob_data and "payloadType" in blob_data:
+        logger.debug("Format 4 (raw DSSE): payloadType=%s", blob_data.get("payloadType"))
         try:
             payload = _b64decode(blob_data["payload"])
             intoto = json.loads(payload)
             predicate_type = intoto.get("predicateType", "")
+            logger.debug("Format 4: decoded in-toto predicateType=%s, keys=%s", predicate_type, list(intoto.keys()))
             if "openvex" in predicate_type or "vex" in predicate_type or predicate_type in _VEX_PREDICATE_TYPES:
-                return _parse_openvex(intoto.get("predicate", {}))
+                stmts = _parse_openvex(intoto.get("predicate", {}))
+                logger.debug("Format 4: parsed %d VEX statement(s)", len(stmts))
+                return stmts
+            logger.debug("Format 4: predicateType %r not recognised as VEX", predicate_type)
         except Exception:
-            pass
+            logger.debug("Format 4: failed to decode/parse DSSE payload", exc_info=True)
 
     # Format 3: Sigstore bundle with DSSE envelope
     dsse = blob_data.get("dsseEnvelope")
     if dsse and isinstance(dsse, dict):
+        logger.debug("Format 3 (Sigstore bundle): dsseEnvelope keys=%s", list(dsse.keys()))
         try:
             payload = _b64decode(dsse.get("payload", ""))
             intoto = json.loads(payload)
             predicate_type = intoto.get("predicateType", "")
+            logger.debug("Format 3: decoded in-toto predicateType=%s", predicate_type)
             if "openvex" in predicate_type or "vex" in predicate_type or predicate_type in _VEX_PREDICATE_TYPES:
                 vex_doc = intoto.get("predicate", {})
-                return _parse_openvex(vex_doc)
+                stmts = _parse_openvex(vex_doc)
+                logger.debug("Format 3: parsed %d VEX statement(s)", len(stmts))
+                return stmts
+            logger.debug("Format 3: predicateType %r not recognised as VEX", predicate_type)
         except Exception:
-            pass
+            logger.debug("Format 3: failed to decode/parse Sigstore bundle", exc_info=True)
 
     # Format 2: In-toto attestation wrapper
     if "predicate" in blob_data:
         predicate_type = blob_data.get("predicateType", "")
+        logger.debug("Format 2 (in-toto wrapper): predicateType=%s", predicate_type)
         if "openvex" in predicate_type or "vex" in predicate_type or predicate_type in _VEX_PREDICATE_TYPES:
-            return _parse_openvex(blob_data["predicate"])
+            stmts = _parse_openvex(blob_data["predicate"])
+            logger.debug("Format 2: parsed %d VEX statement(s)", len(stmts))
+            return stmts
         # Even without a matching predicateType, try parsing the predicate
-        return _parse_openvex(blob_data["predicate"])
+        stmts = _parse_openvex(blob_data["predicate"])
+        logger.debug("Format 2 (unrecognised predicateType): parsed %d VEX statement(s)", len(stmts))
+        return stmts
 
     # Format 1: Plain OpenVEX document
-    return _parse_openvex(blob_data)
+    logger.debug("Format 1 (plain OpenVEX): trying direct parse")
+    stmts = _parse_openvex(blob_data)
+    logger.debug("Format 1: parsed %d VEX statement(s)", len(stmts))
+    return stmts
 
 
 def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
@@ -312,9 +366,11 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                 try:
                     data = resp.json()
                     referrers = data.get("manifests", [])
+                    logger.debug("Referrers API: found %d referrer(s)", len(referrers))
                 except Exception:
-                    pass
+                    logger.debug("Referrers API: 200 but failed to parse JSON", exc_info=True)
             elif resp.status_code == 404:
+                logger.debug("Referrers API: 404, trying OCI tag fallback")
                 # Try fallback: referrers tag scheme
                 tag = image_digest.replace(":", "-")
                 tag_url = f"{scheme}://{registry}/v2/{repo}/manifests/{tag}"
@@ -323,11 +379,24 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                     try:
                         data = fallback_resp.json()
                         referrers = data.get("manifests", [])
+                        logger.debug("OCI tag fallback: found %d referrer(s)", len(referrers))
                     except Exception:
-                        pass
+                        logger.debug("OCI tag fallback: 200 but failed to parse JSON", exc_info=True)
+                else:
+                    logger.debug("OCI tag fallback: status %d", fallback_resp.status_code)
+            else:
+                logger.debug("Referrers API: unexpected status %d", resp.status_code)
 
             # Filter for VEX artifacts
             vex_descriptors = [d for d in referrers if _is_vex_artifact(d)]
+            logger.debug("VEX descriptors from referrers: %d of %d", len(vex_descriptors), len(referrers))
+            for d in referrers:
+                logger.debug(
+                    "  referrer: artifactType=%s mediaType=%s annotations=%s",
+                    d.get("artifactType", ""),
+                    d.get("mediaType", ""),
+                    d.get("annotations", {}),
+                )
 
             # Fetch and parse VEX documents found via the referrers API / tag scheme
             all_statements: list[VexStatement] = []
@@ -335,6 +404,7 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                 digest = desc.get("digest", "")
                 if not digest:
                     continue
+                logger.debug("Fetching VEX manifest: %s", digest[:30])
                 manifest_url = f"{scheme}://{registry}/v2/{repo}/manifests/{digest}"
                 manifest_resp = client.get(
                     manifest_url,
@@ -344,27 +414,38 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                     },
                 )
                 if manifest_resp.status_code != 200:
+                    logger.debug("VEX manifest %s: status %d", digest[:30], manifest_resp.status_code)
                     continue
                 try:
                     manifest = manifest_resp.json()
                 except Exception:
+                    logger.debug("VEX manifest %s: not valid JSON", digest[:30], exc_info=True)
                     continue
 
                 # Get layers/blobs from the manifest
-                for layer in manifest.get("layers", []):
+                layers = manifest.get("layers", [])
+                logger.debug("VEX manifest %s: %d layer(s)", digest[:30], len(layers))
+                for layer in layers:
                     blob_digest = layer.get("digest", "")
                     if not blob_digest:
                         continue
                     blob_url = f"{scheme}://{registry}/v2/{repo}/blobs/{blob_digest}"
                     blob_resp = client.get(blob_url, headers=headers)
                     if blob_resp.status_code != 200:
+                        logger.debug("Blob %s: status %d", blob_digest[:30], blob_resp.status_code)
                         continue
                     try:
                         blob_data = blob_resp.json()
                     except Exception:
+                        logger.debug(
+                            "Blob %s: not valid JSON (first 200 chars: %s)",
+                            blob_digest[:30],
+                            blob_resp.text[:200],
+                        )
                         continue
 
                     stmts = _extract_vex_from_blob(blob_data)
+                    logger.debug("Blob %s: extracted %d VEX statement(s)", blob_digest[:30], len(stmts))
                     all_statements.extend(stmts)
 
             # Cosign legacy .att tag fallback.
@@ -376,6 +457,7 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
             if not all_statements:
                 att_tag = image_digest.replace(":", "-") + ".att"
                 att_url = f"{scheme}://{registry}/v2/{repo}/manifests/{att_tag}"
+                logger.debug("Cosign .att fallback: trying %s", att_url)
                 att_resp = client.get(
                     att_url,
                     headers={
@@ -385,14 +467,24 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                         ),
                     },
                 )
+                logger.debug("Cosign .att fallback: status %d", att_resp.status_code)
                 if att_resp.status_code == 200:
                     try:
                         att_top = att_resp.json()
+                        logger.debug(
+                            "Cosign .att manifest: mediaType=%s, keys=%s",
+                            att_top.get("mediaType", ""),
+                            list(att_top.keys()),
+                        )
 
                         # Collect the list of manifests to process.  If the top
                         # level is an OCI index we fetch each sub-manifest first;
                         # otherwise the top level IS the manifest.
                         if "manifests" in att_top:
+                            logger.debug(
+                                "Cosign .att: OCI index with %d sub-manifest(s)",
+                                len(att_top["manifests"]),
+                            )
                             att_manifests = []
                             for sub in att_top["manifests"]:
                                 sub_digest = sub.get("digest", "")
@@ -413,37 +505,81 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                                     try:
                                         att_manifests.append(sub_resp.json())
                                     except Exception:
-                                        pass
+                                        logger.debug(
+                                            "Cosign .att: failed to parse sub-manifest %s",
+                                            sub_digest,
+                                            exc_info=True,
+                                        )
+                                else:
+                                    logger.debug(
+                                        "Cosign .att: sub-manifest %s returned status %d",
+                                        sub_digest,
+                                        sub_resp.status_code,
+                                    )
                         else:
+                            logger.debug("Cosign .att: single manifest (has layers)")
                             att_manifests = [att_top]
 
-                        for att_manifest in att_manifests:
-                            for layer in att_manifest.get("layers", []):
+                        logger.debug("Cosign .att: processing %d manifest(s)", len(att_manifests))
+                        for i, att_manifest in enumerate(att_manifests):
+                            layers = att_manifest.get("layers", [])
+                            logger.debug("Cosign .att manifest[%d]: %d layer(s)", i, len(layers))
+                            for layer in layers:
                                 blob_digest = layer.get("digest", "")
+                                layer_media = layer.get("mediaType", "")
+                                logger.debug(
+                                    "Cosign .att layer: digest=%s mediaType=%s",
+                                    blob_digest[:30] if blob_digest else "",
+                                    layer_media,
+                                )
                                 if not blob_digest:
                                     continue
                                 blob_url = f"{scheme}://{registry}/v2/{repo}/blobs/{blob_digest}"
                                 blob_resp = client.get(blob_url, headers=headers)
                                 if blob_resp.status_code != 200:
+                                    logger.debug(
+                                        "Cosign .att blob fetch: status %d for %s",
+                                        blob_resp.status_code,
+                                        blob_digest[:30],
+                                    )
                                     continue
                                 try:
                                     blob_data = blob_resp.json()
                                 except Exception:
+                                    logger.debug(
+                                        "Cosign .att blob: not valid JSON (first 200 chars: %s)",
+                                        blob_resp.text[:200],
+                                    )
                                     continue
                                 stmts = _extract_vex_from_blob(blob_data)
+                                logger.debug(
+                                    "Cosign .att blob %s: extracted %d VEX statement(s)",
+                                    blob_digest[:30],
+                                    len(stmts),
+                                )
                                 all_statements.extend(stmts)
                     except Exception:
-                        pass
+                        logger.debug("Cosign .att fallback: unexpected error", exc_info=True)
+                else:
+                    logger.debug("Cosign .att fallback: tag not found (status %d)", att_resp.status_code)
 
             if all_statements:
+                logger.info(
+                    "VEX discovery: found %d statement(s) for %s",
+                    len(all_statements),
+                    image_name,
+                )
                 return VexResult(
                     found=True,
                     statements=all_statements,
                     source=f"{scheme}://{registry}/v2/{repo}/referrers/{image_digest}",
                 )
+            logger.info("VEX discovery: no VEX statements found for %s", image_name)
             return VexResult(found=False, source=url)
 
     except httpx.TimeoutException:
+        logger.warning("VEX discovery: timeout for %s", image_name)
         return VexResult(error="Timeout checking registry for VEX")
     except Exception as e:
+        logger.warning("VEX discovery: error for %s: %s", image_name, e, exc_info=True)
         return VexResult(error=str(e))

@@ -8,6 +8,7 @@ from backend.vex_discovery import (
     _b64decode,
     _extract_vex_from_blob,
     _is_vex_artifact,
+    _normalise_vuln_id,
     _parse_image_ref,
     _parse_openvex,
     check_vex_for_image,
@@ -55,6 +56,34 @@ class TestIsVexArtifact:
         assert _is_vex_artifact({"artifactType": "application/custom-vex+json"}) is True
 
 
+class TestNormaliseVulnId:
+    """Tests for the _normalise_vuln_id helper."""
+
+    def test_bare_cve(self):
+        assert _normalise_vuln_id("CVE-2024-1234") == "CVE-2024-1234"
+
+    def test_bare_ghsa(self):
+        assert _normalise_vuln_id("GHSA-xxxx-yyyy-zzzz") == "GHSA-xxxx-yyyy-zzzz"
+
+    def test_nvd_url(self):
+        assert _normalise_vuln_id("https://nvd.nist.gov/vuln/detail/CVE-2024-1234") == "CVE-2024-1234"
+
+    def test_ghsa_url(self):
+        assert _normalise_vuln_id("https://github.com/advisories/GHSA-h395-gr6q-cpjc") == "GHSA-h395-gr6q-cpjc"
+
+    def test_osv_url(self):
+        assert _normalise_vuln_id("https://osv.dev/vulnerability/GO-2024-1234") == "GO-2024-1234"
+
+    def test_trailing_slash(self):
+        assert _normalise_vuln_id("https://nvd.nist.gov/vuln/detail/CVE-2024-1234/") == "CVE-2024-1234"
+
+    def test_empty_string(self):
+        assert _normalise_vuln_id("") == ""
+
+    def test_http_scheme(self):
+        assert _normalise_vuln_id("http://example.com/vuln/CVE-2024-5678") == "CVE-2024-5678"
+
+
 class TestParseOpenvex:
     def test_basic_openvex_document(self):
         doc = {
@@ -95,6 +124,48 @@ class TestParseOpenvex:
         stmts = _parse_openvex(doc)
         assert len(stmts) == 1
         assert stmts[0].vuln_id == "CVE-2024-9999"
+
+    def test_at_id_url_normalised(self):
+        """Real-world OpenVEX documents use @id with full URLs.
+
+        This matches DockGuard's actual vex/dockguard.vex.json format.
+        The parser must extract the bare CVE/GHSA ID so it matches Grype
+        vulnerability IDs.
+        """
+        doc = {
+            "statements": [
+                {
+                    "vulnerability": {"@id": "https://nvd.nist.gov/vuln/detail/CVE-2026-25547"},
+                    "status": "not_affected",
+                    "justification": "vulnerable_code_not_in_execute_path",
+                },
+                {
+                    "vulnerability": {"@id": "https://github.com/advisories/GHSA-h395-gr6q-cpjc"},
+                    "status": "not_affected",
+                },
+            ]
+        }
+        stmts = _parse_openvex(doc)
+        assert len(stmts) == 2
+        assert stmts[0].vuln_id == "CVE-2026-25547"
+        assert stmts[1].vuln_id == "GHSA-h395-gr6q-cpjc"
+
+    def test_name_preferred_over_at_id(self):
+        """If both 'name' and '@id' exist, 'name' takes precedence."""
+        doc = {
+            "statements": [
+                {
+                    "vulnerability": {
+                        "name": "CVE-2024-1234",
+                        "@id": "https://nvd.nist.gov/vuln/detail/CVE-2024-1234",
+                    },
+                    "status": "fixed",
+                }
+            ]
+        }
+        stmts = _parse_openvex(doc)
+        assert len(stmts) == 1
+        assert stmts[0].vuln_id == "CVE-2024-1234"
 
 
 class TestB64Decode:
