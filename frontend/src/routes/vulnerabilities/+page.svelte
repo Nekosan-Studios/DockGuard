@@ -135,7 +135,7 @@
   // ── Reports & sort URL params ─────────────────────────────────────────────
   const reports = [
     { value: "all", label: "All Vulnerabilities" },
-    { value: "critical", label: "Critical Vulnerabilities" },
+    { value: "urgent", label: "Urgent Priority" },
     { value: "kev", label: "Actively Exploited (KEV)" },
     { value: "new", label: "Newly Found" },
     { value: "vex_annotated", label: "VEX Annotated" },
@@ -148,9 +148,7 @@
     { value: "336", label: "14d" },
   ];
 
-  let reportValue = $derived(
-    $page.url.searchParams.get("report") || "critical"
-  );
+  let reportValue = $derived($page.url.searchParams.get("report") || "urgent");
   let newHoursValue = $derived($page.url.searchParams.get("new_hours") || "24");
   let sortByValue = $derived(
     $page.url.searchParams.get("sort_by") || "severity"
@@ -161,8 +159,7 @@
   let reportLabel = $derived(
     reportValue === "new"
       ? `Newly Found (Last ${newRanges.find((r) => r.value === newHoursValue)?.label ?? "1d"})`
-      : reports.find((r) => r.value === reportValue)?.label ||
-          "Critical Vulnerabilities"
+      : reports.find((r) => r.value === reportValue)?.label || "Urgent Priority"
   );
 
   function handleReportChange(v: string) {
@@ -360,7 +357,7 @@
                 </Table.Head>
                 <Table.Head class="text-center">
                   <SortButton
-                    label="Severity"
+                    label="Priority"
                     size="sm"
                     sortDirection={activeSortDir("severity")}
                     onclick={() => toggleSort("severity")}

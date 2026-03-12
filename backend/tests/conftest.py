@@ -133,7 +133,7 @@ VULN_CRITICAL = dict(
     is_kev=True,
     epss_score=0.94,
     epss_percentile=0.99,
-    risk_score=9.5,
+    risk_score=95.0,
     fix_state="fixed",
     fixed_version="1.2.3",
 )
@@ -146,7 +146,7 @@ VULN_HIGH = dict(
     is_kev=False,
     epss_score=0.12,
     epss_percentile=0.75,
-    risk_score=6.8,
+    risk_score=68.0,
     fix_state="not-fixed",
     fixed_version=None,
 )
@@ -159,7 +159,7 @@ VULN_MEDIUM = dict(
     is_kev=False,
     epss_score=0.02,
     epss_percentile=0.40,
-    risk_score=3.1,
+    risk_score=31.0,
     fix_state="fixed",
     fixed_version="2.0.0",
 )
@@ -172,7 +172,7 @@ VULN_CRITICAL_2 = dict(
     is_kev=False,
     epss_score=0.55,
     epss_percentile=0.95,
-    risk_score=8.9,
+    risk_score=89.0,
     fix_state="fixed",
     fixed_version="7.0.15",
 )

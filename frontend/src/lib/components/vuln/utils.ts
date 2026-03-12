@@ -38,7 +38,7 @@ export function cvssClass(score: number | null): string {
 }
 
 export function riskScoreTooltip(score: number): string {
-  return `Grype Risk Score: ${score.toFixed(1)} / 10 — composite of CVSS, EPSS, and KEV`;
+  return `Grype Risk Score: ${score.toFixed(1)} / 100 — composite of CVSS, EPSS, and KEV`;
 }
 
 export function epssClass(score: number | null): string {
@@ -47,4 +47,32 @@ export function epssClass(score: number | null): string {
   if (score >= 0.1) return "font-semibold text-orange-600 dark:text-orange-400";
   if (score >= 0.01) return "text-amber-600 dark:text-amber-400";
   return "text-muted-foreground";
+}
+
+// ── Priority system (risk-score-based) ──────────────────────────────────────
+
+export const PRIORITY_ORDER = ["Urgent", "High", "Medium", "Low"] as const;
+export type Priority = (typeof PRIORITY_ORDER)[number];
+
+export const PRIORITY_CLASSES: Record<string, string> = {
+  Urgent:
+    "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800",
+  High: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800",
+  Medium:
+    "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800",
+  Low: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800",
+};
+
+export function priorityFromRiskScore(riskScore: number | null): Priority {
+  if (riskScore == null) return "Low";
+  if (riskScore >= 80) return "Urgent";
+  if (riskScore >= 50) return "High";
+  if (riskScore >= 20) return "Medium";
+  return "Low";
+}
+
+export function priorityTooltip(riskScore: number | null): string {
+  const priority = priorityFromRiskScore(riskScore);
+  const score = riskScore != null ? riskScore.toFixed(1) : "—";
+  return `${priority} priority — Grype Risk Score: ${score}/100`;
 }

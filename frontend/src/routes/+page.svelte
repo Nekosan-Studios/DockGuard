@@ -18,48 +18,30 @@
 
   let { data }: { data: PageData } = $props();
 
-  // Severity display order and color classes
-  const SEVERITY_ORDER = [
-    "Critical",
-    "High",
-    "Medium",
-    "Low",
-    "Negligible",
-    "Unknown",
-  ];
-
-  const SEVERITY_CLASSES: Record<string, string> = {
-    Critical:
-      "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800",
-    High: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800",
-    Medium:
-      "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800",
-    Low: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800",
-    Negligible:
-      "bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600",
-    Unknown:
-      "bg-gray-100 text-gray-500 border-gray-300 dark:bg-gray-800 dark:text-gray-500 dark:border-gray-600",
-  };
+  import {
+    PRIORITY_ORDER,
+    PRIORITY_CLASSES,
+  } from "$lib/components/vuln/utils.js";
 
   function timeAgo(iso: string): string {
     return formatDistanceToNow(new Date(iso), { addSuffix: true });
   }
 
-  function activeSeverities(vulnsBySeverity: Record<string, number>) {
-    return SEVERITY_ORDER.filter((s) => (vulnsBySeverity[s] ?? 0) > 0);
+  function activePriorities(vulnsByPriority: Record<string, number>) {
+    return PRIORITY_ORDER.filter((p) => (vulnsByPriority[p] ?? 0) > 0);
   }
 
   // Chart config
   const chartConfig = {
-    critical: {
-      label: "Critical Vulnerabilities",
+    urgent: {
+      label: "Urgent Priority",
       color: "var(--chart-1)",
     },
   } satisfies Chart.ChartConfig;
 
   // Parse trend dates for display
   const trendData = $derived(
-    (data.summary.trend ?? []).map((d: { date: string; critical: number }) => ({
+    (data.summary.trend ?? []).map((d: { date: string; urgent: number }) => ({
       ...d,
       label: format(new Date(d.date + "T12:00:00"), "MMM d"),
     }))
@@ -235,27 +217,25 @@
       </a>
     </Card.Root>
 
-    <!-- Critical vulnerabilities -->
+    <!-- Urgent priority -->
     <Card.Root class="transition-colors hover:bg-muted/50">
-      <a href="/vulnerabilities?report=critical" class="block h-full">
+      <a href="/vulnerabilities?report=urgent" class="block h-full">
         <Card.Header
           class="flex flex-row items-center justify-between space-y-0 pb-2"
         >
-          <Card.Title class="text-sm font-medium"
-            >Critical Vulnerabilities</Card.Title
-          >
+          <Card.Title class="text-sm font-medium">Urgent Priority</Card.Title>
           <TriangleAlert class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.critical_count === null}
+          {#if data.summary.urgent_count === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div class="text-2xl font-bold">
-              {data.summary.critical_count}
+              {data.summary.urgent_count}
             </div>
             <p class="text-muted-foreground text-xs">
-              across running containers
+              with the highest risk scores across running containers
             </p>
           {/if}
         </Card.Content>
@@ -325,9 +305,10 @@
   <!-- Critical vuln trend chart -->
   <Card.Root>
     <Card.Header>
-      <Card.Title>Critical Vulnerabilities — 30-Day Trend</Card.Title>
+      <Card.Title>Urgent Priority — 30-Day Trend</Card.Title>
       <Card.Description>
-        Total critical vulnerabilities across all scanned images per day.
+        Vulnerabilities with the highest risk scores across all scanned images
+        per day.
       </Card.Description>
     </Card.Header>
     <Card.Content>
@@ -347,9 +328,9 @@
             x="label"
             series={[
               {
-                key: "critical",
-                label: chartConfig.critical.label,
-                color: chartConfig.critical.color,
+                key: "urgent",
+                label: chartConfig.urgent.label,
+                color: chartConfig.urgent.color,
               },
             ]}
             axis={true}
@@ -425,14 +406,14 @@
                 </Table.Cell>
                 <Table.Cell>
                   <div class="flex flex-wrap gap-1">
-                    {#each activeSeverities(activity.vulns_by_severity) as sev (sev)}
+                    {#each activePriorities(activity.vulns_by_priority ?? {}) as pri (pri)}
                       <span
-                        class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {SEVERITY_CLASSES[
-                          sev
+                        class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {PRIORITY_CLASSES[
+                          pri
                         ]}"
                       >
-                        {activity.vulns_by_severity[sev]}
-                        {sev}
+                        {activity.vulns_by_priority[pri]}
+                        {pri}
                       </span>
                     {/each}
                   </div>

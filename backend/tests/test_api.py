@@ -456,7 +456,7 @@ def test_get_vulnerabilities_grouped_same_cve_different_packages(api_client):
         is_kev=False,
         epss_score=0.50,
         epss_percentile=0.80,
-        risk_score=7.0,
+        risk_score=70.0,
         fix_state="fixed",
         fixed_version="3.0.1",
     )

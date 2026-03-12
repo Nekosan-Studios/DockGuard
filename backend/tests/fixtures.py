@@ -41,7 +41,7 @@ GRYPE_JSON_NGINX = {
                     {"cwe": "CWE-119", "source": "nvd", "type": "primary"},
                     {"cwe": "CWE-787", "source": "nvd", "type": "secondary"},
                 ],
-                "risk": 9.5,
+                "risk": 95.0,
                 "fix": {"versions": ["1.2.3"], "state": "fixed"},
             },
             "artifact": {
@@ -87,7 +87,7 @@ GRYPE_JSON_NGINX = {
                 "epss": [{"epss": 0.12, "percentile": 0.75, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [{"cwe": "CWE-416", "source": "nvd", "type": "primary"}],
-                "risk": 6.8,
+                "risk": 68.0,
                 "fix": {"versions": [], "state": "not-fixed"},
             },
             "artifact": {
@@ -132,7 +132,7 @@ GRYPE_JSON_NGINX = {
                 "epss": [{"epss": 0.02, "percentile": 0.40, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [],
-                "risk": 3.1,
+                "risk": 31.0,
                 "fix": {"versions": ["2.0.0"], "state": "fixed"},
             },
             "artifact": {
@@ -214,7 +214,7 @@ GRYPE_JSON_REDIS = {
                 "epss": [{"epss": 0.55, "percentile": 0.95, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [{"cwe": "CWE-94", "source": "nvd", "type": "primary"}],
-                "risk": 8.9,
+                "risk": 89.0,
                 "fix": {"versions": ["7.0.15"], "state": "fixed"},
             },
             "artifact": {
@@ -245,7 +245,7 @@ GRYPE_JSON_REDIS = {
                 "epss": [{"epss": 0.30, "percentile": 0.88, "date": "2024-01-15"}],
                 "knownExploited": [],
                 "cwes": [{"cwe": "CWE-190", "source": "nvd", "type": "primary"}],
-                "risk": 8.5,
+                "risk": 85.0,
                 "fix": {"versions": [], "state": "not-fixed"},
             },
             "artifact": {

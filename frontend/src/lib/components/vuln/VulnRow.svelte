@@ -7,7 +7,7 @@
   import EpssCell from "./EpssCell.svelte";
   import KevCell from "./KevCell.svelte";
   import VexStatusCell from "./VexStatusCell.svelte";
-  import SeverityCell from "./SeverityCell.svelte";
+  import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
   import { SEVERITY_CLASSES, cvssClass, toUtcDate } from "./utils.js";
 
@@ -126,7 +126,7 @@
     </Table.Cell>
   {/if}
 
-  <SeverityCell severity={vuln.severity} riskScore={vuln.risk_score} />
+  <PriorityCell riskScore={vuln.risk_score} />
 
   <Table.Cell class="font-mono">
     <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">

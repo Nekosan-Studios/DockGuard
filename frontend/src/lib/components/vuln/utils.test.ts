@@ -5,6 +5,8 @@ import {
   cvssClass,
   epssClass,
   toUtcDate,
+  priorityFromRiskScore,
+  priorityTooltip,
 } from "./utils";
 
 describe("vuln/utils", () => {
@@ -94,6 +96,41 @@ describe("vuln/utils", () => {
     it("does not append Z if timezone offset is present", () => {
       const dt = toUtcDate("2026-03-08T12:00:00+00:00");
       expect(dt.toISOString()).toBe("2026-03-08T12:00:00.000Z");
+    });
+  });
+
+  describe("priorityFromRiskScore", () => {
+    it("returns Urgent for risk score >= 80", () => {
+      expect(priorityFromRiskScore(80.0)).toBe("Urgent");
+      expect(priorityFromRiskScore(100.0)).toBe("Urgent");
+    });
+    it("returns High for risk score >= 50 and < 80", () => {
+      expect(priorityFromRiskScore(50.0)).toBe("High");
+      expect(priorityFromRiskScore(79.9)).toBe("High");
+    });
+    it("returns Medium for risk score >= 20 and < 50", () => {
+      expect(priorityFromRiskScore(20.0)).toBe("Medium");
+      expect(priorityFromRiskScore(49.9)).toBe("Medium");
+    });
+    it("returns Low for risk score < 20", () => {
+      expect(priorityFromRiskScore(0.0)).toBe("Low");
+      expect(priorityFromRiskScore(19.9)).toBe("Low");
+    });
+    it("returns Low for null risk score", () => {
+      expect(priorityFromRiskScore(null)).toBe("Low");
+    });
+  });
+
+  describe("priorityTooltip", () => {
+    it("includes priority label and score", () => {
+      expect(priorityTooltip(85.0)).toBe(
+        "Urgent priority — Grype Risk Score: 85.0/100"
+      );
+    });
+    it("handles null risk score", () => {
+      expect(priorityTooltip(null)).toBe(
+        "Low priority — Grype Risk Score: —/100"
+      );
     });
   });
 });
