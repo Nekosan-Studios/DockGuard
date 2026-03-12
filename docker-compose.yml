@@ -18,7 +18,8 @@ services:
       - ./data:/app/data                             # Where to store SQLite database
       - /var/run/docker.sock:/var/run/docker.sock    # Access host Docker daemon
     environment:
-      TZ=UTC                                         # Put your timezone here
+      TZ=UTC
+      ORIGIN=http://your-server-ip:8764                                       # Put your timezone here
     # These are all optional, app uses these defaults if not specified 
     # and can be changed in the settings section of the app. Setting here override settings section:
       # SCAN_INTERVAL_SECONDS=60         # How often to poll Docker for new/updated containers
