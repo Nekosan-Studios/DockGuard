@@ -371,8 +371,8 @@
                   <colgroup>
                     <col class="w-[140px]" />
                     <col class="w-[140px]" />
-                    <col class="w-[80px]" />
-                    <col class="w-[110px]" />
+                    <col class="w-[100px]" />
+                    <col class="w-[100px]" />
                     <col class="w-[90px]" />
                     <col class="w-[80px]" />
                     <col class="w-[80px]" />

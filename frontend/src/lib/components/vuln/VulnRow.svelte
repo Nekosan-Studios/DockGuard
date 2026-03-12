@@ -131,7 +131,7 @@
       <Tooltip.Root>
         <Tooltip.Trigger class="cursor-default text-left">
           <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span>{rep.package_name}</span>
+            <div class="max-w-[120px] truncate">{rep.package_name}</div>
             {#if rep.package_type}
               <span
                 class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
@@ -239,18 +239,22 @@
     </div>
   </Table.Cell>
 
-  <Table.Cell class="text-center font-mono" title={rep.installed_version}
-    >{rep.installed_version}</Table.Cell
-  >
+  <Table.Cell class="text-center font-mono" title={rep.installed_version}>
+    <div class="mx-auto max-w-[100px] truncate">
+      {rep.installed_version}
+    </div>
+  </Table.Cell>
   <Table.Cell
     class="text-center font-mono"
     title={rep.fixed_version ?? undefined}
   >
-    {#if rep.fixed_version}
-      {rep.fixed_version}
-    {:else}
-      <span class="text-muted-foreground">No fix</span>
-    {/if}
+    <div class="mx-auto max-w-[100px] truncate">
+      {#if rep.fixed_version}
+        {rep.fixed_version}
+      {:else}
+        <span class="text-muted-foreground">No fix</span>
+      {/if}
+    </div>
   </Table.Cell>
 
   <PriorityCell riskScore={vuln.risk_score} />
