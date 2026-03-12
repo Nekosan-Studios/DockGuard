@@ -18,7 +18,10 @@
       const res = await fetch("/api/version");
       if (res.ok) {
         const data = await res.json();
-        appVersion = data.version ?? "";
+        const version = data?.version;
+        if (typeof version === "string" && version.trim() !== "") {
+          appVersion = version;
+        }
       }
     } catch {
       // ignore – version is cosmetic
