@@ -170,7 +170,9 @@
   const VALID_REPORTS = new Set(reports.map((r) => r.value));
   const LS_KEY = "dg_last_vuln_report";
 
+  let mounted = false;
   onMount(() => {
+    mounted = true;
     if (!$page.url.searchParams.has("report")) {
       const saved = localStorage.getItem(LS_KEY);
       const target = saved && VALID_REPORTS.has(saved) ? saved : "urgent";
@@ -180,8 +182,13 @@
     }
   });
 
+  $effect(() => {
+    if (mounted && VALID_REPORTS.has(reportValue)) {
+      localStorage.setItem(LS_KEY, reportValue);
+    }
+  });
+
   function handleReportChange(v: string) {
-    localStorage.setItem(LS_KEY, v);
     const u = new URL($page.url);
     u.searchParams.set("report", v);
     u.searchParams.delete("sort_by");
