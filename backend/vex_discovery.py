@@ -26,12 +26,33 @@ _VEX_PREDICATE_TYPES = {
     "https://openvex.dev/ns",
     "cosign.sigstore.dev/attestation/vuln/v1",
 }
-# Sigstore bundles may contain VEX attestations — we need to fetch and inspect them.
+# Sigstore bundles and generic in-toto attestations may contain VEX — fetch and inspect.
 _SIGSTORE_BUNDLE_TYPES = {
     "application/vnd.dev.sigstore.bundle.v0.3+json",
     "application/vnd.dev.sigstore.bundle+json;version=0.3",
+    # Generic in-toto media type used by cosign when pushing via OCI referrers API;
+    # the predicate type is only known after fetching the blob.
+    "application/vnd.in-toto+json",
 }
 _OCI_INDEX_MEDIA = "application/vnd.oci.image.index.v1+json"
+
+
+def _b64decode(data: str) -> bytes:
+    """Decode standard base64 or base64url, tolerating missing padding.
+
+    Some tools (newer Sigstore releases, some CI actions) emit base64url
+    (RFC 4648 §5: ``-`` and ``_`` instead of ``+`` and ``/``).  Python's
+    stdlib ``base64.b64decode`` rejects those characters unless told
+    otherwise, and also requires correct ``=`` padding which is often
+    omitted.  This helper normalises both before decoding.
+    """
+    # Translate url-safe alphabet to standard alphabet
+    data = data.strip().replace("-", "+").replace("_", "/")
+    # Re-pad to the next multiple of 4
+    remainder = len(data) % 4
+    if remainder:
+        data += "=" * (4 - remainder)
+    return base64.b64decode(data)
 
 
 @dataclass
@@ -197,12 +218,26 @@ def _extract_vex_from_blob(blob_data: dict) -> list[VexStatement]:
     1. Plain OpenVEX document (has "statements" key)
     2. In-toto statement wrapper (has "predicate" with VEX inside)
     3. Sigstore bundle (has "dsseEnvelope" with base64-encoded in-toto payload)
+    4. Raw DSSE envelope (has top-level "payload"+"payloadType") — produced by
+       ``cosign attest``; the payload is a base64-encoded in-toto statement.
     """
+    # Format 4: Raw DSSE envelope (cosign attest output)
+    # Top-level keys: "payload" (base64url), "payloadType", "signatures"
+    if "payload" in blob_data and "payloadType" in blob_data:
+        try:
+            payload = _b64decode(blob_data["payload"])
+            intoto = json.loads(payload)
+            predicate_type = intoto.get("predicateType", "")
+            if "openvex" in predicate_type or "vex" in predicate_type or predicate_type in _VEX_PREDICATE_TYPES:
+                return _parse_openvex(intoto.get("predicate", {}))
+        except Exception:
+            pass
+
     # Format 3: Sigstore bundle with DSSE envelope
     dsse = blob_data.get("dsseEnvelope")
     if dsse and isinstance(dsse, dict):
         try:
-            payload = base64.b64decode(dsse.get("payload", ""))
+            payload = _b64decode(dsse.get("payload", ""))
             intoto = json.loads(payload)
             predicate_type = intoto.get("predicateType", "")
             if "openvex" in predicate_type or "vex" in predicate_type or predicate_type in _VEX_PREDICATE_TYPES:
@@ -333,34 +368,70 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                     all_statements.extend(stmts)
 
             # Cosign legacy .att tag fallback.
-            # `cosign attest` (without explicit OCI-referrers flags) stores the
-            # attestation as a standalone OCI manifest whose tag is
-            # sha256-{hash}.att rather than via the referrers API.  The manifest
-            # itself IS the attestation: its layers contain the predicate blobs.
+            # `cosign attest` stores the attestation as an OCI artifact tagged
+            # sha256-{hash}.att.  With a single attestation this is a plain
+            # manifest (has "layers").  When multiple attestations exist cosign
+            # promotes the tag to an OCI image index (has "manifests"), where
+            # each entry is a separate attestation manifest.  We handle both.
             if not all_statements:
                 att_tag = image_digest.replace(":", "-") + ".att"
                 att_url = f"{scheme}://{registry}/v2/{repo}/manifests/{att_tag}"
                 att_resp = client.get(
                     att_url,
-                    headers={**headers, "Accept": "application/vnd.oci.image.manifest.v1+json"},
+                    headers={
+                        **headers,
+                        "Accept": (
+                            "application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json"
+                        ),
+                    },
                 )
                 if att_resp.status_code == 200:
                     try:
-                        att_manifest = att_resp.json()
-                        for layer in att_manifest.get("layers", []):
-                            blob_digest = layer.get("digest", "")
-                            if not blob_digest:
-                                continue
-                            blob_url = f"{scheme}://{registry}/v2/{repo}/blobs/{blob_digest}"
-                            blob_resp = client.get(blob_url, headers=headers)
-                            if blob_resp.status_code != 200:
-                                continue
-                            try:
-                                blob_data = blob_resp.json()
-                            except Exception:
-                                continue
-                            stmts = _extract_vex_from_blob(blob_data)
-                            all_statements.extend(stmts)
+                        att_top = att_resp.json()
+
+                        # Collect the list of manifests to process.  If the top
+                        # level is an OCI index we fetch each sub-manifest first;
+                        # otherwise the top level IS the manifest.
+                        if "manifests" in att_top:
+                            att_manifests = []
+                            for sub in att_top["manifests"]:
+                                sub_digest = sub.get("digest", "")
+                                if not sub_digest:
+                                    continue
+                                sub_url = f"{scheme}://{registry}/v2/{repo}/manifests/{sub_digest}"
+                                sub_resp = client.get(
+                                    sub_url,
+                                    headers={
+                                        **headers,
+                                        "Accept": sub.get(
+                                            "mediaType",
+                                            "application/vnd.oci.image.manifest.v1+json",
+                                        ),
+                                    },
+                                )
+                                if sub_resp.status_code == 200:
+                                    try:
+                                        att_manifests.append(sub_resp.json())
+                                    except Exception:
+                                        pass
+                        else:
+                            att_manifests = [att_top]
+
+                        for att_manifest in att_manifests:
+                            for layer in att_manifest.get("layers", []):
+                                blob_digest = layer.get("digest", "")
+                                if not blob_digest:
+                                    continue
+                                blob_url = f"{scheme}://{registry}/v2/{repo}/blobs/{blob_digest}"
+                                blob_resp = client.get(blob_url, headers=headers)
+                                if blob_resp.status_code != 200:
+                                    continue
+                                try:
+                                    blob_data = blob_resp.json()
+                                except Exception:
+                                    continue
+                                stmts = _extract_vex_from_blob(blob_data)
+                                all_statements.extend(stmts)
                     except Exception:
                         pass
 
