@@ -6,6 +6,7 @@ import base64
 import json
 
 from backend.vex_discovery import (
+    _b64decode,
     _extract_vex_from_blob,
     _is_vex_artifact,
     _parse_image_ref,
@@ -95,6 +96,30 @@ class TestParseOpenvex:
         stmts = _parse_openvex(doc)
         assert len(stmts) == 1
         assert stmts[0].vuln_id == "CVE-2024-9999"
+
+
+class TestB64Decode:
+    """Tests for the _b64decode helper."""
+
+    def test_standard_base64(self):
+        assert _b64decode(base64.b64encode(b"hello").decode()) == b"hello"
+
+    def test_base64url_characters(self):
+        """URL-safe alphabet (- and _) must be accepted."""
+        # Produce a byte string that encodes to + and / in standard base64
+        raw = bytes(range(200, 210))
+        standard = base64.b64encode(raw).decode()
+        urlsafe = standard.replace("+", "-").replace("/", "_")
+        assert _b64decode(urlsafe) == raw
+
+    def test_missing_padding_tolerated(self):
+        """Payloads without trailing = must still decode correctly."""
+        raw = b"no padding needed here"
+        unpadded = base64.b64encode(raw).decode().rstrip("=")
+        assert _b64decode(unpadded) == raw
+
+    def test_whitespace_stripped(self):
+        assert _b64decode("  " + base64.b64encode(b"trim").decode() + "\n") == b"trim"
 
 
 class TestExtractVexFromBlob:
@@ -491,7 +516,116 @@ class TestCheckVexForImage:
 
     @patch("backend.vex_discovery.httpx.Client")
     @patch("backend.vex_discovery._get_docker_auth", return_value=None)
-    def test_timeout_handled(self, mock_auth, MockClient):
+    def test_cosign_att_tag_oci_index(self, mock_auth, MockClient):
+        """Test .att tag that is an OCI index (multiple attestations).
+
+        When cosign has pushed more than one attestation for an image (e.g.
+        provenance + VEX) it promotes the sha256-{hash}.att tag to an OCI
+        image index.  Each entry in the index is a separate manifest.  We
+        must fetch each sub-manifest and scan its layers.
+        """
+        mock_client = MagicMock()
+        MockClient.return_value.__enter__ = MagicMock(return_value=mock_client)
+        MockClient.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_token_resp = MagicMock()
+        mock_token_resp.status_code = 200
+        mock_token_resp.json.return_value = {"token": "test-token"}
+
+        mock_referrers_resp = MagicMock()
+        mock_referrers_resp.status_code = 404
+
+        mock_oci_tag_resp = MagicMock()
+        mock_oci_tag_resp.status_code = 404
+
+        # .att tag → OCI image index with two entries
+        mock_att_index_resp = MagicMock()
+        mock_att_index_resp.status_code = 200
+        mock_att_index_resp.json.return_value = {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [
+                {
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                    "digest": "sha256:provdigest",
+                    "size": 256,
+                },
+                {
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                    "digest": "sha256:vexdigest",
+                    "size": 512,
+                },
+            ],
+        }
+
+        # First sub-manifest: provenance (non-VEX), has a layer with SLSA predicate
+        mock_prov_manifest_resp = MagicMock()
+        mock_prov_manifest_resp.status_code = 200
+        mock_prov_manifest_resp.json.return_value = {
+            "layers": [{"digest": "sha256:provblob", "mediaType": "application/vnd.dsse.envelope.v1+json"}]
+        }
+
+        mock_prov_blob_resp = MagicMock()
+        mock_prov_blob_resp.status_code = 200
+        # SLSA provenance raw DSSE — _extract_vex_from_blob must skip this
+        slsa_intoto = {
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [],
+            "predicate": {"builder": {"id": "https://github.com/Actions"}},
+        }
+        mock_prov_blob_resp.json.return_value = {
+            "payload": base64.b64encode(json.dumps(slsa_intoto).encode()).decode(),
+            "payloadType": "application/vnd.in-toto+json",
+            "signatures": [],
+        }
+
+        # Second sub-manifest: VEX
+        mock_vex_manifest_resp = MagicMock()
+        mock_vex_manifest_resp.status_code = 200
+        mock_vex_manifest_resp.json.return_value = {
+            "layers": [{"digest": "sha256:vexblob", "mediaType": "application/vnd.dsse.envelope.v1+json"}]
+        }
+
+        mock_vex_blob_resp = MagicMock()
+        mock_vex_blob_resp.status_code = 200
+        vex_intoto = {
+            "_type": "https://in-toto.io/Statement/v0.1",
+            "predicateType": "https://openvex.dev/ns/v0.2.0",
+            "subject": [],
+            "predicate": {
+                "statements": [
+                    {"vulnerability": {"name": "CVE-2024-7777"}, "status": "not_affected"}
+                ]
+            },
+        }
+        mock_vex_blob_resp.json.return_value = {
+            "payload": base64.b64encode(json.dumps(vex_intoto).encode()).decode(),
+            "payloadType": "application/vnd.in-toto+json",
+            "signatures": [],
+        }
+
+        # All sub-manifests are fetched first (index expansion), then blobs
+        mock_client.get.side_effect = [
+            mock_token_resp,
+            mock_referrers_resp,       # referrers API → 404
+            mock_oci_tag_resp,         # OCI tag scheme → 404
+            mock_att_index_resp,       # .att tag → OCI index
+            mock_prov_manifest_resp,   # fetch sub-manifest 1 (provenance)
+            mock_vex_manifest_resp,    # fetch sub-manifest 2 (VEX)
+            mock_prov_blob_resp,       # process blob from manifest 1 — skipped (SLSA)
+            mock_vex_blob_resp,        # process blob from manifest 2 — VEX found
+        ]
+
+        result = check_vex_for_image("nginx:latest", "sha256:abc123")
+        assert result.found is True
+        assert len(result.statements) == 1
+        assert result.statements[0].vuln_id == "CVE-2024-7777"
+        assert result.statements[0].status == "not_affected"
+
+    @patch("backend.vex_discovery.httpx.Client")
+    @patch("backend.vex_discovery._get_docker_auth", return_value=None)
+    def test_timeout_handled(self, _mock_auth, MockClient):
         """Test that timeouts are caught gracefully."""
         import httpx
 
