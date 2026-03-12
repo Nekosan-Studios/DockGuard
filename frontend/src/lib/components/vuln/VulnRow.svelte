@@ -9,7 +9,11 @@
   import VexStatusCell from "./VexStatusCell.svelte";
   import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
-  import { SEVERITY_CLASSES, cvssClass, toUtcDate } from "./utils.js";
+  import {
+    PRIORITY_CLASSES,
+    priorityFromRiskScore,
+    toUtcDate,
+  } from "./utils.js";
 
   // ── Interfaces ────────────────────────────────────────────────────────────
   export interface ContainerInfo {
@@ -97,7 +101,7 @@
   />
 
   {#if showContainers}
-    <Table.Cell class="align-top py-2">
+    <Table.Cell class="py-2">
       {#if vuln.containers && vuln.containers.length > 0}
         <div class="flex flex-wrap gap-1">
           {#each vuln.containers as container (container.container_name)}
@@ -126,14 +130,12 @@
     </Table.Cell>
   {/if}
 
-  <PriorityCell riskScore={vuln.risk_score} />
-
   <Table.Cell class="font-mono">
     <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
       <Tooltip.Root>
         <Tooltip.Trigger class="cursor-default text-left">
           <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span>{rep.package_name}</span>
+            <div class="max-w-[120px] truncate">{rep.package_name}</div>
             {#if rep.package_type}
               <span
                 class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
@@ -189,7 +191,7 @@
               </p>
             </div>
             <div class="max-h-48 overflow-y-auto divide-y divide-border">
-              {#each packages as pkg (pkg.package_name)}
+              {#each packages as pkg, i (i)}
                 <div class="px-3 py-2 text-xs">
                   <div class="flex items-center justify-between gap-1.5">
                     <div class="flex items-baseline gap-1.5">
@@ -206,21 +208,20 @@
                     </div>
                     <div class="flex items-center gap-1.5 shrink-0">
                       <span
-                        class="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium {SEVERITY_CLASSES[
-                          pkg.severity
-                        ] ?? SEVERITY_CLASSES['Unknown']}"
+                        class="inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0 font-medium min-w-[50px] {PRIORITY_CLASSES[
+                          priorityFromRiskScore(vuln.risk_score)
+                        ]}"
                       >
-                        {pkg.severity}
-                      </span>
-                      {#if pkg.cvss_base_score != null}
-                        <span
-                          class="font-mono text-[10px] {cvssClass(
-                            pkg.cvss_base_score
-                          )}"
+                        <span class="text-[10px] leading-none"
+                          >{priorityFromRiskScore(vuln.risk_score)}</span
                         >
-                          {pkg.cvss_base_score.toFixed(1)}
-                        </span>
-                      {/if}
+                        {#if vuln.risk_score != null}
+                          <span
+                            class="font-mono opacity-70 text-[9px] leading-none"
+                            >{vuln.risk_score.toFixed(1)}</span
+                          >
+                        {/if}
+                      </span>
                     </div>
                   </div>
                   <div
@@ -241,22 +242,26 @@
     </div>
   </Table.Cell>
 
-  <Table.Cell
-    class="text-center font-mono text-muted-foreground"
-    title={rep.installed_version}>{rep.installed_version}</Table.Cell
-  >
+  <Table.Cell class="text-center font-mono" title={rep.installed_version}>
+    <div class="mx-auto max-w-[100px] truncate">
+      {rep.installed_version}
+    </div>
+  </Table.Cell>
   <Table.Cell
     class="text-center font-mono"
     title={rep.fixed_version ?? undefined}
   >
-    {#if rep.fixed_version}
-      {rep.fixed_version}
-    {:else}
-      <span class="text-muted-foreground">No fix</span>
-    {/if}
+    <div class="mx-auto max-w-[100px] truncate">
+      {#if rep.fixed_version}
+        {rep.fixed_version}
+      {:else}
+        <span class="text-muted-foreground">No fix</span>
+      {/if}
+    </div>
   </Table.Cell>
 
-  <CvssCell score={vuln.cvss_base_score} cvssVector={vuln.cvss_vector} />
+  <PriorityCell riskScore={vuln.risk_score} cvssVector={vuln.cvss_vector} />
+  <CvssCell score={vuln.cvss_base_score} />
   <EpssCell score={vuln.epss_score} percentile={vuln.epss_percentile} />
   <KevCell isKev={vuln.is_kev} />
 

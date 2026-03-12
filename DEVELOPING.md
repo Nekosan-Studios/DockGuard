@@ -32,9 +32,17 @@ cd frontend && npm run dev
 
 Then visit [http://localhost:5173](http://localhost:5173). The SvelteKit dev server proxies API calls to `http://localhost:8765` automatically.
 
-## Running Tests
+## Code Quality & Testing
+
+Generally follow this order of operations: Format -> Lint -> Check -> Test. Our CI runs strict lint checks and all unit tests including e2e on merges and fail on any issues.
+
+### Backend
 
 ```bash
+uv run ruff format            # 1. Format
+uv run ruff check --fix       # 2. Lint (auto-fix)
+uv run ruff check             # 3. Lint (strict check)
+
 # Unit and integration tests (fast — no Docker or Grype needed)
 uv run pytest -v
 
@@ -45,12 +53,16 @@ uv run pytest -v --cov=backend
 uv run pytest -v -m e2e
 ```
 
-```bash
-# Frontend unit tests
-cd frontend && npm run test
+### Frontend
 
-# Frontend type checking
-cd frontend && npm run check
+```bash
+cd frontend
+npm run format      # 1. Format
+npm run lint:fix    # 2. Lint (auto-fix)
+npm run check       # 3. Type / Svelte checking
+npm run lint        # 4. Lint (strict check)
+npm run test:unit:run  # 5. Unit tests (non-watch mode)
+cd ..
 ```
 
 Tests use an isolated in-memory SQLite database and are fully independent. Docker and Grype are mocked in non-e2e tests.

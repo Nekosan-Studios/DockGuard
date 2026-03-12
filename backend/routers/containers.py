@@ -28,26 +28,45 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     scan_ids = [s.id for s in scans_by_image.values()]
     severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
     priority_by_scan: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    severity_by_scan_no_vex: dict[int, dict[str, int]] = defaultdict(dict)
+    priority_by_scan_no_vex: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     if scan_ids:
         rows = session.exec(
             select(
-                Vulnerability.scan_id, Vulnerability.vuln_id, Vulnerability.severity, Vulnerability.risk_score
+                Vulnerability.scan_id,
+                Vulnerability.vuln_id,
+                Vulnerability.severity,
+                Vulnerability.risk_score,
+                Vulnerability.vex_status,
             ).where(Vulnerability.scan_id.in_(scan_ids))
         ).all()
         best_severity: dict[tuple, str] = {}
         best_risk: dict[tuple, float | None] = {}
-        for scan_id, vuln_id, severity, risk_score in rows:
+        is_vex_resolved: dict[tuple, bool] = {}
+        for scan_id, vuln_id, severity, risk_score, vex_status in rows:
             key = (scan_id, vuln_id)
             if key not in best_severity or _severity_rank(severity) < _severity_rank(best_severity[key]):
                 best_severity[key] = severity
             cur_risk = best_risk.get(key)
             if cur_risk is None or (risk_score is not None and risk_score > (cur_risk or 0)):
                 best_risk[key] = risk_score
-        for (scan_id, _vuln_id), severity in best_severity.items():
+
+            resolved = vex_status in ("not_affected", "fixed")
+            if key not in is_vex_resolved:
+                is_vex_resolved[key] = resolved
+            else:
+                is_vex_resolved[key] = is_vex_resolved[key] and resolved
+
+        for (scan_id, vuln_id), severity in best_severity.items():
             severity_by_scan[scan_id][severity] = severity_by_scan[scan_id].get(severity, 0) + 1
-        for (scan_id, _vuln_id), risk_score in best_risk.items():
+            if not is_vex_resolved.get((scan_id, vuln_id)):
+                severity_by_scan_no_vex[scan_id][severity] = severity_by_scan_no_vex[scan_id].get(severity, 0) + 1
+
+        for (scan_id, vuln_id), risk_score in best_risk.items():
             bucket = _priority_bucket(risk_score)
             priority_by_scan[scan_id][bucket] += 1
+            if not is_vex_resolved.get((scan_id, vuln_id)):
+                priority_by_scan_no_vex[scan_id][bucket] += 1
 
     containers = []
     for img in running:
@@ -65,6 +84,8 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                     "distro_display": None,
                     "vulns_by_severity": {},
                     "vulns_by_priority": {},
+                    "vulns_by_severity_no_vex": {},
+                    "vulns_by_priority_no_vex": {},
                     "total": 0,
                     "has_scan": False,
                 }
@@ -73,6 +94,8 @@ def get_running_containers(session: Session = Depends(db.get_session)):
 
         vulns_by_severity = severity_by_scan.get(scan.id, {})
         vulns_by_priority = dict(priority_by_scan.get(scan.id, {}))
+        vulns_by_severity_no_vex = severity_by_scan_no_vex.get(scan.id, {})
+        vulns_by_priority_no_vex = dict(priority_by_scan_no_vex.get(scan.id, {}))
         containers.append(
             {
                 "container_name": img["container_name"],
@@ -87,6 +110,8 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                 else scan.distro_name,
                 "vulns_by_severity": vulns_by_severity,
                 "vulns_by_priority": vulns_by_priority,
+                "vulns_by_severity_no_vex": vulns_by_severity_no_vex,
+                "vulns_by_priority_no_vex": vulns_by_priority_no_vex,
                 "total": sum(vulns_by_severity.values()),
                 "has_scan": True,
                 "has_vex": scan.vex_status == "found",

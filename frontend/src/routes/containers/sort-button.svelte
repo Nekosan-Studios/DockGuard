@@ -9,6 +9,7 @@
     label,
     sortDirection = false,
     variant = "ghost",
+    class: className = "",
     ...restProps
   }: ComponentProps<typeof Button> & {
     label: string;
@@ -16,13 +17,17 @@
   } = $props();
 </script>
 
-<Button {variant} {...restProps}>
-  {label}
+<Button
+  {variant}
+  class="h-8 px-0 inline-flex items-center gap-1 font-medium text-xs hover:bg-transparent hover:text-foreground {className}"
+  {...restProps}
+>
+  <span class="truncate">{label}</span>
   {#if sortDirection === "asc"}
-    <ArrowUp class="ms-2 h-4 w-4" />
+    <ArrowUp class="h-3 w-3 shrink-0" />
   {:else if sortDirection === "desc"}
-    <ArrowDown class="ms-2 h-4 w-4" />
+    <ArrowDown class="h-3 w-3 shrink-0" />
   {:else}
-    <ArrowUpDown class="ms-2 h-4 w-4 opacity-40" />
+    <ArrowUpDown class="h-3 w-3 shrink-0 opacity-40" />
   {/if}
 </Button>

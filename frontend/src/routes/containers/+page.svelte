@@ -41,9 +41,14 @@
         case "container_name":
           return dir * a.container_name.localeCompare(b.container_name);
         case "vulns": {
+          const mapA = hideVexResolved
+            ? a.vulns_by_priority_no_vex
+            : a.vulns_by_priority;
+          const mapB = hideVexResolved
+            ? b.vulns_by_priority_no_vex
+            : b.vulns_by_priority;
           for (const pri of PRIORITY_ORDER) {
-            const diff =
-              (a.vulns_by_priority[pri] ?? 0) - (b.vulns_by_priority[pri] ?? 0);
+            const diff = (mapA?.[pri] ?? 0) - (mapB?.[pri] ?? 0);
             if (diff !== 0) return dir * diff;
           }
           return 0;
@@ -76,35 +81,39 @@
 
   <Card.Root>
     <Card.Header class="flex flex-row items-center justify-between">
-      <div class="space-y-1.5">
-        <Card.Title>Running Containers</Card.Title>
-        <Card.Description
-          >Images currently running, cross-referenced with the latest scan
-          results.</Card.Description
-        >
+      <div class="space-y-1.5 flex flex-row items-center gap-4">
+        <div>
+          <Card.Title>Running Containers</Card.Title>
+          <Card.Description
+            >Images currently running, cross-referenced with the latest scan
+            results.</Card.Description
+          >
+        </div>
+        {#if anyContainerHasVex}
+          <div class="border-l border-border/50 pl-4 ml-2 my-1">
+            <label
+              class="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap"
+            >
+              <Checkbox
+                checked={hideVexResolved}
+                onCheckedChange={(v) => {
+                  hideVexResolved = v === true;
+                }}
+              />
+              Hide VEX Resolved
+              <Tooltip.Root>
+                <Tooltip.Trigger class="cursor-default">
+                  <span class="text-muted-foreground/60 text-xs">ⓘ</span>
+                </Tooltip.Trigger>
+                <Tooltip.Content>
+                  Hide vulnerabilities where the supplier has declared them "not
+                  affected" or "fixed" via VEX attestations.
+                </Tooltip.Content>
+              </Tooltip.Root>
+            </label>
+          </div>
+        {/if}
       </div>
-      {#if anyContainerHasVex}
-        <label
-          class="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none"
-        >
-          <Checkbox
-            checked={hideVexResolved}
-            onCheckedChange={(v) => {
-              hideVexResolved = v === true;
-            }}
-          />
-          Hide VEX Resolved
-          <Tooltip.Root>
-            <Tooltip.Trigger class="cursor-default">
-              <span class="text-muted-foreground/60 text-xs">ⓘ</span>
-            </Tooltip.Trigger>
-            <Tooltip.Content>
-              Hide vulnerabilities where the supplier has declared them "not
-              affected" or "fixed" via VEX attestations.
-            </Tooltip.Content>
-          </Tooltip.Root>
-        </label>
-      {/if}
     </Card.Header>
     <Card.Content>
       {#if data.apiError}

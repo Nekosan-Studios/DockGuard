@@ -25,6 +25,7 @@ def get_vulnerabilities(
     image_ref: str = Query(..., description="Image reference: name+tag (nginx:latest) or digest (sha256:...)"),
     severity: str | None = Query(None, description="Filter by severity (e.g. Critical, High)"),
     priority: str | None = Query(None, description="Filter by priority bucket (Urgent, High, Medium, Low)"),
+    hide_vex: bool = Query(False, description="Hide vulnerabilities resolved by VEX"),
     sort_by: str = Query("severity", description="Column to sort by"),
     sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
     limit: int = Query(default=200, le=500, description="Max rows per page"),
@@ -39,6 +40,8 @@ def get_vulnerabilities(
 
     scan = _latest_scan_for_ref(image_ref, session)
     q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
+    if hide_vex:
+        q = q.where((Vulnerability.vex_status.is_(None)) | (~Vulnerability.vex_status.in_(["not_affected", "fixed"])))
     if severity:
         q = q.where(Vulnerability.severity == severity)
     if priority:
@@ -212,6 +215,7 @@ def get_vulnerabilities_across_running(
         "all", description="Filter report type. Options: 'critical', 'kev', 'new', 'vex_annotated', 'all'"
     ),
     new_hours: int = Query(default=24, ge=1, le=336, description="Hours lookback for 'new' report (default 24)"),
+    hide_vex: bool = Query(False, description="Hide vulnerabilities resolved by VEX"),
     sort_by: str = Query("severity", description="Column to sort by"),
     sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
     limit: int = Query(default=100, le=500, description="Max rows per page"),
@@ -232,6 +236,7 @@ def get_vulnerabilities_across_running(
             "total_count": 0,
             "count": 0,
             "has_more": False,
+            "has_any_vex": False,
             "eol_images": [],
             "vulnerabilities": [],
         }
@@ -266,11 +271,26 @@ def get_vulnerabilities_across_running(
             "total_count": 0,
             "count": 0,
             "has_more": False,
+            "has_any_vex": False,
             "eol_images": [],
             "vulnerabilities": [],
         }
 
+    # Find if there are ANY VEX annotations across all matched scans
+    has_any_vex = (
+        session.exec(
+            select(Vulnerability.id)
+            .where(Vulnerability.scan_id.in_(scan_id_to_images.keys()))
+            .where(Vulnerability.vex_status.isnot(None))
+            .limit(1)
+        ).first()
+        is not None
+    )
+
     q = select(Vulnerability).where(Vulnerability.scan_id.in_(scan_id_to_images.keys()))
+
+    if hide_vex:
+        q = q.where((Vulnerability.vex_status.is_(None)) | (~Vulnerability.vex_status.in_(["not_affected", "fixed"])))
 
     if report == "critical":
         q = q.where(Vulnerability.severity == "Critical")
@@ -401,6 +421,7 @@ def get_vulnerabilities_across_running(
         "total_instances": total_instances,
         "count": len(page_vulns),
         "has_more": has_more,
+        "has_any_vex": has_any_vex,
         "eol_images": eol_images,
         "vulnerabilities": page_vulns,
     }
