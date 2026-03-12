@@ -115,24 +115,19 @@ uv run alembic -c backend/alembic.ini downgrade -1
 
 ## Releasing a New Version
 
-To release a new version of DockGuard, simply run the interactive release script:
+Releasing is a single action in the GitHub web UI — no local scripts needed.
 
-```bash
-./scripts/release.sh
-```
+1. Go to **GitHub → Releases → Draft a new release**
+2. Under **"Choose a tag"**, type the new version (e.g. `v1.3.0`) and select **"Create new tag on publish"** targeting `master`
+3. Click **"Publish release"**
 
-This interactive script will:
-1. Prompt you for the new version (or calculate major/minor/patch).
-2. Update `VERSION`, `pyproject.toml`, and the frontend `package.json`.
-3. Create a git commit and a version tag (e.g., `v1.2.3`).
+CI will automatically build the Docker image with the version baked in and push it to GHCR:
+- `ghcr.io/nekosan-studios/dockguard:1.3.0`
+- `ghcr.io/nekosan-studios/dockguard:latest`
 
-Once the script completes, push the changes and the new tag to master:
-```bash
-git push origin master
-git push origin --tags
-```
+The Settings page in the published image will show `DockGuard v1.3.0`.
 
-Pushing a `v*` tag triggers the CI workflow, which builds the Docker image and pushes it to GHCR.
+> **Note:** `pyproject.toml`, `package.json`, and lockfiles are permanently pinned to `0.0.0` and are never bumped. The git tag is the authoritative version.
 
 ## Docker Dev Build
 

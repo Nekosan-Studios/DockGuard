@@ -1,7 +1,7 @@
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import colorlog
 from fastapi import FastAPI
@@ -48,7 +48,7 @@ app.include_router(settings.router)
 app.include_router(internal.router)
 
 
-_APP_VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip()
+_APP_VERSION = os.environ.get("APP_VERSION", "Development build")
 
 
 @app.get("/version")
