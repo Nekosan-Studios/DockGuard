@@ -9,7 +9,7 @@
   import VexStatusCell from "./VexStatusCell.svelte";
   import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
-  import { SEVERITY_CLASSES, cvssClass, toUtcDate } from "./utils.js";
+  import { PRIORITY_CLASSES, priorityFromRiskScore, cvssClass, toUtcDate } from "./utils.js";
 
   // ── Interfaces ────────────────────────────────────────────────────────────
   export interface ContainerInfo {
@@ -187,7 +187,7 @@
               </p>
             </div>
             <div class="max-h-48 overflow-y-auto divide-y divide-border">
-              {#each packages as pkg (pkg.package_name)}
+              {#each packages as pkg, i (i)}
                 <div class="px-3 py-2 text-xs">
                   <div class="flex items-center justify-between gap-1.5">
                     <div class="flex items-baseline gap-1.5">
@@ -204,21 +204,17 @@
                     </div>
                     <div class="flex items-center gap-1.5 shrink-0">
                       <span
-                        class="inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium {SEVERITY_CLASSES[
-                          pkg.severity
-                        ] ?? SEVERITY_CLASSES['Unknown']}"
+                        class="inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0 font-medium min-w-[50px] {PRIORITY_CLASSES[
+                          priorityFromRiskScore(vuln.risk_score)
+                        ]}"
                       >
-                        {pkg.severity}
+                        <span class="text-[10px] leading-none">{priorityFromRiskScore(vuln.risk_score)}</span>
+                        {#if vuln.risk_score != null}
+                          <span class="font-mono opacity-70 text-[9px] leading-none"
+                            >{vuln.risk_score.toFixed(1)}</span
+                          >
+                        {/if}
                       </span>
-                      {#if pkg.cvss_base_score != null}
-                        <span
-                          class="font-mono text-[10px] {cvssClass(
-                            pkg.cvss_base_score
-                          )}"
-                        >
-                          {pkg.cvss_base_score.toFixed(1)}
-                        </span>
-                      {/if}
                     </div>
                   </div>
                   <div
