@@ -64,7 +64,9 @@
     if (!container.scan_id || vexChecking) return;
     vexChecking = true;
     try {
-      const res = await fetch(`/api/scans/${container.scan_id}/recheck-vex`, { method: "POST" });
+      const res = await fetch(`/api/scans/${container.scan_id}/recheck-vex`, {
+        method: "POST",
+      });
       if (res.ok) {
         const data = await res.json();
         vexStatus = data.vex_status;
