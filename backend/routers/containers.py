@@ -218,6 +218,15 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
 
     queued_tasks = session.exec(select(func.count(SystemTask.id)).where(SystemTask.status == "queued")).one()
 
+    db_updating = (
+        session.exec(
+            select(func.count(SystemTask.id))
+            .where(SystemTask.task_type == "scheduled_db_update")
+            .where(SystemTask.status == "running")
+        ).one()
+        > 0
+    )
+
     return {
         "running_containers": len(running),
         "images_scanned": images_scanned,
@@ -233,6 +242,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "last_db_checked_at": last_db_checked_at,
         "active_tasks": int(active_tasks),
         "queued_tasks": int(queued_tasks),
+        "db_updating": db_updating,
         "eol_count": int(eol_count),
     }
 

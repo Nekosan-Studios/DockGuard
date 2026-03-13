@@ -12,7 +12,6 @@
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import CircleX from "@lucide/svelte/icons/circle-x";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 
   import { formatDistanceToNow, format } from "date-fns";
 
@@ -116,6 +115,14 @@
       <span class="text-foreground font-medium"
         >{formatVulnDb(data.summary.db_schema, data.summary.db_built)}</span
       >
+      {#if data.summary.db_updating}
+        <Badge
+          class="gap-1 bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 pointer-events-none"
+        >
+          <LoaderCircle class="animate-spin" />
+          Updating
+        </Badge>
+      {/if}
     </span>
 
     <span class="text-border select-none hidden sm:inline">|</span>
@@ -140,32 +147,7 @@
           class="flex flex-row items-center justify-between space-y-0 pb-2"
         >
           <Card.Title class="text-sm font-medium">Environment</Card.Title>
-          {#if data.summary.active_tasks > 0 || data.summary.queued_tasks > 0}
-            <Tooltip.Root>
-              <Tooltip.Trigger class="cursor-default">
-                <LoaderCircle class="text-blue-500 h-4 w-4 animate-spin" />
-              </Tooltip.Trigger>
-              <Tooltip.Content>
-                {#if data.summary.active_tasks > 0}
-                  {data.summary.active_tasks} task{data.summary.active_tasks ===
-                  1
-                    ? ""
-                    : "s"} running
-                {/if}
-                {#if data.summary.active_tasks > 0 && data.summary.queued_tasks > 0}
-                  &middot;
-                {/if}
-                {#if data.summary.queued_tasks > 0}
-                  {data.summary.queued_tasks} task{data.summary.queued_tasks ===
-                  1
-                    ? ""
-                    : "s"} queued
-                {/if}
-              </Tooltip.Content>
-            </Tooltip.Root>
-          {:else}
-            <Container class="text-muted-foreground h-4 w-4" />
-          {/if}
+          <Container class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
           {#if data.summary.running_containers === null}
@@ -201,6 +183,7 @@
                     class="bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 hover:bg-blue-100/80 pointer-events-none"
                   >
                     {data.summary.active_tasks} scanning
+                    <LoaderCircle class="animate-spin" />
                   </Badge>
                 {/if}
                 {#if data.summary.queued_tasks > 0}
