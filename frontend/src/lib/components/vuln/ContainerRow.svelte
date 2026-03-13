@@ -27,6 +27,7 @@
   const AUTO_FILTER_THRESHOLD = 15;
 
   export interface ContainerRecord {
+    scan_id?: number | null;
     image_name: string;
     container_name: string;
     has_scan: boolean;
@@ -53,6 +54,30 @@
 
   // ── Local State (Replaces Parent `SvelteMap`s) ──────────────────────────
   let expanded = $state(false);
+  let vexStatus = $state(container.vex_status);
+  let hasVex = $state(container.has_vex);
+  let vexError = $state(container.vex_error);
+  let vexChecking = $state(false);
+
+  async function recheckVex(e: MouseEvent) {
+    e.stopPropagation();
+    if (!container.scan_id || vexChecking) return;
+    vexChecking = true;
+    try {
+      const res = await fetch(`/api/scans/${container.scan_id}/recheck-vex`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        vexStatus = data.vex_status;
+        hasVex = data.has_vex;
+        vexError = data.vex_error;
+      }
+    } finally {
+      vexChecking = false;
+    }
+  }
+
   let vulns = $state<Vulnerability[]>([]);
   let totalCount = $state(0);
   let currentOffset = $state(0);
@@ -269,7 +294,7 @@
               EOL OS
             </Badge>
           {/if}
-          {#if container.has_vex}
+          {#if hasVex}
             <Tooltip.Root>
               <Tooltip.Trigger class="cursor-default">
                 <Badge
@@ -283,20 +308,30 @@
                 This image includes VEX attestations from the supplier.
               </Tooltip.Content>
             </Tooltip.Root>
-          {:else if container.vex_status === "error"}
+          {:else if vexStatus === "error"}
             <Tooltip.Root>
               <Tooltip.Trigger class="cursor-default">
-                <span
-                  class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                <button
+                  onclick={recheckVex}
+                  disabled={vexChecking}
+                  class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100/50 px-2 py-0.5 text-xs font-medium text-amber-700 transition-opacity hover:opacity-80 disabled:cursor-not-allowed dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
                 >
-                  <AlertCircle class="h-3 w-3" />
+                  {#if vexChecking}
+                    <Loader2 class="h-3 w-3 animate-spin" />
+                  {:else}
+                    <AlertCircle class="h-3 w-3" />
+                  {/if}
                   VEX
-                </span>
+                </button>
               </Tooltip.Trigger>
               <Tooltip.Content class="max-w-xs">
-                VEX attestation check failed for this image.{container.vex_error
-                  ? ` Error: ${container.vex_error}`
-                  : ""}
+                {#if vexChecking}
+                  Checking VEX attestations…
+                {:else}
+                  VEX attestation check failed.{vexError
+                    ? ` Error: ${vexError}`
+                    : ""} Click to retry.
+                {/if}
               </Tooltip.Content>
             </Tooltip.Root>
           {/if}

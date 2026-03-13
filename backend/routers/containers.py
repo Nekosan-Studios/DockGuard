@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
@@ -9,6 +9,7 @@ from ..api_helpers import _as_utc, _priority_bucket, _severity_rank
 from ..database import db
 from ..docker_watcher import DockerWatcher
 from ..models import AppState, Scan, SystemTask, Vulnerability
+from ..vex_discovery import check_vex_for_image
 
 router = APIRouter(tags=["Containers"])
 
@@ -123,6 +124,48 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     return {"containers": containers}
 
 
+@router.post("/scans/{scan_id}/recheck-vex")
+def recheck_vex(scan_id: int, session: Session = Depends(db.get_session)):
+    """Re-run the VEX attestation check for a specific scan."""
+    scan = session.get(Scan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    vex_result = check_vex_for_image(scan.image_name, scan.image_digest or "")
+    now = datetime.now(UTC)
+
+    if vex_result.error:
+        scan.vex_status = "error"
+        scan.vex_error = vex_result.error
+        scan.vex_checked_at = now
+    elif vex_result.found:
+        scan.vex_status = "found"
+        scan.vex_source = vex_result.source
+        scan.vex_error = None
+        scan.vex_checked_at = now
+        vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id == scan.id)).all()
+        stmt_map = {s.vuln_id: s for s in vex_result.statements}
+        for v in vulns:
+            vex_stmt = stmt_map.get(v.vuln_id)
+            if vex_stmt:
+                v.vex_status = vex_stmt.status
+                v.vex_justification = vex_stmt.justification
+                v.vex_statement = vex_stmt.notes
+                session.add(v)
+    else:
+        scan.vex_status = "none"
+        scan.vex_error = None
+        scan.vex_checked_at = now
+
+    session.add(scan)
+    session.commit()
+    return {
+        "vex_status": scan.vex_status,
+        "has_vex": scan.vex_status == "found",
+        "vex_error": scan.vex_error,
+    }
+
+
 @router.get("/dashboard/summary")
 def get_dashboard_summary(session: Session = Depends(db.get_session)):
     """Single-call summary for the dashboard."""
@@ -218,6 +261,15 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
 
     queued_tasks = session.exec(select(func.count(SystemTask.id)).where(SystemTask.status == "queued")).one()
 
+    db_updating = (
+        session.exec(
+            select(func.count(SystemTask.id))
+            .where(SystemTask.task_type == "scheduled_db_update")
+            .where(SystemTask.status == "running")
+        ).one()
+        > 0
+    )
+
     return {
         "running_containers": len(running),
         "images_scanned": images_scanned,
@@ -233,6 +285,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "last_db_checked_at": last_db_checked_at,
         "active_tasks": int(active_tasks),
         "queued_tasks": int(queued_tasks),
+        "db_updating": db_updating,
         "eol_count": int(eol_count),
     }
 
