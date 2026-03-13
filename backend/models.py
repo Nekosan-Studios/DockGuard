@@ -18,6 +18,7 @@ class Scan(SQLModel, table=True):
     vex_status: str | None = None  # "found", "none", "error", "unchecked"
     vex_source: str | None = None
     vex_checked_at: datetime | None = None
+    vex_error: str | None = None
 
     vulnerabilities: list[Vulnerability] = Relationship(back_populates="scan")
 

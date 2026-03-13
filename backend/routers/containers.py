@@ -115,6 +115,8 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                 "total": sum(vulns_by_severity.values()),
                 "has_scan": True,
                 "has_vex": scan.vex_status == "found",
+                "vex_status": scan.vex_status,
+                "vex_error": scan.vex_error,
             }
         )
 

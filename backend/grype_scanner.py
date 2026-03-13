@@ -312,6 +312,7 @@ class GrypeScanner:
 
                 if vex_result.error:
                     scan.vex_status = "error"
+                    scan.vex_error = vex_result.error
                     scan.vex_checked_at = now
                     logger.warning("VEX check error for %s: %s", image_name, vex_result.error)
                 elif vex_result.found:
