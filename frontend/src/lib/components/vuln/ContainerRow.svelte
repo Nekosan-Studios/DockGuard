@@ -3,6 +3,7 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import SortButton from "../../../routes/containers/sort-button.svelte";
   import { slide } from "svelte/transition";
@@ -32,6 +33,8 @@
     is_distro_eol?: boolean;
     distro_display?: string;
     has_vex?: boolean;
+    vex_status?: string | null;
+    vex_error?: string | null;
     vulns_by_severity: Record<string, number>;
     vulns_by_priority: Record<string, number>;
     vulns_by_severity_no_vex: Record<string, number>;
@@ -278,6 +281,22 @@
               </Tooltip.Trigger>
               <Tooltip.Content>
                 This image includes VEX attestations from the supplier.
+              </Tooltip.Content>
+            </Tooltip.Root>
+          {:else if container.vex_status === "error"}
+            <Tooltip.Root>
+              <Tooltip.Trigger class="cursor-default">
+                <span
+                  class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100/50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                >
+                  <AlertCircle class="h-3 w-3" />
+                  VEX
+                </span>
+              </Tooltip.Trigger>
+              <Tooltip.Content class="max-w-xs">
+                VEX attestation check failed for this image.{container.vex_error
+                  ? ` Error: ${container.vex_error}`
+                  : ""}
               </Tooltip.Content>
             </Tooltip.Root>
           {/if}

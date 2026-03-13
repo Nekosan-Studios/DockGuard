@@ -151,6 +151,8 @@ def get_vulnerabilities(
         if scan.distro_name and scan.distro_version
         else scan.distro_name,
         "has_vex": scan.vex_status == "found",
+        "vex_status": scan.vex_status,
+        "vex_error": scan.vex_error,
         "total_count": total_count,
         "count": len(page_vulns),
         "has_more": has_more,

@@ -108,7 +108,7 @@ def _get_docker_auth(registry: str) -> str | None:
     except json.JSONDecodeError, OSError:
         return None
 
-    auths = config.get("auths", {})
+    auths = config.get("auths") or {}
     # Try exact match, then common variants
     for key in [registry, f"https://{registry}", f"https://{registry}/v2/"]:
         entry = auths.get(key, {})
@@ -171,7 +171,7 @@ def _is_vex_artifact(descriptor: dict) -> bool:
     if artifact_type in _VEX_ARTIFACT_TYPES:
         return True
     # Check annotations for in-toto attestation predicateType
-    annotations = descriptor.get("annotations", {})
+    annotations = descriptor.get("annotations") or {}
     predicate_type = annotations.get("predicateType", "")
     if predicate_type in _VEX_PREDICATE_TYPES:
         return True
@@ -365,7 +365,7 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
             if resp.status_code == 200:
                 try:
                     data = resp.json()
-                    referrers = data.get("manifests", [])
+                    referrers = data.get("manifests") or []
                     logger.debug("Referrers API: found %d referrer(s)", len(referrers))
                 except Exception:
                     logger.debug("Referrers API: 200 but failed to parse JSON", exc_info=True)
@@ -378,7 +378,7 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                 if fallback_resp.status_code == 200:
                     try:
                         data = fallback_resp.json()
-                        referrers = data.get("manifests", [])
+                        referrers = data.get("manifests") or []
                         logger.debug("OCI tag fallback: found %d referrer(s)", len(referrers))
                     except Exception:
                         logger.debug("OCI tag fallback: 200 but failed to parse JSON", exc_info=True)
@@ -423,7 +423,7 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
                     continue
 
                 # Get layers/blobs from the manifest
-                layers = manifest.get("layers", [])
+                layers = manifest.get("layers") or []
                 logger.debug("VEX manifest %s: %d layer(s)", digest[:30], len(layers))
                 for layer in layers:
                     blob_digest = layer.get("digest", "")
@@ -522,7 +522,7 @@ def check_vex_for_image(image_name: str, image_digest: str) -> VexResult:
 
                         logger.debug("Cosign .att: processing %d manifest(s)", len(att_manifests))
                         for i, att_manifest in enumerate(att_manifests):
-                            layers = att_manifest.get("layers", [])
+                            layers = att_manifest.get("layers") or []
                             logger.debug("Cosign .att manifest[%d]: %d layer(s)", i, len(layers))
                             for layer in layers:
                                 blob_digest = layer.get("digest", "")
