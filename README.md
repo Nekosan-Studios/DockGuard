@@ -4,15 +4,13 @@
   # DockGuard
 
   **Automatic vulnerability scanning for your self-hosted Docker containers.**
-
-  Know what's running vulnerable in your home lab — without lifting a finger.
 </div>
 
 ---
 
-DockGuard is a free, self-hosted security scanner built for home labbers and self-hosters. It watches your running Docker containers, automatically scans every image for known vulnerabilities, and gives you a clean web dashboard to understand your exposure. No cloud account, no subscription, and no security expertise required.
+DockGuard is a free, self-hosted security scanner built for home labbers and self-hosters. It watches your running Docker containers, automatically scans every image for known vulnerabilities, and gives you a clean web dashboard to understand your exposure.
 
-> **Note:** DockGuard is designed for single-host setups. Features like multi-user support and connecting to remote Docker installations are on the roadmap but not yet available.
+> **Note:** DockGuard is currently limited to single-host setups. Features like multi-user support and connecting to remote Docker installations are on the roadmap but not yet available.
 
 ## Screenshots
 
@@ -27,17 +25,17 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 
 ## Features
 
-- **Simple to install** — Up and running after setting or confirming a few values in the docker compose file.
+- **Simple to install** — Up and running after reviewing a few values in the docker compose file.
 
 - **Always watching** — DockGuard monitors your running containers continuously. Pull a new image or update an existing one, and it's scanned automatically. No manual triggers, no cron jobs to configure.
 
-- **Keeps itself current** — DockGuard periodically checks whether a newer vulnerability database is available. When it finds one, it re-scans all your images automatically — so your results are always based on the latest known CVE data.
+- **Keeps itself current** — DockGuard periodically checks whether a newer vulnerability database is available. When it finds one, it re-scans all your images automatically.
 
-- **Prioritise what actually matters** — Vulnerabilities are enriched with [CVSS](https://www.first.org/cvss/) severity scores, [EPSS](https://www.first.org/epss/) exploit probability, and the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (Known Exploited Vulnerabilities) catalog. Sort and filter by any of these to focus on the findings most likely to matter in the real world.
+- **Prioritise what actually matters** — Vulnerabilities are enriched with [CVSS](https://www.first.org/cvss/) severity scores, [EPSS](https://www.first.org/epss/) exploit probability, and the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (Known Exploited Vulnerabilities) catalog. Sort and filter by any of these to focus on the findings most likely to matter to you.
 
-- **Cut through false positives** — Some CVEs exist in an image but cannot actually be exploited in your environment. DockGuard supports [VEX (Vulnerability Exploitability eXchange)](https://www.cisa.gov/sites/default/files/2023-01/VEX_Use_Cases_Approved_508c.pdf) attestations: when an image publisher has officially marked a vulnerability as not exploitable in their image, DockGuard automatically suppresses it — so you focus on real risk, not noise.
+- **Cut through false positives** — Some CVEs exist in an image but cannot actually be exploited in your environment. DockGuard supports [VEX (Vulnerability Exploitability eXchange)](https://www.cisa.gov/sites/default/files/2023-01/VEX_Use_Cases_Approved_508c.pdf) attestations: when an image publisher has officially marked a vulnerability as not exploitable in their image, DockGuard can suppresses it so you focus on real risk, not noise.
 
-- **Track history over time** — Every scan is stored locally. See how your exposure changes as you update images and compare results across versions.
+- **Track history over time** — See how your exposure changes as you update images and compare results across versions.
 
 - **Fully self-hosted** — No cloud account. No telemetry. No subscription. DockGuard runs entirely on your machine and stores all data locally in a SQLite database.
 
@@ -47,7 +45,7 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 - Docker
 - Docker Compose
 
-That's it. Dockguard only supports local docker instances, so run it where your existing Docker stack lives. Grype is bundled inside the DockGuard container.
+That's it. Dockguard only supports local docker instances, so run it where your existing Docker stack lives. Everything else needed is bundled inside the DockGuard container.
 
 ## Quick Start
 
@@ -83,15 +81,13 @@ docker compose up -d
 
 DockGuard will check to make sure the vulnerability database is up to date and begin scanning your containers within a few mintues.
 
-> **Docker Desktop (Mac / Windows):** Docker Desktop exposes the socket at the same `/var/run/docker.sock` path via its VM, so the compose file above works without modification.
-
 ## Configuration
 
-Most settings can be changed directly in the **Settings** page of the dashboard. The environment variables below are also available if you prefer to set them at the infrastructure level — environment variables take precedence over dashboard settings.
+Most settings can be changed directly in the **Settings** page of the dashboard. The environment variables below are also available if you prefer to set them at the infrastructure level.
 
 | Variable | Default | Description |
 |---|---|---|
-| `TZ` | `UTC` | Your local timezone, used for displaying scan timestamps. |
+| `TZ` | `UTC` | Your local timezone. |
 | `SCAN_INTERVAL_SECONDS` | `60` | How often (in seconds) to check for new or updated containers. |
 | `MAX_CONCURRENT_SCANS` | `1` | How many images to scan in parallel. Increase with caution on low-memory systems. |
 | `DB_CHECK_INTERVAL_SECONDS` | `3600` | How often (in seconds) to check for an updated Grype vulnerability database. |
