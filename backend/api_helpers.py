@@ -27,9 +27,6 @@ def _severity_rank(s: str) -> int:
         return 99
 
 
-_PRIORITY_ORDER = ["Urgent", "High", "Medium", "Low"]
-
-
 def _priority_bucket(risk_score: float | None) -> str:
     if risk_score is None:
         return "Low"
