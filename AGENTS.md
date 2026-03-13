@@ -39,6 +39,9 @@ npm run check
 # 4. Validation / Lint Check (strict - used in CI)
 npm run lint
 
-# 5. Unit tests (non-watch mode)
+# 5. Format Check (strict - used in CI)
+npm run format:check
+
+# 6. Unit tests (non-watch mode)
 npm run test:unit:run
 ```
