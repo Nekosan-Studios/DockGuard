@@ -27,8 +27,11 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
   const report = reportParam;
   const new_hours = url.searchParams.get("new_hours") || "24";
   const hide_vex = url.searchParams.get("hide_vex") || "false";
-  const sort_by = url.searchParams.get("sort_by") || "severity";
-  const sort_dir = url.searchParams.get("sort_dir") || "asc";
+  const sort_by =
+    url.searchParams.get("sort_by") ||
+    (report === "new" ? "first_seen_at" : "severity");
+  const sort_dir =
+    url.searchParams.get("sort_dir") || (report === "new" ? "desc" : "asc");
 
   // Keep cookie in sync with the currently viewed report.
   cookies.set(COOKIE_KEY, report, {

@@ -1,9 +1,7 @@
 <script lang="ts">
-  import * as Card from "$lib/components/ui/card/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import ListTodo from "@lucide/svelte/icons/list-todo";
-  import Clock from "@lucide/svelte/icons/clock";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 
   let { data } = $props();
@@ -13,8 +11,9 @@
       const order: Record<string, number> = {
         running: 0,
         queued: 1,
-        failed: 2,
-        completed: 3,
+        scheduled: 2,
+        failed: 3,
+        completed: 4,
       };
       const aRank = order[a.status] ?? 4;
       const bRank = order[b.status] ?? 4;
@@ -53,6 +52,8 @@
     switch (status) {
       case "queued":
         return "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800";
+      case "scheduled":
+        return "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800";
       case "completed":
         return "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800";
       default:
@@ -85,121 +86,63 @@
     </div>
   {/if}
 
-  <!-- Scheduled Tasks -->
-  <Card.Root>
-    <Card.Header>
-      <Card.Title>Scheduled Tasks</Card.Title>
-      <Card.Description
-        >Periodic background jobs checking for updates and new containers.</Card.Description
-      >
-    </Card.Header>
-    <Card.Content>
-      {#if data.scheduledJobs.length === 0}
-        <div
-          class="flex flex-col items-center justify-center gap-3 py-10 text-center text-muted-foreground"
-        >
-          <Clock class="h-8 w-8 opacity-50" />
-          <p>No scheduled tasks found.</p>
-        </div>
-      {:else}
-        <div class="overflow-x-auto rounded-md border">
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.Head>Name</Table.Head>
-                <Table.Head>Interval</Table.Head>
-                <Table.Head>Next Run</Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {#each data.scheduledJobs as job (job.id)}
-                <Table.Row>
-                  <Table.Cell class="font-medium">{job.name}</Table.Cell>
-                  <Table.Cell>
-                    {#if job.interval_seconds}
-                      Every {Math.floor(job.interval_seconds / 60)} minutes
-                    {:else}
-                      -
-                    {/if}
-                  </Table.Cell>
-                  <Table.Cell>{formatDate(job.next_run_time)}</Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-        </div>
-      {/if}
-    </Card.Content>
-  </Card.Root>
-
-  <!-- Task History & Queue -->
-  <Card.Root>
-    <Card.Header>
-      <Card.Title>Queue & History</Card.Title>
-      <Card.Description
-        >Recent scans and scheduled job executions.</Card.Description
-      >
-    </Card.Header>
-    <Card.Content>
-      {#if data.tasks.length === 0}
-        <div
-          class="flex flex-col items-center justify-center gap-3 py-10 text-center text-muted-foreground"
-        >
-          <ListTodo class="h-8 w-8 opacity-50" />
-          <p>No recent tasks in the database.</p>
-        </div>
-      {:else}
-        <div class="overflow-x-auto rounded-md border">
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.Head class="py-1.5">Status</Table.Head>
-                <Table.Head class="py-1.5">Task Name</Table.Head>
-                <Table.Head class="py-1.5">Created</Table.Head>
-                <Table.Head class="py-1.5">Finished</Table.Head>
-                <Table.Head class="py-1.5">Results / Errors</Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {#each sortedTasks as task (task.id)}
-                <Table.Row>
-                  <Table.Cell class="py-1.5">
-                    <Badge
-                      variant={getStatusVariant(task.status)}
-                      class={getStatusClass(task.status)}
-                    >
-                      {task.status}
-                    </Badge>
-                  </Table.Cell>
-                  <Table.Cell class="py-1.5 font-medium"
-                    >{task.task_name}</Table.Cell
+  {#if data.tasks.length === 0}
+    <div
+      class="flex flex-col items-center justify-center gap-3 py-10 text-center text-muted-foreground"
+    >
+      <ListTodo class="h-8 w-8 opacity-50" />
+      <p>No recent tasks in the database.</p>
+    </div>
+  {:else}
+    <div class="overflow-x-auto rounded-md border">
+      <Table.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head class="py-1.5">Status</Table.Head>
+            <Table.Head class="py-1.5">Task Name</Table.Head>
+            <Table.Head class="py-1.5">Created</Table.Head>
+            <Table.Head class="py-1.5">Finished</Table.Head>
+            <Table.Head class="py-1.5">Results / Errors</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each sortedTasks as task (task.id)}
+            <Table.Row>
+              <Table.Cell class="py-1.5">
+                <Badge
+                  variant={getStatusVariant(task.status)}
+                  class={getStatusClass(task.status)}
+                >
+                  {task.status}
+                </Badge>
+              </Table.Cell>
+              <Table.Cell class="py-1.5 font-medium"
+                >{task.task_name}</Table.Cell
+              >
+              <Table.Cell class="py-1.5"
+                >{formatDate(task.created_at)}</Table.Cell
+              >
+              <Table.Cell class="py-1.5"
+                >{formatDate(task.finished_at)}</Table.Cell
+              >
+              <Table.Cell class="py-1.5">
+                {#if task.status === "failed"}
+                  <span class="text-destructive text-sm"
+                    >{task.error_message || "Unknown error"}</span
                   >
-                  <Table.Cell class="py-1.5"
-                    >{formatDate(task.created_at)}</Table.Cell
+                {:else if task.result_details}
+                  <span
+                    class="text-sm truncate max-w-[500px] inline-block"
+                    title={task.result_details}>{task.result_details}</span
                   >
-                  <Table.Cell class="py-1.5"
-                    >{formatDate(task.finished_at)}</Table.Cell
-                  >
-                  <Table.Cell class="py-1.5">
-                    {#if task.status === "failed"}
-                      <span class="text-destructive text-sm"
-                        >{task.error_message || "Unknown error"}</span
-                      >
-                    {:else if task.result_details}
-                      <span
-                        class="text-sm truncate max-w-[500px] inline-block"
-                        title={task.result_details}>{task.result_details}</span
-                      >
-                    {:else}
-                      <span class="text-muted-foreground text-sm">-</span>
-                    {/if}
-                  </Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-        </div>
-      {/if}
-    </Card.Content>
-  </Card.Root>
+                {:else}
+                  <span class="text-muted-foreground text-sm">-</span>
+                {/if}
+              </Table.Cell>
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
+    </div>
+  {/if}
 </div>

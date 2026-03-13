@@ -153,10 +153,12 @@
   let reportValue = $derived($page.url.searchParams.get("report") || "urgent");
   let newHoursValue = $derived($page.url.searchParams.get("new_hours") || "24");
   let sortByValue = $derived(
-    $page.url.searchParams.get("sort_by") || "severity"
+    $page.url.searchParams.get("sort_by") ||
+      (reportValue === "new" ? "first_seen_at" : "severity")
   );
   let sortDirValue = $derived(
-    ($page.url.searchParams.get("sort_dir") as "asc" | "desc") || "asc"
+    (($page.url.searchParams.get("sort_dir") as "asc" | "desc") || null) ??
+      (reportValue === "new" ? "desc" : "asc")
   );
   let hideVexValue = $derived(
     $page.url.searchParams.get("hide_vex") === "true"
@@ -170,9 +172,14 @@
   function handleReportChange(v: string) {
     const u = new URL($page.url);
     u.searchParams.set("report", v);
-    u.searchParams.delete("sort_by");
-    u.searchParams.delete("sort_dir");
-    if (v !== "new") u.searchParams.delete("new_hours");
+    if (v === "new") {
+      u.searchParams.set("sort_by", "first_seen_at");
+      u.searchParams.set("sort_dir", "desc");
+    } else {
+      u.searchParams.delete("sort_by");
+      u.searchParams.delete("sort_dir");
+      u.searchParams.delete("new_hours");
+    }
     goto(u.toString());
   }
 
@@ -195,10 +202,9 @@
   function toggleSort(col: VulnSortCol) {
     if (col === "containers") return; // computed client-side, not server-sortable
     const u = new URL($page.url);
-    const currentCol = u.searchParams.get("sort_by") || "severity";
-    const currentDir = u.searchParams.get("sort_dir") || "asc";
-    if (currentCol === col) {
-      if (currentDir === "asc") {
+    if (sortByValue === col) {
+      if (sortDirValue === "asc") {
+        u.searchParams.set("sort_by", col);
         u.searchParams.set("sort_dir", "desc");
       } else {
         u.searchParams.delete("sort_by");
