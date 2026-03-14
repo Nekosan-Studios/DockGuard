@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/Nekosan-Studios/DockGuard/vex/dockguard.vex.json",
   "author": "DockGuard maintainers",
-  "timestamp": "2026-03-10T00:00:00Z",
-  "version": 3,
+  "timestamp": "2026-03-13T00:00:00Z",
+  "version": 4,
   "statements": [
     {
       "vulnerability": {
@@ -302,7 +302,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
-      "status_notes": "Supervisor's XML-RPC interface is not exposed externally. DockGuard runs supervisor only as an internal process manager within the container."
+      "status_notes": "Supervisor is used only as an internal process manager by DockGuard and is not part of DockGuard's external API surface."
     },
     {
       "vulnerability": {
@@ -315,7 +315,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for over a decade. Requires conditions that do not apply to a containerized application."
+      "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for over a decade and no practical remediation is available in the current Debian package stream."
     },
     {
       "vulnerability": {
@@ -328,7 +328,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for years. Requires conditions that do not apply to a containerized application."
+      "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for years and no practical remediation is available in the current Debian package stream."
     },
     {
       "vulnerability": {
@@ -341,7 +341,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for years. Requires conditions that do not apply to a containerized application."
+      "status_notes": "Ancient/theoretical glibc CVE. Debian has classified this as not-fixed for years and no practical remediation is available in the current Debian package stream."
     },
     {
       "vulnerability": {
@@ -354,7 +354,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Disputed glibc CVE about stack-clash protection. Debian has classified this as not-fixed. Not exploitable in a containerized home-lab application."
+      "status_notes": "Disputed glibc CVE about stack-clash protection. Debian has classified this as not-fixed and no practical remediation is available in the current Debian package stream."
     },
     {
       "vulnerability": {
@@ -367,7 +367,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Disputed glibc CVE. Debian has classified this as not-fixed. Not exploitable in a containerized home-lab application."
+      "status_notes": "Disputed glibc CVE. Debian has classified this as not-fixed and no practical remediation is available in the current Debian package stream."
     },
     {
       "vulnerability": {
@@ -380,7 +380,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Disputed glibc CVE about ASLR information leak. Debian has classified this as not-fixed. Not exploitable in a containerized application."
+      "status_notes": "Disputed glibc CVE about ASLR information leak. Debian has classified this as not-fixed and no practical remediation is available in the current Debian package stream."
     },
     {
       "vulnerability": {
@@ -393,7 +393,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Disputed glibc CVE. Debian has classified this as not-fixed. Not exploitable in a containerized home-lab application."
+      "status_notes": "Disputed glibc CVE. Debian has classified this as not-fixed and no practical remediation is available in the current Debian package stream."
     },
     {
       "vulnerability": {
@@ -471,7 +471,7 @@
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "status_notes": "Negligible Python 3.13 CVE. Debian classifies severity as negligible with wont-fix status."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. This statement remains marked not_affected because the affected behavior is not used by DockGuard runtime paths."
     },
     {
       "vulnerability": {
@@ -483,7 +483,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only and serves its SvelteKit frontend via Node.js."
+      "status_notes": "Node.js core vulnerability. Tracking Debian Node.js package updates for a fix. Affected component is the Node.js runtime used to serve the SvelteKit frontend."
     },
     {
       "vulnerability": {
@@ -495,7 +495,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
+      "status_notes": "Node.js core vulnerability. Tracking Debian Node.js package updates for a fix. Affected component is the Node.js runtime."
     },
     {
       "vulnerability": {
@@ -507,7 +507,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
+      "status_notes": "Node.js core vulnerability. Tracking Debian Node.js package updates for a fix. Affected component is the Node.js runtime."
     },
     {
       "vulnerability": {
@@ -519,7 +519,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
+      "status_notes": "Node.js core vulnerability. Tracking Debian Node.js package updates for a fix. Affected component is the Node.js runtime."
     },
     {
       "vulnerability": {
@@ -531,7 +531,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
+      "status_notes": "Node.js core vulnerability. Tracking Debian Node.js package updates for a fix. Affected component is the Node.js runtime."
     },
     {
       "vulnerability": {
@@ -543,7 +543,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Node.js core vulnerability. Awaiting Debian package update for Node.js 20. DockGuard runs on local networks only."
+      "status_notes": "Node.js core vulnerability. Tracking Debian Node.js package updates for a fix. Affected component is the Node.js runtime."
     },
     {
       "vulnerability": {
@@ -555,7 +555,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "node-undici HTTP client vulnerability. Awaiting Debian package update. DockGuard runs on local networks only."
+      "status_notes": "node-undici HTTP client vulnerability. Tracking Debian package updates for a fix. Affected component is Debian-packaged node-undici used by the Node.js runtime."
     },
     {
       "vulnerability": {
@@ -567,7 +567,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "node-undici HTTP client vulnerability. Awaiting Debian package update. DockGuard runs on local networks only."
+      "status_notes": "node-undici HTTP client vulnerability. Tracking Debian package updates for a fix. Affected component is Debian-packaged node-undici used by the Node.js runtime."
     },
     {
       "vulnerability": {
@@ -579,7 +579,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "node-undici HTTP client vulnerability (Low severity). Awaiting Debian package update."
+      "status_notes": "node-undici HTTP client vulnerability (Low severity). Tracking Debian package updates for a fix."
     },
     {
       "vulnerability": {
@@ -591,7 +591,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix for the 3.13 series. Fix requires Python 3.15 stable which has not been released."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -603,7 +603,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix for the 3.13 series. Fix requires Python 3.15 stable which has not been released."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -615,7 +615,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Fix available in Python 3.15.0 (not yet released stable). Awaiting upstream release."
+      "status_notes": "Python 3.13 runtime vulnerability. Upstream fixes are not yet available in the Python version shipped by the tracked base image. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -627,7 +627,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Fix available only in pre-release 3.15.0a6. Awaiting stable release."
+      "status_notes": "Python 3.13 runtime vulnerability. No stable fix is currently available in the Python version shipped by the tracked base image. Tracking upstream and Debian package availability."
     },
     {
       "vulnerability": {
@@ -639,7 +639,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Fix available only in pre-release 3.15.0a6. Awaiting stable release."
+      "status_notes": "Python 3.13 runtime vulnerability. No stable fix is currently available in the Python version shipped by the tracked base image. Tracking upstream and Debian package availability."
     },
     {
       "vulnerability": {
@@ -651,7 +651,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -663,7 +663,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -675,7 +675,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -687,7 +687,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -699,7 +699,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -711,7 +711,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -723,7 +723,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -735,7 +735,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -747,7 +747,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Debian marks as wont-fix. Awaiting upstream fix."
+      "status_notes": "Python 3.13 runtime vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -759,7 +759,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "Python 3.13 vulnerability. Fix available in Python 3.15.0 (not yet released stable). Awaiting upstream release."
+      "status_notes": "Python 3.13 runtime vulnerability. Upstream fixes are not yet available in the Python version shipped by the tracked base image. Tracking upstream and Debian advisories."
     },
     {
       "vulnerability": {
@@ -771,7 +771,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc vulnerability in libc-bin/libc6. Debian marks as wont-fix. DockGuard depends on glibc indirectly through Python and Node.js."
+      "status_notes": "glibc vulnerability in libc-bin/libc6. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. DockGuard depends on glibc indirectly through Python and Node.js."
     },
     {
       "vulnerability": {
@@ -783,7 +783,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc vulnerability in libc-bin/libc6. Debian marks as wont-fix. DockGuard depends on glibc indirectly through Python and Node.js."
+      "status_notes": "glibc vulnerability in libc-bin/libc6. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. DockGuard depends on glibc indirectly through Python and Node.js."
     },
     {
       "vulnerability": {
@@ -795,7 +795,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "glibc vulnerability in libc-bin/libc6. Debian marks as wont-fix. DockGuard depends on glibc indirectly through Python and Node.js."
+      "status_notes": "glibc vulnerability in libc-bin/libc6. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. DockGuard depends on glibc indirectly through Python and Node.js."
     },
     {
       "vulnerability": {
@@ -807,7 +807,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "libtasn1-6 vulnerability. Debian marks as wont-fix. Used indirectly by GnuTLS and system crypto libraries."
+      "status_notes": "libtasn1-6 vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Used indirectly by GnuTLS and system crypto libraries."
     },
     {
       "vulnerability": {
@@ -819,7 +819,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "libexpat1 vulnerability. Debian marks as wont-fix. Used indirectly by Python for XML parsing."
+      "status_notes": "libexpat1 vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Used indirectly by Python for XML parsing."
     },
     {
       "vulnerability": {
@@ -831,7 +831,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "libexpat1 vulnerability. Debian marks as wont-fix. Used indirectly by Python for XML parsing."
+      "status_notes": "libexpat1 vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Used indirectly by Python for XML parsing."
     },
     {
       "vulnerability": {
@@ -843,7 +843,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "libexpat1 vulnerability. Debian marks as wont-fix. Used indirectly by Python for XML parsing."
+      "status_notes": "libexpat1 vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Used indirectly by Python for XML parsing."
     },
     {
       "vulnerability": {
@@ -855,7 +855,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "libexpat1 vulnerability (Low severity). Debian marks as wont-fix. Used indirectly by Python."
+      "status_notes": "libexpat1 vulnerability (Low severity). Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Used indirectly by Python."
     },
     {
       "vulnerability": {
@@ -867,7 +867,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "python3-jaraco.context and python3-pkg-resources vulnerability. Debian marks as wont-fix. These are Debian-packaged Python setuptools dependencies."
+      "status_notes": "python3-jaraco.context and python3-pkg-resources vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. These are Debian-packaged Python setuptools dependencies."
     },
     {
       "vulnerability": {
@@ -879,7 +879,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "curl/libcurl vulnerability. Debian marks as wont-fix. curl is installed in the image and available at runtime."
+      "status_notes": "curl/libcurl vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. curl is installed in the image and available at runtime."
     },
     {
       "vulnerability": {
@@ -891,7 +891,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "curl/libcurl vulnerability. Debian marks as wont-fix. curl is installed in the image and available at runtime."
+      "status_notes": "curl/libcurl vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. curl is installed in the image and available at runtime."
     },
     {
       "vulnerability": {
@@ -903,7 +903,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "curl/libcurl vulnerability. Debian marks as wont-fix. curl is installed in the image and available at runtime."
+      "status_notes": "curl/libcurl vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. curl is installed in the image and available at runtime."
     },
     {
       "vulnerability": {
@@ -963,7 +963,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "ncurses vulnerability. Debian marks as wont-fix. ncurses is used by terminal applications within the container."
+      "status_notes": "ncurses vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. ncurses is used by terminal applications within the container."
     },
     {
       "vulnerability": {
@@ -975,7 +975,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "libsqlite3-0 vulnerability. Debian marks as wont-fix. DockGuard uses SQLite for its database via Python's sqlite3 module."
+      "status_notes": "libsqlite3-0 vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. DockGuard uses SQLite for its database via Python's sqlite3 module."
     },
     {
       "vulnerability": {
@@ -987,7 +987,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "zlib1g vulnerability. Debian marks as wont-fix. zlib is used by Python and Node.js for compression."
+      "status_notes": "zlib1g vulnerability. Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. zlib is used by Python and Node.js for compression."
     },
     {
       "vulnerability": {
@@ -999,7 +999,7 @@
         }
       ],
       "status": "under_investigation",
-      "status_notes": "util-linux vulnerability (Unknown severity). Debian marks as wont-fix. Awaiting further analysis."
+      "status_notes": "util-linux vulnerability (Unknown severity). Current Debian advisory metadata indicates no fixed package is available in the tracked base image at this time. Investigation remains in progress."
     }
   ]
 }
