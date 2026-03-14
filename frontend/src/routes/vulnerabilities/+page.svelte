@@ -10,52 +10,26 @@
   import SortButton from "../containers/sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import { goto } from "$app/navigation";
+  import { goto, replaceState } from "$app/navigation";
   import VulnRow from "$lib/components/vuln/VulnRow.svelte";
+  import type { Vulnerability } from "$lib/components/vuln/VulnRow.svelte";
   import { page } from "$app/stores";
   import { onDestroy } from "svelte";
 
   let { data }: { data: PageData } = $props();
 
-  interface ContainerInfo {
-    image_name: string;
-    container_name: string;
-  }
+  // ── Deep link state ─────────────────────────────────────────────────────
+  let activeCve = $derived($page.url.searchParams.get("cve"));
 
-  interface PackageInfo {
-    package_name: string;
-    installed_version: string;
-    fixed_version: string | null;
-    package_type: string | null;
-    locations: string | null;
-    severity: string;
-    cvss_base_score: number | null;
-  }
-
-  interface Vulnerability {
-    vuln_id: string;
-    severity: string;
-    description: string | null;
-    data_source: string | null;
-    cvss_base_score: number | null;
-    cvss_vector: string | null;
-    epss_score: number | null;
-    is_kev: boolean;
-    package_name: string;
-    installed_version: string;
-    fixed_version: string | null;
-    package_type: string | null;
-    locations: string | null;
-    epss_percentile: number | null;
-    risk_score: number | null;
-    first_seen_at: string | null;
-    vex_status: string | null;
-    vex_justification: string | null;
-    vex_statement: string | null;
-    match_type: string | null;
-    upstream_name: string | null;
-    containers: ContainerInfo[];
-    packages: PackageInfo[];
+  function handleModalChange(vulnId: string, open: boolean) {
+    const u = new URL($page.url);
+    if (open && u.searchParams.get("cve") !== vulnId) {
+      u.searchParams.set("cve", vulnId);
+      replaceState(u, {});
+    } else if (!open && u.searchParams.get("cve") === vulnId) {
+      u.searchParams.delete("cve");
+      replaceState(u, {});
+    }
   }
 
   // ── Infinite scroll state ─────────────────────────────────────────────────
@@ -508,7 +482,13 @@
             </Table.Header>
             <Table.Body>
               {#each rows as vuln (vuln.vuln_id)}
-                <VulnRow {vuln} showContainers={true} {hasAnyVex} />
+                <VulnRow
+                  {vuln}
+                  showContainers={true}
+                  {hasAnyVex}
+                  {activeCve}
+                  onModalChange={handleModalChange}
+                />
               {/each}
             </Table.Body>
           </Table.Root>

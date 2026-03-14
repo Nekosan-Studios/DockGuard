@@ -76,3 +76,51 @@ export function priorityTooltip(riskScore: number | null): string {
   const score = riskScore != null ? riskScore.toFixed(1) : "—";
   return `${priority} priority — Grype Risk Score: ${score}/100`;
 }
+
+// ── CVSS vector decoding ────────────────────────────────────────────────────
+
+export interface VectorComponent {
+  label: string;
+  value: string;
+}
+
+const AV_LABELS: Record<string, string> = {
+  N: "Network",
+  A: "Adjacent",
+  L: "Local",
+  P: "Physical",
+};
+const AC_LABELS: Record<string, string> = { L: "Low", H: "High" };
+const PR_LABELS: Record<string, string> = { N: "None", L: "Low", H: "High" };
+const UI_LABELS: Record<string, string> = { N: "None", R: "Required" };
+const S_LABELS: Record<string, string> = { U: "Unchanged", C: "Changed" };
+const CIA_LABELS: Record<string, string> = {
+  N: "None",
+  L: "Low",
+  H: "High",
+};
+
+/** Decode a CVSS v3.x vector string into labeled components. */
+export function decodeCvssVector(vector: string): VectorComponent[] | null {
+  const raw = vector.replace(/^CVSS:\d+\.\d+\//, "");
+  const parts = raw.split("/");
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    const [k, v] = part.split(":");
+    if (k && v) map[k] = v;
+  }
+  if (!map["AV"]) return null;
+  return [
+    { label: "Attack Vector", value: AV_LABELS[map["AV"]] ?? map["AV"] },
+    { label: "Attack Complexity", value: AC_LABELS[map["AC"]] ?? map["AC"] },
+    {
+      label: "Privileges Required",
+      value: PR_LABELS[map["PR"]] ?? map["PR"],
+    },
+    { label: "User Interaction", value: UI_LABELS[map["UI"]] ?? map["UI"] },
+    { label: "Scope", value: S_LABELS[map["S"]] ?? map["S"] },
+    { label: "Confidentiality", value: CIA_LABELS[map["C"]] ?? map["C"] },
+    { label: "Integrity", value: CIA_LABELS[map["I"]] ?? map["I"] },
+    { label: "Availability", value: CIA_LABELS[map["A"]] ?? map["A"] },
+  ];
+}

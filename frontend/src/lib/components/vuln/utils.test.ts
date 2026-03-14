@@ -7,6 +7,7 @@ import {
   toUtcDate,
   priorityFromRiskScore,
   priorityTooltip,
+  decodeCvssVector,
 } from "./utils";
 
 describe("vuln/utils", () => {
@@ -131,6 +132,36 @@ describe("vuln/utils", () => {
       expect(priorityTooltip(null)).toBe(
         "Low priority — Grype Risk Score: —/100"
       );
+    });
+  });
+
+  describe("decodeCvssVector", () => {
+    it("decodes a valid CVSS 3.1 vector", () => {
+      const result = decodeCvssVector(
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      );
+      expect(result).toEqual([
+        { label: "Attack Vector", value: "Network" },
+        { label: "Attack Complexity", value: "Low" },
+        { label: "Privileges Required", value: "None" },
+        { label: "User Interaction", value: "None" },
+        { label: "Scope", value: "Unchanged" },
+        { label: "Confidentiality", value: "High" },
+        { label: "Integrity", value: "High" },
+        { label: "Availability", value: "High" },
+      ]);
+    });
+
+    it("returns null when AV metric is missing", () => {
+      expect(decodeCvssVector("AC:L/PR:N")).toBeNull();
+    });
+
+    it("preserves raw values for unknown metric codes", () => {
+      const result = decodeCvssVector(
+        "CVSS:3.1/AV:N/AC:X/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      );
+      expect(result).not.toBeNull();
+      expect(result![1]).toEqual({ label: "Attack Complexity", value: "X" });
     });
   });
 });

@@ -47,13 +47,28 @@
   let {
     container,
     hideVexResolved = false,
+    activeCve = null,
+    onModalChange,
   }: {
     container: ContainerRecord;
     hideVexResolved?: boolean;
+    activeCve?: string | null;
+    onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
 
   // ── Local State (Replaces Parent `SvelteMap`s) ──────────────────────────
   let expanded = $state(false);
+
+  // Auto-expand when a deep-linked CVE targets this container
+  $effect(() => {
+    if (activeCve && !expanded && container.has_scan) {
+      // Expand so the VulnRow can match and auto-open
+      expanded = true;
+      if (vulns.length === 0) {
+        fetchVulns(0, sortCol, sortDir, undefined);
+      }
+    }
+  });
   let vexStatus = $state(container.vex_status);
   let hasVex = $state(container.has_vex);
   let vexError = $state(container.vex_error);
@@ -587,7 +602,12 @@
                   </Table.Header>
                   <Table.Body>
                     {#each visibleVulns as vuln (vuln.vuln_id)}
-                      <VulnRow {vuln} hasAnyVex={hasVexData} />
+                      <VulnRow
+                        {vuln}
+                        hasAnyVex={hasVexData}
+                        {activeCve}
+                        {onModalChange}
+                      />
                     {/each}
                   </Table.Body>
                 </Table.Root>

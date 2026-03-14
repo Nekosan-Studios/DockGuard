@@ -9,6 +9,7 @@
   import VexStatusCell from "./VexStatusCell.svelte";
   import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
+  import VulnDetailModal from "./VulnDetailModal.svelte";
   import {
     PRIORITY_CLASSES,
     priorityFromRiskScore,
@@ -53,6 +54,11 @@
     vex_statement: string | null;
     match_type: string | null;
     upstream_name: string | null;
+    urls: string | null;
+    cwes: string | null;
+    fix_state: string | null;
+    purl: string | null;
+    package_language: string | null;
     containers?: ContainerInfo[]; // Optional: Present only in global view
     packages?: PackageInfo[]; // Optional: Present in grouped scenarios
   }
@@ -61,11 +67,36 @@
     vuln,
     showContainers = false,
     hasAnyVex = true,
+    activeCve = null,
+    onModalChange,
   }: {
     vuln: Vulnerability;
     showContainers?: boolean;
     hasAnyVex?: boolean;
+    activeCve?: string | null;
+    onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
+
+  let modalOpen = $state(false);
+
+  // Auto-open when this row matches the deep-linked CVE
+  $effect(() => {
+    if (activeCve && activeCve === vuln.vuln_id && !modalOpen) {
+      modalOpen = true;
+    }
+  });
+
+  // Notify parent when modal state changes
+  $effect(() => {
+    onModalChange?.(vuln.vuln_id, modalOpen);
+  });
+
+  function handleRowClick(e: MouseEvent) {
+    // Don't open modal when clicking interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest("a, button, [data-popover-trigger]")) return;
+    modalOpen = true;
+  }
 
   // If the backend didn't supply a `.packages` array but did supply top-level package fields, we wrap it in a mock array to keep the template logic identical.
   let packages = $derived(
@@ -93,7 +124,7 @@
   }
 </script>
 
-<Table.Row class="hover:bg-muted/30">
+<Table.Row class="cursor-pointer hover:bg-muted/30" onclick={handleRowClick}>
   <CveLinkCell
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
@@ -298,3 +329,5 @@
     {/if}
   </Table.Cell>
 </Table.Row>
+
+<VulnDetailModal {vuln} bind:open={modalOpen} {showContainers} />
