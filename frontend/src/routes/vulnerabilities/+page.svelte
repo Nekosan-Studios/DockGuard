@@ -22,13 +22,12 @@
   let activeCve = $derived($page.url.searchParams.get("cve"));
 
   function handleModalChange(vulnId: string, open: boolean) {
-    const u = new URL($page.url);
-    if (open && u.searchParams.get("cve") !== vulnId) {
-      u.searchParams.set("cve", vulnId);
-      replaceState(u, {});
-    } else if (!open && u.searchParams.get("cve") === vulnId) {
-      u.searchParams.delete("cve");
-      replaceState(u, {});
+    if (!open) {
+      const u = new URL($page.url);
+      if (u.searchParams.get("cve") === vulnId) {
+        u.searchParams.delete("cve");
+        replaceState(u, {});
+      }
     }
   }
 

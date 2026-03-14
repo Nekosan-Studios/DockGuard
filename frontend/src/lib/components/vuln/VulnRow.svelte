@@ -82,11 +82,24 @@
 
   let modalOpen = $state(false);
   let prevModalOpen = $state(false);
+  // Only auto-open once per activeCve value to avoid re-opening after user dismisses.
+  let lastAutoOpenedCve = $state<string | null>(null);
 
   // Auto-open when this row matches the deep-linked CVE
   $effect(() => {
-    if (activeCve && activeCve === vuln.vuln_id && !modalOpen) {
+    if (
+      activeCve &&
+      activeCve === vuln.vuln_id &&
+      !modalOpen &&
+      lastAutoOpenedCve !== activeCve
+    ) {
+      lastAutoOpenedCve = activeCve;
       modalOpen = true;
+    }
+    // Reset guard when this CVE is no longer the deep-link target so future
+    // deep links to the same CVE work correctly (e.g. browser back).
+    if (!activeCve || activeCve !== vuln.vuln_id) {
+      lastAutoOpenedCve = null;
     }
   });
 
