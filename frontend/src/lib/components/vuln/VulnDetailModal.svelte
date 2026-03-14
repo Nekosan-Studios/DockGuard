@@ -18,6 +18,7 @@
     riskScoreTooltip,
     decodeCvssVector,
     toUtcDate,
+    referenceDisplayText,
   } from "./utils.js";
 
   let {
@@ -394,7 +395,12 @@
                       class="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
                     >
                       <ExternalLink class="h-3 w-3 shrink-0" />
-                      <span class="break-all">{domainFromUrl(url)}</span>
+                      <span class="break-all"
+                        >{referenceDisplayText(
+                          url,
+                          vuln.urls_titles?.[url]
+                        )}</span
+                      >
                     </a>
                   </li>
                 {/each}
@@ -404,13 +410,16 @@
               <div class="mt-2 flex flex-wrap gap-1.5">
                 {#each cweList as cwe, ci (ci)}
                   {@const cweId = cwe.replace(/^CWE-/, "")}
+                  {@const cweLabel = vuln.cwe_titles?.[cwe]
+                    ? `${cwe}: ${vuln.cwe_titles[cwe]}`
+                    : cwe}
                   <a
                     href="https://cwe.mitre.org/data/definitions/{cweId}.html"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-mono text-blue-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700"
                   >
-                    {cwe}
+                    {cweLabel}
                     <ExternalLink class="h-2.5 w-2.5" />
                   </a>
                 {/each}

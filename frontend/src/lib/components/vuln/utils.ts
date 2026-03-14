@@ -124,3 +124,161 @@ export function decodeCvssVector(vector: string): VectorComponent[] | null {
     { label: "Availability", value: CIA_LABELS[map["A"]] ?? map["A"] },
   ];
 }
+
+const GLOBAL_REFERENCE_ID_PATTERNS = [
+  /CVE-\d{4}-\d{4,}/i,
+  /GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/i,
+  /RHSA-\d{4}:\d+/i,
+  /USN-\d{4,}-\d+/i,
+  /ALAS\d*-\d{4}-\d+/i,
+  /ALAS-\d{4}-\d+/i,
+];
+
+interface ReferenceRule {
+  label: string;
+  host: RegExp;
+  path: RegExp;
+  idPatterns?: RegExp[];
+  customId?: (url: URL) => string | null;
+}
+
+const REFERENCE_RULES: ReferenceRule[] = [
+  {
+    label: "NVD",
+    host: /^nvd\.nist\.gov$/,
+    path: /^\/vuln\/detail\//,
+    idPatterns: [/CVE-\d{4}-\d{4,}/i],
+  },
+  {
+    label: "GitHub Advisory",
+    host: /^github\.com$/,
+    path: /^\/advisories\//,
+    idPatterns: [/GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/i],
+  },
+  {
+    label: "Red Hat Errata",
+    host: /^access\.redhat\.com$/,
+    path: /^\/errata\//,
+    idPatterns: [/RHSA-\d{4}:\d+/i],
+  },
+  {
+    label: "Red Hat",
+    host: /^access\.redhat\.com$/,
+    path: /^\/security\/cve\//,
+    idPatterns: [/CVE-\d{4}-\d{4,}/i],
+  },
+  {
+    label: "Debian Tracker",
+    host: /^security-tracker\.debian\.org$/,
+    path: /^\/tracker\//,
+    idPatterns: [/CVE-\d{4}-\d{4,}/i],
+  },
+  {
+    label: "Ubuntu USN",
+    host: /^usn\.ubuntu\.com$/,
+    path: /^\//,
+    idPatterns: [/USN-\d{4,}-\d+/i],
+  },
+  {
+    label: "Ubuntu Security",
+    host: /^ubuntu\.com$/,
+    path: /^\/security\//,
+    idPatterns: [/USN-\d{4,}-\d+/i, /CVE-\d{4}-\d{4,}/i],
+  },
+  {
+    label: "Alpine SecDB",
+    host: /^security\.alpinelinux\.org$/,
+    path: /^\/vuln\//,
+    idPatterns: [/CVE-\d{4}-\d{4,}/i],
+  },
+  {
+    label: "Amazon Linux",
+    host: /^alas\.aws\.amazon\.com$/,
+    path: /^\//,
+    idPatterns: [/ALAS\d*-\d{4}-\d+/i, /ALAS-\d{4}-\d+/i],
+  },
+  {
+    label: "OSV",
+    host: /^osv\.dev$/,
+    path: /^\/vulnerability\//,
+    idPatterns: [
+      /CVE-\d{4}-\d{4,}/i,
+      /GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/i,
+      /[A-Z]{2,}-\d{4}-\d+/,
+    ],
+  },
+  {
+    label: "MITRE",
+    host: /^cwe\.mitre\.org$/,
+    path: /^\/data\/definitions\//,
+    customId: (url) => {
+      const match = url.pathname.match(/\/definitions\/(\d+)\.html$/i);
+      return match ? `CWE-${match[1]}` : null;
+    },
+  },
+  {
+    label: "CISA KEV",
+    host: /^www\.cisa\.gov$|^cisa\.gov$/,
+    path: /^\/known-exploited-vulnerabilities-catalog/,
+    idPatterns: [/CVE-\d{4}-\d{4,}/i],
+  },
+];
+
+function firstPatternMatch(
+  patterns: RegExp[] | undefined,
+  text: string
+): string | null {
+  if (!patterns) return null;
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[0]) return match[0].toUpperCase();
+  }
+  return null;
+}
+
+function normalizeReferenceTitle(title: string): string {
+  return title
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-|:–—]+/, "")
+    .replace(/[\s\-|:–—]+$/, "")
+    .trim()
+    .slice(0, 140);
+}
+
+export function referenceBaseText(url: string): string {
+  try {
+    const parsed = new URL(url.trim());
+    const fullText = `${parsed.pathname}${parsed.search}`;
+    for (const rule of REFERENCE_RULES) {
+      if (!rule.host.test(parsed.hostname.toLowerCase())) continue;
+      if (!rule.path.test(parsed.pathname)) continue;
+
+      const customId = rule.customId?.(parsed) ?? null;
+      const extracted =
+        customId ||
+        firstPatternMatch(rule.idPatterns, fullText) ||
+        firstPatternMatch(rule.idPatterns, url);
+      if (extracted) {
+        return `${rule.label} • ${extracted}`;
+      }
+      return rule.label;
+    }
+
+    const globalId = firstPatternMatch(GLOBAL_REFERENCE_ID_PATTERNS, url);
+    return globalId || parsed.hostname;
+  } catch {
+    const globalId = firstPatternMatch(GLOBAL_REFERENCE_ID_PATTERNS, url);
+    return globalId || url;
+  }
+}
+
+export function referenceDisplayText(
+  url: string,
+  cachedTitle: string | null | undefined
+): string {
+  const base = referenceBaseText(url);
+  if (!cachedTitle) return base;
+  const title = normalizeReferenceTitle(cachedTitle);
+  if (!title) return base;
+  return `${base}: ${title}`;
+}

@@ -8,6 +8,8 @@ import {
   priorityFromRiskScore,
   priorityTooltip,
   decodeCvssVector,
+  referenceBaseText,
+  referenceDisplayText,
 } from "./utils";
 
 describe("vuln/utils", () => {
@@ -162,6 +164,46 @@ describe("vuln/utils", () => {
       );
       expect(result).not.toBeNull();
       expect(result![1]).toEqual({ label: "Attack Complexity", value: "X" });
+    });
+  });
+
+  describe("referenceBaseText", () => {
+    it("formats mapped NVD links with CVE", () => {
+      expect(
+        referenceBaseText("https://nvd.nist.gov/vuln/detail/CVE-2026-12345")
+      ).toBe("NVD • CVE-2026-12345");
+    });
+
+    it("falls back to extracted global ID when host is unmapped", () => {
+      expect(
+        referenceBaseText("https://vendor.example/advisories/CVE-2025-9999")
+      ).toBe("CVE-2025-9999");
+    });
+
+    it("falls back to hostname when no known ID exists", () => {
+      expect(referenceBaseText("https://example.com/security/advisory")).toBe(
+        "example.com"
+      );
+    });
+  });
+
+  describe("referenceDisplayText", () => {
+    it("appends cached title when present", () => {
+      expect(
+        referenceDisplayText(
+          "https://github.com/advisories/GHSA-abcd-1234-efgh",
+          "GitHub advisory title"
+        )
+      ).toBe("GitHub Advisory • GHSA-ABCD-1234-EFGH: GitHub advisory title");
+    });
+
+    it("returns base text when title missing", () => {
+      expect(
+        referenceDisplayText(
+          "https://security-tracker.debian.org/tracker/CVE-2024-1111",
+          null
+        )
+      ).toBe("Debian Tracker • CVE-2024-1111");
     });
   });
 });

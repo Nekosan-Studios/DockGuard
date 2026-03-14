@@ -32,6 +32,7 @@ class Vulnerability(SQLModel, table=True):
     description: str | None = None
     data_source: str | None = None
     urls: str | None = None  # comma-separated
+    urls_titles: str | None = None  # JSON object mapping URL -> title
 
     cvss_base_score: float | None = None
     epss_score: float | None = None
@@ -39,6 +40,7 @@ class Vulnerability(SQLModel, table=True):
     is_kev: bool = False
     risk_score: float | None = None
     cwes: str | None = None  # comma-separated
+    cwe_titles: str | None = None  # JSON object mapping CWE ID -> definition name
 
     package_name: str
     installed_version: str

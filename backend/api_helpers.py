@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -41,6 +42,14 @@ def _priority_bucket(risk_score: float | None) -> str:
 
 def _serialise_vuln(v: Vulnerability) -> dict:
     d = v.model_dump()
+    for key in ("urls_titles", "cwe_titles"):
+        raw = d.get(key)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                d[key] = parsed if isinstance(parsed, dict) else None
+            except TypeError, ValueError:
+                d[key] = None
     if d.get("description") and len(d["description"]) > _DESC_LIMIT:
         d["description"] = d["description"][:_DESC_LIMIT] + "…"
     if d.get("locations"):

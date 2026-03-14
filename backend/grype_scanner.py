@@ -9,6 +9,7 @@ from sqlmodel import Session, func, select
 from .database import Database, db
 from .docker_watcher import DockerWatcher
 from .models import Scan, SystemTask, Vulnerability
+from .reference_titles import fetch_cwe_titles, fetch_reference_titles
 from .vex_discovery import check_vex_for_image
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,10 @@ def _parse_image_repository(image_ref: str) -> str:
 
 
 class GrypeScanner:
-    def __init__(self, watcher: DockerWatcher | None, database: Database):
+    def __init__(self, watcher: DockerWatcher | None, database: Database, enable_reference_title_fetch: bool = True):
         self.watcher = watcher
         self.db = database
+        self.enable_reference_title_fetch = enable_reference_title_fetch
 
     def scan_images(self):
         images = self.watcher.list_images()
@@ -199,9 +201,20 @@ class GrypeScanner:
 
                 cwes_list = vuln.get("cwes", [])
                 cwes = ",".join(c.get("cwe", "") for c in cwes_list) if cwes_list else None
+                cwe_titles = None
+                if self.enable_reference_title_fetch and cwes_list:
+                    cwe_ids = [c.get("cwe", "") for c in cwes_list if c.get("cwe")]
+                    cwe_title_map = fetch_cwe_titles(cwe_ids)
+                    if cwe_title_map:
+                        cwe_titles = json.dumps(cwe_title_map, ensure_ascii=False)
 
                 urls_list = vuln.get("urls", [])
                 urls = ",".join(urls_list) if urls_list else None
+                urls_titles = None
+                if self.enable_reference_title_fetch and urls_list:
+                    title_map = fetch_reference_titles(urls_list)
+                    if title_map:
+                        urls_titles = json.dumps(title_map, ensure_ascii=False)
 
                 fix_versions = fix.get("versions", [])
                 fixed_version = fix_versions[0] if fix_versions else None
@@ -231,6 +244,7 @@ class GrypeScanner:
                         description=vuln.get("description") or None,
                         data_source=vuln.get("dataSource") or None,
                         urls=urls,
+                        urls_titles=urls_titles,
                         cvss_base_score=cvss_base_score,
                         cvss_vector=cvss_vector,
                         epss_score=epss_score,
@@ -238,6 +252,7 @@ class GrypeScanner:
                         is_kev=bool(vuln.get("knownExploited")),
                         risk_score=vuln.get("risk"),
                         cwes=cwes,
+                        cwe_titles=cwe_titles,
                         package_name=package_name,
                         installed_version=installed_version,
                         fixed_version=fixed_version,

@@ -56,7 +56,9 @@
     match_type: string | null;
     upstream_name: string | null;
     urls: string | null;
+    urls_titles?: Record<string, string> | null;
     cwes: string | null;
+    cwe_titles?: Record<string, string> | null;
     fix_state: string | null;
     purl: string | null;
     package_language: string | null;

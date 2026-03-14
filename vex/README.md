@@ -50,8 +50,6 @@ Avoid:
 - Update top-level `timestamp` on each review pass.
 - Validate JSON after edits.
 - Re-scan for stale phrases:
-  - `local networks only`
-  - `home-lab`
   - `awaiting` (without saying what is being tracked)
   - `wont-fix` (without time/context)
 
