@@ -7,10 +7,12 @@
     vulnId,
     dataSource,
     firstSeenAt,
+    class: className = "",
   }: {
     vulnId: string;
     dataSource: string | null;
     firstSeenAt: string | null;
+    class?: string;
   } = $props();
 
   function isNew(firstSeenAt: string | null): boolean {
@@ -21,7 +23,7 @@
   }
 </script>
 
-<Table.Cell class="pl-4 font-mono">
+<Table.Cell class="pl-4 font-mono transition-shadow {className}">
   <div class="flex flex-wrap items-center gap-1">
     {#if isNew(firstSeenAt)}
       <span

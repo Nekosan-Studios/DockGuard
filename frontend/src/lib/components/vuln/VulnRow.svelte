@@ -145,11 +145,12 @@
   }
 </script>
 
-<Table.Row class="cursor-pointer hover:bg-muted/30" onclick={handleRowClick}>
+<Table.Row class="group cursor-pointer" onclick={handleRowClick}>
   <CveLinkCell
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
     firstSeenAt={vuln.first_seen_at}
+    class="group-hover:shadow-[inset_4px_0_0_var(--color-primary)]"
   />
 
   {#if showContainers}

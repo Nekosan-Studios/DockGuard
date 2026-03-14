@@ -5,6 +5,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Loader2 from "@lucide/svelte/icons/loader-2";
+  import Info from "@lucide/svelte/icons/info";
   import SortButton from "../../../routes/containers/sort-button.svelte";
   import { slide } from "svelte/transition";
   import { formatDistanceToNow } from "date-fns";
@@ -418,8 +419,8 @@
 
 <!-- Expanded detail row -->
 {#if expanded}
-  <Table.Row>
-    <Table.Cell colspan={3} class="p-0">
+  <tr class="border-b">
+    <td colspan={3} class="p-0 align-middle">
       <div
         transition:slide={{ duration: 200 }}
         class="bg-muted/20 border-muted border-l-4 overflow-hidden"
@@ -604,7 +605,19 @@
                             toggleVulnSort("first_seen_at", e)}
                         />
                       </Table.Head>
-                      <Table.Head class="pr-6">Description</Table.Head>
+                      <Table.Head class="pr-6">
+                        <Tooltip.Root>
+                          <Tooltip.Trigger
+                            class="flex cursor-default items-center gap-1"
+                          >
+                            <span>Description</span>
+                            <Info class="h-3 w-3 text-muted-foreground" />
+                          </Tooltip.Trigger>
+                          <Tooltip.Content
+                            >Click any row to view full vulnerability details</Tooltip.Content
+                          >
+                        </Tooltip.Root>
+                      </Table.Head>
                     </Table.Row>
                   </Table.Header>
                   <Table.Body>
@@ -664,6 +677,6 @@
           </div>
         {/if}
       </div>
-    </Table.Cell>
-  </Table.Row>
+    </td>
+  </tr>
 {/if}

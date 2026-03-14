@@ -7,6 +7,7 @@
   import Shield from "@lucide/svelte/icons/shield";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
   import Loader2 from "@lucide/svelte/icons/loader-2";
+  import Info from "@lucide/svelte/icons/info";
   import SortButton from "../containers/sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
@@ -476,7 +477,19 @@
                     onclick={() => toggleSort("first_seen_at")}
                   />
                 </Table.Head>
-                <Table.Head class="pr-6">Description</Table.Head>
+                <Table.Head class="pr-6">
+                  <Tooltip.Root>
+                    <Tooltip.Trigger
+                      class="flex cursor-default items-center gap-1"
+                    >
+                      <span>Description</span>
+                      <Info class="h-3 w-3 text-muted-foreground" />
+                    </Tooltip.Trigger>
+                    <Tooltip.Content
+                      >Click any row to view full vulnerability details</Tooltip.Content
+                    >
+                  </Tooltip.Root>
+                </Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>
