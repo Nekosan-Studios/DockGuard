@@ -59,13 +59,20 @@
   // ── Local State (Replaces Parent `SvelteMap`s) ──────────────────────────
   let expanded = $state(false);
 
-  // Auto-expand when a deep-linked CVE targets this container
+  // Auto-expand when a deep-linked CVE targets this container.
+  // Only expand once per activeCve value to avoid re-expanding after user collapses.
+  let lastExpandedForCve = $state<string | null>(null);
   $effect(() => {
-    if (activeCve && !expanded && container.has_scan) {
-      // Expand so the VulnRow can match and auto-open
+    if (
+      activeCve &&
+      activeCve !== lastExpandedForCve &&
+      !expanded &&
+      container.has_scan
+    ) {
+      lastExpandedForCve = activeCve;
       expanded = true;
       if (vulns.length === 0) {
-        fetchVulns(0, sortCol, sortDir, undefined);
+        untrack(() => fetchVulns(0, sortCol, sortDir, undefined));
       }
     }
   });
@@ -601,7 +608,7 @@
                     </Table.Row>
                   </Table.Header>
                   <Table.Body>
-                    {#each visibleVulns as vuln (vuln.vuln_id)}
+                    {#each visibleVulns as vuln, vi (vi)}
                       <VulnRow
                         {vuln}
                         hasAnyVex={hasVexData}

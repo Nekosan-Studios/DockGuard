@@ -361,7 +361,7 @@
                       {paths.length === 1 ? "Location:" : "Locations:"}
                     </div>
                     <ul class="mt-0.5 space-y-0.5">
-                      {#each paths as path (path)}
+                      {#each paths as path, pi (pi)}
                         <li class="font-mono text-xs break-all">
                           <span class="text-muted-foreground mr-1">•</span
                           >{path}
@@ -385,7 +385,7 @@
             </h3>
             {#if urlList.length > 0}
               <ul class="space-y-1">
-                {#each urlList as url (url)}
+                {#each urlList as url, ui (ui)}
                   <li>
                     <a
                       href={url}
@@ -402,7 +402,7 @@
             {/if}
             {#if cweList.length > 0}
               <div class="mt-2 flex flex-wrap gap-1.5">
-                {#each cweList as cwe (cwe)}
+                {#each cweList as cwe, ci (ci)}
                   {@const cweId = cwe.replace(/^CWE-/, "")}
                   <a
                     href="https://cwe.mitre.org/data/definitions/{cweId}.html"
@@ -472,7 +472,7 @@
               Affected Containers ({vuln.containers.length})
             </h3>
             <div class="space-y-1.5">
-              {#each vuln.containers as container (container.container_name)}
+              {#each vuln.containers as container, ci2 (ci2)}
                 <div
                   class="flex items-center gap-2 rounded border px-3 py-2 text-sm"
                 >

@@ -10,6 +10,7 @@
   import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
   import VulnDetailModal from "./VulnDetailModal.svelte";
+  import { untrack } from "svelte";
   import {
     PRIORITY_CLASSES,
     priorityFromRiskScore,
@@ -78,6 +79,7 @@
   } = $props();
 
   let modalOpen = $state(false);
+  let prevModalOpen = $state(false);
 
   // Auto-open when this row matches the deep-linked CVE
   $effect(() => {
@@ -86,9 +88,13 @@
     }
   });
 
-  // Notify parent when modal state changes
+  // Notify parent when modal state *actually changes*
   $effect(() => {
-    onModalChange?.(vuln.vuln_id, modalOpen);
+    const current = modalOpen;
+    if (current !== prevModalOpen) {
+      prevModalOpen = current;
+      untrack(() => onModalChange?.(vuln.vuln_id, current));
+    }
   });
 
   function handleRowClick(e: MouseEvent) {
@@ -135,7 +141,7 @@
     <Table.Cell class="py-2">
       {#if vuln.containers && vuln.containers.length > 0}
         <div class="flex flex-wrap gap-1">
-          {#each vuln.containers as container (container.container_name)}
+          {#each vuln.containers as container, ci (ci)}
             <Tooltip.Root>
               <Tooltip.Trigger class="cursor-default">
                 <span
@@ -194,7 +200,7 @@
           </p>
           {#if paths.length > 0}
             <ul class="space-y-0.5">
-              {#each paths as path (path)}
+              {#each paths as path, pi (pi)}
                 <li class="flex items-start gap-1 font-mono text-xs">
                   <span class="shrink-0">•</span>
                   <span class="break-all">{path}</span>

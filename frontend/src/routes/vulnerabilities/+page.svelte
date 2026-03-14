@@ -481,7 +481,7 @@
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {#each rows as vuln (vuln.vuln_id)}
+              {#each rows as vuln, vi (vi)}
                 <VulnRow
                   {vuln}
                   showContainers={true}
