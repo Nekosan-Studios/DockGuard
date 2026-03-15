@@ -907,7 +907,6 @@
             </section>
           {/if}
 
-
           <!-- Metadata -->
           <section class="text-muted-foreground border-t pt-3 text-xs">
             <div class="flex flex-wrap gap-x-6 gap-y-1">
