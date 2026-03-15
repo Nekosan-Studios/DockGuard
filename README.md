@@ -12,6 +12,8 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 
 > **Note:** DockGuard is currently limited to single-host setups. Features like multi-user support and connecting to remote Docker installations are on the roadmap but not yet available.
 
+> **Security:** DockGuard does not currently have authentication or user login. Do not expose it directly to the internet or untrusted networks. Run it behind a VPN, reverse proxy with authentication, or bind it only to `localhost` / your local network. If you need remote access, place it behind a solution like Authelia, Authentik, or your reverse proxy's built-in auth.
+
 ## Screenshots
 
 **Dashboard**
@@ -91,6 +93,7 @@ Most settings can be changed directly in the **Settings** page of the dashboard.
 | `SCAN_INTERVAL_SECONDS` | `60` | How often (in seconds) to check for new or updated containers. |
 | `MAX_CONCURRENT_SCANS` | `1` | How many images to scan in parallel. Increase with caution on low-memory systems. |
 | `DB_CHECK_INTERVAL_SECONDS` | `3600` | How often (in seconds) to check for an updated Grype vulnerability database. |
+| `BASE_URL` | _(empty)_ | Base URL of your DockGuard instance (e.g. `http://192.168.1.50:8764`). When set, notification messages include links to individual vulnerabilities. |
 
 ## License
 

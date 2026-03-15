@@ -15,6 +15,8 @@ class ConfigManager:
         "MAX_CONCURRENT_SCANS": "1",
         "DB_CHECK_INTERVAL_SECONDS": "3600",
         "DATA_RETENTION_DAYS": "30",
+        "DAILY_DIGEST_HOUR_UTC": "8",
+        "BASE_URL": "",
     }
 
     @staticmethod

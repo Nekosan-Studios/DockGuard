@@ -105,7 +105,7 @@ def _get_docker_auth(registry: str) -> str | None:
         return None
     try:
         config = json.loads(config_path.read_text())
-    except json.JSONDecodeError, OSError:
+    except (json.JSONDecodeError, OSError):
         return None
 
     auths = config.get("auths") or {}

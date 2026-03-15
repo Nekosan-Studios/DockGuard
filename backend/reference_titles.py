@@ -82,7 +82,7 @@ def _fetch_title(url: str, client: httpx.Client, deadline: float | None = None) 
             url,
             headers={"User-Agent": "DockGuard/1.0 (+https://github.com/mattweinecke/DockGuard)"},
         )
-    except httpx.HTTPError, ValueError:
+    except (httpx.HTTPError, ValueError):
         return None
 
     if response.status_code < 200 or response.status_code >= 300:

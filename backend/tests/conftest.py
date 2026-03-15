@@ -74,20 +74,21 @@ def api_client(test_db):
                         with patch("backend.routers.tasks.db", test_db):
                             with patch("backend.routers.settings.db", test_db):
                                 with patch("backend.routers.internal.db", test_db):
-                                    with (
-                                        patch("backend.routers.containers.DockerWatcher") as cw,
-                                        patch("backend.routers.vulnerabilities.DockerWatcher") as vw,
-                                        patch("backend.jobs.containers.DockerWatcher") as jw,
-                                    ):
-                                        cw.return_value.list_images.return_value = []
-                                        cw.return_value.list_running_containers.return_value = []
-                                        vw.return_value.list_images.return_value = []
-                                        vw.return_value.list_running_containers.return_value = []
-                                        jw.return_value.list_images.return_value = []
-                                        jw.return_value.list_running_containers.return_value = []
-                                        with TestClient(app, raise_server_exceptions=True) as client:
-                                            # tests expect the mock instance
-                                            yield client, test_db, (cw, vw)
+                                    with patch("backend.routers.notifications.db", test_db):
+                                        with (
+                                            patch("backend.routers.containers.DockerWatcher") as cw,
+                                            patch("backend.routers.vulnerabilities.DockerWatcher") as vw,
+                                            patch("backend.jobs.containers.DockerWatcher") as jw,
+                                        ):
+                                            cw.return_value.list_images.return_value = []
+                                            cw.return_value.list_running_containers.return_value = []
+                                            vw.return_value.list_images.return_value = []
+                                            vw.return_value.list_running_containers.return_value = []
+                                            jw.return_value.list_images.return_value = []
+                                            jw.return_value.list_running_containers.return_value = []
+                                            with TestClient(app, raise_server_exceptions=True) as client:
+                                                # tests expect the mock instance
+                                                yield client, test_db, (cw, vw)
 
     app.dependency_overrides.clear()
 
@@ -208,10 +209,11 @@ def integration_client(tmp_path):
                     with patch("backend.routers.tasks.db", temp_db):
                         with patch("backend.routers.settings.db", temp_db):
                             with patch("backend.routers.internal.db", temp_db):
-                                with patch("backend.jobs.containers.DockerWatcher") as mock_watcher:
-                                    mock_watcher.return_value.list_images.return_value = []
-                                    with TestClient(app, raise_server_exceptions=True) as client:
-                                        yield client, temp_db
+                                with patch("backend.routers.notifications.db", temp_db):
+                                    with patch("backend.jobs.containers.DockerWatcher") as mock_watcher:
+                                        mock_watcher.return_value.list_images.return_value = []
+                                        with TestClient(app, raise_server_exceptions=True) as client:
+                                            yield client, temp_db
     app.dependency_overrides.clear()
 
 
@@ -286,10 +288,11 @@ def e2e_client(tmp_path, require_docker, require_grype):
                     with patch("backend.routers.tasks.db", temp_db):
                         with patch("backend.routers.settings.db", temp_db):
                             with patch("backend.routers.internal.db", temp_db):
-                                with patch("backend.scheduler.ConfigManager.get_setting") as mock_get:
-                                    mock_get.side_effect = lambda k, s: (
-                                        {"value": "5"} if k == "SCAN_INTERVAL_SECONDS" else {"value": "86400"}
-                                    )
-                                    with TestClient(app, raise_server_exceptions=True) as client:
-                                        yield client, temp_db
+                                with patch("backend.routers.notifications.db", temp_db):
+                                    with patch("backend.scheduler.ConfigManager.get_setting") as mock_get:
+                                        mock_get.side_effect = lambda k, s: (
+                                            {"value": "5"} if k == "SCAN_INTERVAL_SECONDS" else {"value": "86400"}
+                                        )
+                                        with TestClient(app, raise_server_exceptions=True) as client:
+                                            yield client, temp_db
     app.dependency_overrides.clear()

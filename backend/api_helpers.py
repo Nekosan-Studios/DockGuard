@@ -48,7 +48,7 @@ def _serialise_vuln(v: Vulnerability) -> dict:
             try:
                 parsed = json.loads(raw)
                 d[key] = parsed if isinstance(parsed, dict) else None
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 d[key] = None
     if d.get("description") and len(d["description"]) > _DESC_LIMIT:
         d["description"] = d["description"][:_DESC_LIMIT] + "…"

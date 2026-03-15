@@ -329,6 +329,27 @@
               Risk Assessment
             </h3>
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <!-- Risk Score -->
+              <div class="rounded-lg border p-3">
+                <div class="text-muted-foreground mb-1 text-[11px] font-medium">
+                  Risk Score
+                </div>
+                {#if vuln.risk_score != null}
+                  <div
+                    class="text-xl font-bold {PRIORITY_CLASSES[priority]
+                      .split(' ')
+                      .find((c) => c.startsWith('text-')) ?? ''}"
+                  >
+                    {vuln.risk_score.toFixed(1)}
+                  </div>
+                  <div class="text-muted-foreground text-[11px]">
+                    {riskScoreTooltip(vuln.risk_score)}
+                  </div>
+                {:else}
+                  <div class="text-muted-foreground text-xl">—</div>
+                {/if}
+              </div>
+
               <!-- CVSS -->
               <div class="rounded-lg border p-3">
                 <div class="text-muted-foreground mb-1 text-[11px] font-medium">
@@ -362,27 +383,6 @@
                     {#if vuln.epss_percentile != null}
                       — {(vuln.epss_percentile * 100).toFixed(0)}th percentile
                     {/if}
-                  </div>
-                {:else}
-                  <div class="text-muted-foreground text-xl">—</div>
-                {/if}
-              </div>
-
-              <!-- Risk Score -->
-              <div class="rounded-lg border p-3">
-                <div class="text-muted-foreground mb-1 text-[11px] font-medium">
-                  Risk Score
-                </div>
-                {#if vuln.risk_score != null}
-                  <div
-                    class="text-xl font-bold {PRIORITY_CLASSES[priority]
-                      .split(' ')
-                      .find((c) => c.startsWith('text-')) ?? ''}"
-                  >
-                    {vuln.risk_score.toFixed(1)}
-                  </div>
-                  <div class="text-muted-foreground text-[11px]">
-                    {riskScoreTooltip(vuln.risk_score)}
                   </div>
                 {:else}
                   <div class="text-muted-foreground text-xl">—</div>
@@ -453,6 +453,53 @@
               </div>
             </div>
           </section>
+
+          <!-- CVSS Vector Breakdown -->
+          {#if vectorComponents}
+            <section>
+              <h3
+                class="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-wide"
+              >
+                CVSS Vector
+              </h3>
+              <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {#each vectorComponents as { label, value, description, severity: sev } (label)}
+                  <div
+                    class="rounded-lg border p-2.5 text-sm
+                    {sev === 'high'
+                      ? 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30'
+                      : sev === 'medium'
+                        ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/30'
+                        : 'border-border bg-muted/30'}"
+                  >
+                    <div class="text-muted-foreground text-xs">{label}</div>
+                    <div
+                      class="font-semibold
+                      {sev === 'high'
+                        ? 'text-red-700 dark:text-red-400'
+                        : sev === 'medium'
+                          ? 'text-amber-700 dark:text-amber-400'
+                          : ''}"
+                    >
+                      {value}
+                    </div>
+                    {#if description}
+                      <div
+                        class="text-muted-foreground mt-0.5 text-[11px] leading-tight"
+                      >
+                        {description}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+              <div
+                class="text-muted-foreground mt-2 font-mono text-[11px] break-all"
+              >
+                {vuln.cvss_vector}
+              </div>
+            </section>
+          {/if}
 
           <!-- Advisory Details + CVSS Scores (enrichment) -->
           {#if enrichLoading || enriched !== null || enrichError}
@@ -701,53 +748,6 @@
                 {/if}
               </section>
             </div>
-          {/if}
-
-          <!-- CVSS Vector Breakdown -->
-          {#if vectorComponents}
-            <section>
-              <h3
-                class="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-wide"
-              >
-                CVSS Vector
-              </h3>
-              <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {#each vectorComponents as { label, value, description, severity: sev } (label)}
-                  <div
-                    class="rounded-lg border p-2.5 text-sm
-                    {sev === 'high'
-                      ? 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30'
-                      : sev === 'medium'
-                        ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/30'
-                        : 'border-border bg-muted/30'}"
-                  >
-                    <div class="text-muted-foreground text-xs">{label}</div>
-                    <div
-                      class="font-semibold
-                      {sev === 'high'
-                        ? 'text-red-700 dark:text-red-400'
-                        : sev === 'medium'
-                          ? 'text-amber-700 dark:text-amber-400'
-                          : ''}"
-                    >
-                      {value}
-                    </div>
-                    {#if description}
-                      <div
-                        class="text-muted-foreground mt-0.5 text-[11px] leading-tight"
-                      >
-                        {description}
-                      </div>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-              <div
-                class="text-muted-foreground mt-2 font-mono text-[11px] break-all"
-              >
-                {vuln.cvss_vector}
-              </div>
-            </section>
           {/if}
 
           <!-- Package Details -->

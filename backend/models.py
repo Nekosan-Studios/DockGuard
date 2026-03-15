@@ -20,7 +20,7 @@ class Scan(SQLModel, table=True):
     vex_checked_at: datetime | None = None
     vex_error: str | None = None
 
-    vulnerabilities: list[Vulnerability] = Relationship(back_populates="scan")
+    vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
 
 
 class Vulnerability(SQLModel, table=True):
@@ -61,6 +61,32 @@ class Vulnerability(SQLModel, table=True):
     scan: Scan | None = Relationship(back_populates="vulnerabilities")
 
 
+class NotificationChannel(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    apprise_url: str
+    enabled: bool = True
+    notify_urgent: bool = False
+    notify_all_new: bool = False
+    notify_digest: bool = False
+    notify_kev: bool = False
+    notify_eol: bool = False
+    notify_scan_failure: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class NotificationLog(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    channel_id: int = Field(foreign_key="notificationchannel.id")
+    notification_type: str  # "urgent", "new_vulns", "digest", "eol", "scan_failure", "test"
+    title: str
+    body: str
+    status: str  # "sent", "failed"
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class AppState(SQLModel, table=True):
     """Single-row table (id=1) for app-wide persistent state."""
 
@@ -69,6 +95,7 @@ class AppState(SQLModel, table=True):
     grype_version: str | None = None
     db_schema: str | None = None
     db_built: datetime | None = None
+    last_digest_data: str | None = None
 
 
 class Setting(SQLModel, table=True):

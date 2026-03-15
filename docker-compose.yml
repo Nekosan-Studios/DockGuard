@@ -25,5 +25,6 @@ services:
       # SCAN_INTERVAL_SECONDS=60         # How often to poll Docker for new/updated containers
       # MAX_CONCURRENT_SCANS=1           # Max Grype scans to run in parallel
       # DB_CHECK_INTERVAL_SECONDS=3600   # How often to check for Grype vulnerability DB updates
+      # BASE_URL=http://your-server-ip:8764  # Public URL for deep links in notifications
       # API_URL=http://localhost:8765     # URL the frontend uses to reach the backend (internal)
     restart: unless-stopped

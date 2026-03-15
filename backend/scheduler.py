@@ -3,12 +3,14 @@ import logging
 from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlmodel import Session, select
 
 from backend.jobs.containers import check_running_containers
 from backend.jobs.grype_db import check_db_update
 from backend.jobs.maintenance import purge_old_data
+from backend.jobs.notifications import send_daily_digest
 from backend.models import Scan
 
 from .config import ConfigManager
@@ -18,7 +20,7 @@ from .models import SystemTask
 logger = logging.getLogger(__name__)
 
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
-_active_scheduler: ContainerScheduler | None = None
+_active_scheduler: "ContainerScheduler | None" = None
 
 
 class ContainerScheduler:
@@ -34,6 +36,7 @@ class ContainerScheduler:
             self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
             self.data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
+            self.digest_hour = int(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
 
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
         self._scheduler = AsyncIOScheduler()
@@ -62,6 +65,13 @@ class ContainerScheduler:
             id="purge_old_data",
             name="Purge stale scans and task history",
             next_run_time=datetime.now(),
+            replace_existing=True,
+        )
+        self._scheduler.add_job(
+            self._run_daily_digest,
+            CronTrigger(hour=self.digest_hour, minute=0),
+            id="daily_digest",
+            name="Send daily vulnerability digest",
             replace_existing=True,
         )
         _active_scheduler = self
@@ -98,6 +108,12 @@ class ContainerScheduler:
                 self.data_retention_days = data_retention_days
                 logger.info("Scheduler updated data_retention_days to %d", self.data_retention_days)
 
+            digest_hour = int(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
+            if digest_hour != self.digest_hour:
+                self.digest_hour = digest_hour
+                self._scheduler.reschedule_job("daily_digest", trigger=CronTrigger(hour=self.digest_hour, minute=0))
+                logger.info("Scheduler updated daily_digest hour to %d UTC", self.digest_hour)
+
     def get_jobs(self):
         return self._scheduler.get_jobs()
 
@@ -129,3 +145,6 @@ class ContainerScheduler:
 
     async def _run_purge_old_data(self) -> None:
         await purge_old_data(self.db, self.data_retention_days)
+
+    async def _run_daily_digest(self) -> None:
+        await send_daily_digest(self.db)
