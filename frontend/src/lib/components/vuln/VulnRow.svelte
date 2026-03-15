@@ -9,6 +9,8 @@
   import VexStatusCell from "./VexStatusCell.svelte";
   import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
+  import VulnDetailModal from "./VulnDetailModal.svelte";
+  import { untrack } from "svelte";
   import {
     PRIORITY_CLASSES,
     priorityFromRiskScore,
@@ -53,6 +55,13 @@
     vex_statement: string | null;
     match_type: string | null;
     upstream_name: string | null;
+    urls: string | null;
+    urls_titles?: Record<string, string> | null;
+    cwes: string | null;
+    cwe_titles?: Record<string, string> | null;
+    fix_state: string | null;
+    purl: string | null;
+    package_language: string | null;
     containers?: ContainerInfo[]; // Optional: Present only in global view
     packages?: PackageInfo[]; // Optional: Present in grouped scenarios
   }
@@ -61,11 +70,61 @@
     vuln,
     showContainers = false,
     hasAnyVex = true,
+    activeCve = null,
+    onModalChange,
   }: {
     vuln: Vulnerability;
     showContainers?: boolean;
     hasAnyVex?: boolean;
+    activeCve?: string | null;
+    onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
+
+  let modalOpen = $state(false);
+  let prevModalOpen = $state(false);
+  // Only auto-open once per activeCve value to avoid re-opening after user dismisses.
+  let lastAutoOpenedCve = $state<string | null>(null);
+
+  // Auto-open when this row matches the deep-linked CVE
+  $effect(() => {
+    if (
+      activeCve &&
+      activeCve === vuln.vuln_id &&
+      !modalOpen &&
+      lastAutoOpenedCve !== activeCve
+    ) {
+      lastAutoOpenedCve = activeCve;
+      modalOpen = true;
+    }
+    // Reset guard when this CVE is no longer the deep-link target so future
+    // deep links to the same CVE work correctly (e.g. browser back).
+    if (!activeCve || activeCve !== vuln.vuln_id) {
+      lastAutoOpenedCve = null;
+    }
+  });
+
+  // Notify parent when modal state *actually changes*
+  $effect(() => {
+    const current = modalOpen;
+    if (current !== prevModalOpen) {
+      prevModalOpen = current;
+      untrack(() => onModalChange?.(vuln.vuln_id, current));
+    }
+  });
+
+  function handleRowClick(e: MouseEvent) {
+    // Don't open modal when clicking interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest("a, button, [data-popover-trigger]")) return;
+    modalOpen = true;
+  }
+
+  function handleRowKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      modalOpen = true;
+    }
+  }
 
   // If the backend didn't supply a `.packages` array but did supply top-level package fields, we wrap it in a mock array to keep the template logic identical.
   let packages = $derived(
@@ -93,18 +152,24 @@
   }
 </script>
 
-<Table.Row class="hover:bg-muted/30">
+<Table.Row
+  class="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+  tabindex={0}
+  onclick={handleRowClick}
+  onkeydown={handleRowKeydown}
+>
   <CveLinkCell
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
     firstSeenAt={vuln.first_seen_at}
+    class="group-hover:shadow-[inset_4px_0_0_var(--color-primary)]"
   />
 
   {#if showContainers}
     <Table.Cell class="py-2">
       {#if vuln.containers && vuln.containers.length > 0}
         <div class="flex flex-wrap gap-1">
-          {#each vuln.containers as container (container.container_name)}
+          {#each vuln.containers as container, ci (ci)}
             <Tooltip.Root>
               <Tooltip.Trigger class="cursor-default">
                 <span
@@ -163,7 +228,7 @@
           </p>
           {#if paths.length > 0}
             <ul class="space-y-0.5">
-              {#each paths as path (path)}
+              {#each paths as path, pi (pi)}
                 <li class="flex items-start gap-1 font-mono text-xs">
                   <span class="shrink-0">•</span>
                   <span class="break-all">{path}</span>
@@ -298,3 +363,5 @@
     {/if}
   </Table.Cell>
 </Table.Row>
+
+<VulnDetailModal {vuln} bind:open={modalOpen} {showContainers} />

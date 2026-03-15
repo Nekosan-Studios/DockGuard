@@ -5,6 +5,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Loader2 from "@lucide/svelte/icons/loader-2";
+  import Info from "@lucide/svelte/icons/info";
   import SortButton from "../../../routes/containers/sort-button.svelte";
   import { slide } from "svelte/transition";
   import { formatDistanceToNow } from "date-fns";
@@ -47,13 +48,18 @@
   let {
     container,
     hideVexResolved = false,
+    activeCve = null,
+    onModalChange,
   }: {
     container: ContainerRecord;
     hideVexResolved?: boolean;
+    activeCve?: string | null;
+    onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
 
   // ── Local State (Replaces Parent `SvelteMap`s) ──────────────────────────
   let expanded = $state(false);
+
   let vexStatus = $state(container.vex_status);
   let hasVex = $state(container.has_vex);
   let vexError = $state(container.vex_error);
@@ -397,7 +403,7 @@
 <!-- Expanded detail row -->
 {#if expanded}
   <Table.Row>
-    <Table.Cell colspan={3} class="p-0">
+    <Table.Cell colspan={3} class="p-0 align-middle">
       <div
         transition:slide={{ duration: 200 }}
         class="bg-muted/20 border-muted border-l-4 overflow-hidden"
@@ -582,12 +588,29 @@
                             toggleVulnSort("first_seen_at", e)}
                         />
                       </Table.Head>
-                      <Table.Head class="pr-6">Description</Table.Head>
+                      <Table.Head class="pr-6">
+                        <Tooltip.Root>
+                          <Tooltip.Trigger
+                            class="flex cursor-default items-center gap-1"
+                          >
+                            <span>Description</span>
+                            <Info class="h-3 w-3 text-muted-foreground" />
+                          </Tooltip.Trigger>
+                          <Tooltip.Content
+                            >Click any row to view full vulnerability details</Tooltip.Content
+                          >
+                        </Tooltip.Root>
+                      </Table.Head>
                     </Table.Row>
                   </Table.Header>
                   <Table.Body>
                     {#each visibleVulns as vuln (vuln.vuln_id)}
-                      <VulnRow {vuln} hasAnyVex={hasVexData} />
+                      <VulnRow
+                        {vuln}
+                        hasAnyVex={hasVexData}
+                        {activeCve}
+                        {onModalChange}
+                      />
                     {/each}
                   </Table.Body>
                 </Table.Root>

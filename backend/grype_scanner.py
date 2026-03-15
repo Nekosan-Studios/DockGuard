@@ -9,6 +9,7 @@ from sqlmodel import Session, func, select
 from .database import Database, db
 from .docker_watcher import DockerWatcher
 from .models import Scan, SystemTask, Vulnerability
+from .reference_titles import fetch_all_titles
 from .vex_discovery import check_vex_for_image
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,10 @@ def _parse_image_repository(image_ref: str) -> str:
 
 
 class GrypeScanner:
-    def __init__(self, watcher: DockerWatcher | None, database: Database):
+    def __init__(self, watcher: DockerWatcher | None, database: Database, enable_reference_title_fetch: bool = True):
         self.watcher = watcher
         self.db = database
+        self.enable_reference_title_fetch = enable_reference_title_fetch
 
     def scan_images(self):
         images = self.watcher.list_images()
@@ -173,6 +175,23 @@ class GrypeScanner:
                 (r[0], r[1], r[2]): r[3] for r in existing_rows if r[3] is not None
             }
 
+            # Fetch all reference titles and CWE names in one pass before the
+            # match loop, deduplicating across all vulnerabilities and applying
+            # a single global time budget.
+            scan_url_titles: dict[str, str] = {}
+            scan_cwe_titles: dict[str, str] = {}
+            if self.enable_reference_title_fetch:
+                all_match_urls = (
+                    url for m in grype_json.get("matches", []) for url in m.get("vulnerability", {}).get("urls", [])
+                )
+                all_match_cwes = (
+                    c.get("cwe", "")
+                    for m in grype_json.get("matches", [])
+                    for c in m.get("vulnerability", {}).get("cwes", [])
+                    if c.get("cwe")
+                )
+                scan_url_titles, scan_cwe_titles = fetch_all_titles(all_match_urls, all_match_cwes)
+
             # Use a dict keyed by (vuln_id, package_name, installed_version) to
             # deduplicate: grype reports the same CVE+package multiple times when
             # the package is found in more than one filesystem location.  We
@@ -199,9 +218,20 @@ class GrypeScanner:
 
                 cwes_list = vuln.get("cwes", [])
                 cwes = ",".join(c.get("cwe", "") for c in cwes_list) if cwes_list else None
+                cwe_titles = None
+                if cwes_list:
+                    cwe_ids = [c.get("cwe", "") for c in cwes_list if c.get("cwe")]
+                    cwe_title_map = {cid: scan_cwe_titles[cid] for cid in cwe_ids if cid in scan_cwe_titles}
+                    if cwe_title_map:
+                        cwe_titles = json.dumps(cwe_title_map, ensure_ascii=False)
 
                 urls_list = vuln.get("urls", [])
                 urls = ",".join(urls_list) if urls_list else None
+                urls_titles = None
+                if urls_list:
+                    url_title_map = {u: scan_url_titles[u] for u in urls_list if u in scan_url_titles}
+                    if url_title_map:
+                        urls_titles = json.dumps(url_title_map, ensure_ascii=False)
 
                 fix_versions = fix.get("versions", [])
                 fixed_version = fix_versions[0] if fix_versions else None
@@ -231,6 +261,7 @@ class GrypeScanner:
                         description=vuln.get("description") or None,
                         data_source=vuln.get("dataSource") or None,
                         urls=urls,
+                        urls_titles=urls_titles,
                         cvss_base_score=cvss_base_score,
                         cvss_vector=cvss_vector,
                         epss_score=epss_score,
@@ -238,6 +269,7 @@ class GrypeScanner:
                         is_kev=bool(vuln.get("knownExploited")),
                         risk_score=vuln.get("risk"),
                         cwes=cwes,
+                        cwe_titles=cwe_titles,
                         package_name=package_name,
                         installed_version=installed_version,
                         fixed_version=fixed_version,

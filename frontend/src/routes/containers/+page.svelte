@@ -11,8 +11,23 @@
   import ContainerRow from "$lib/components/vuln/ContainerRow.svelte";
   import type { ContainerRecord } from "$lib/components/vuln/ContainerRow.svelte";
   import { PRIORITY_ORDER } from "$lib/components/vuln/utils.js";
+  import { page } from "$app/stores";
+  import { replaceState } from "$app/navigation";
 
   let { data }: { data: PageData } = $props();
+
+  // ── Deep link state ─────────────────────────────────────────────────────
+  let activeCve = $derived($page.url.searchParams.get("cve"));
+
+  function handleModalChange(vulnId: string, open: boolean) {
+    if (!open) {
+      const u = new URL($page.url);
+      if (u.searchParams.get("cve") === vulnId) {
+        u.searchParams.delete("cve");
+        replaceState(u, {});
+      }
+    }
+  }
 
   let hideVexResolved = $state(false);
   let anyContainerHasVex = $derived(
@@ -174,7 +189,12 @@
           </Table.Header>
           <Table.Body>
             {#each sortedContainers as container (container.container_name)}
-              <ContainerRow {container} {hideVexResolved} />
+              <ContainerRow
+                {container}
+                {hideVexResolved}
+                {activeCve}
+                onModalChange={handleModalChange}
+              />
             {/each}
           </Table.Body>
         </Table.Root>

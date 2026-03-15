@@ -13,7 +13,7 @@ from backend.tests.fixtures import GRYPE_JSON_NGINX, MOCK_DOCKER_IMAGES
 def _make_scanner(test_db, images=None):
     mock_watcher = MagicMock()
     mock_watcher.list_images.return_value = images if images is not None else MOCK_DOCKER_IMAGES
-    return GrypeScanner(watcher=mock_watcher, database=test_db)
+    return GrypeScanner(watcher=mock_watcher, database=test_db, enable_reference_title_fetch=False)
 
 
 def _mock_subprocess(json_payload: dict, returncode: int = 0) -> CompletedProcess:
@@ -172,6 +172,50 @@ def test_store_scan_parses_urls_as_comma_separated(test_db):
     with Session(test_db.engine) as session:
         vuln = session.exec(select(Vulnerability).where(Vulnerability.vuln_id == "CVE-2024-0001")).first()
     assert "nvd.nist.gov" in vuln.urls
+
+
+@patch("backend.grype_scanner.fetch_all_titles")
+def test_store_scan_persists_reference_titles(mock_fetch_all, test_db):
+    mock_fetch_all.return_value = (
+        {"https://nvd.nist.gov/vuln/detail/CVE-2024-0001": "NVD title"},
+        {},
+    )
+    scanner = GrypeScanner(watcher=MagicMock(), database=test_db, enable_reference_title_fetch=True)
+    scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
+
+    with Session(test_db.engine) as session:
+        vuln = session.exec(select(Vulnerability).where(Vulnerability.vuln_id == "CVE-2024-0001")).first()
+    assert vuln.urls_titles is not None
+    parsed = json.loads(vuln.urls_titles)
+    assert parsed["https://nvd.nist.gov/vuln/detail/CVE-2024-0001"] == "NVD title"
+
+
+@patch("backend.grype_scanner.fetch_all_titles")
+def test_store_scan_persists_cwe_titles(mock_fetch_all, test_db):
+    mock_fetch_all.return_value = (
+        {},
+        {
+            "CWE-119": "Improper Restriction of Operations within the Bounds of a Memory Buffer",
+            "CWE-787": "Out-of-bounds Write",
+        },
+    )
+    scanner = GrypeScanner(watcher=MagicMock(), database=test_db, enable_reference_title_fetch=True)
+    scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
+
+    with Session(test_db.engine) as session:
+        vuln = session.exec(select(Vulnerability).where(Vulnerability.vuln_id == "CVE-2024-0001")).first()
+    assert vuln.cwe_titles is not None
+    parsed = json.loads(vuln.cwe_titles)
+    assert parsed["CWE-119"].startswith("Improper Restriction")
+
+
+@patch("backend.grype_scanner.fetch_all_titles")
+def test_store_scan_calls_fetch_all_titles_once(mock_fetch_all, test_db):
+    """fetch_all_titles must be called exactly once per scan, not per match."""
+    mock_fetch_all.return_value = ({}, {})
+    scanner = GrypeScanner(watcher=MagicMock(), database=test_db, enable_reference_title_fetch=True)
+    scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
+    mock_fetch_all.assert_called_once()
 
 
 def test_store_scan_no_vulnerabilities(test_db):
