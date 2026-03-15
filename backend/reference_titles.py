@@ -1,8 +1,10 @@
 import html
+import ipaddress
 import logging
 import re
 import time
 from collections.abc import Iterable
+from urllib.parse import urlparse
 
 import httpx
 
@@ -17,6 +19,38 @@ _GLOBAL_TITLE_BUDGET_SECONDS = 30.0
 _MAX_TITLE_LENGTH = 140
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _CWE_ID_RE = re.compile(r"^CWE-(\d+)$", re.IGNORECASE)
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+_BLOCKED_SUFFIXES = (".local", ".internal", ".localhost")
+
+
+def _is_safe_url(url: str) -> bool:
+    """Return True only if the URL is safe to fetch (public http/https, no private IPs)."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    # Block IP literals that point to private/loopback/link-local/reserved ranges
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            return False
+    except ValueError:
+        pass  # Not an IP literal — check hostname
+    lower = host.lower()
+    if lower == "localhost" or any(lower.endswith(s) for s in _BLOCKED_SUFFIXES):
+        return False
+    return True
+
+
+def _assert_safe_url(request: httpx.Request) -> None:
+    """httpx event hook: fires before every request, including redirects."""
+    if not _is_safe_url(str(request.url)):
+        raise httpx.HTTPError(f"Blocked request to unsafe URL: {request.url}")
 
 
 def _clean_title(raw_title: str) -> str | None:
@@ -78,7 +112,11 @@ def fetch_reference_titles(urls: Iterable[str]) -> dict[str, str]:
 
     titles: dict[str, str] = {}
     try:
-        with httpx.Client(timeout=_TITLE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=_TITLE_TIMEOUT_SECONDS,
+            follow_redirects=True,
+            event_hooks={"request": [_assert_safe_url]},
+        ) as client:
             for url in unique_urls:
                 title = _fetch_title(url, client)
                 if title:
@@ -146,7 +184,11 @@ def fetch_all_titles(
     deadline = time.monotonic() + budget_seconds
 
     try:
-        with httpx.Client(timeout=_TITLE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=_TITLE_TIMEOUT_SECONDS,
+            follow_redirects=True,
+            event_hooks={"request": [_assert_safe_url]},
+        ) as client:
             for url in unique_urls:
                 title = _fetch_title(url, client, deadline)
                 if title:
@@ -184,7 +226,11 @@ def fetch_cwe_titles(cwe_ids: Iterable[str]) -> dict[str, str]:
 
     titles: dict[str, str] = {}
     try:
-        with httpx.Client(timeout=_TITLE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=_TITLE_TIMEOUT_SECONDS,
+            follow_redirects=True,
+            event_hooks={"request": [_assert_safe_url]},
+        ) as client:
             for cwe_id in normalised:
                 cwe_num = cwe_id.replace("CWE-", "")
                 url = f"https://cwe.mitre.org/data/definitions/{cwe_num}.html"

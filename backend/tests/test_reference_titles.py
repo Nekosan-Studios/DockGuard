@@ -3,10 +3,12 @@ from unittest.mock import MagicMock, patch
 import httpx
 
 from backend.reference_titles import (
+    _assert_safe_url,
     _clean_title,
     _extract_cwe_name,
     _extract_html_title,
     _fetch_title,
+    _is_safe_url,
     fetch_all_titles,
     fetch_cwe_titles,
     fetch_reference_titles,
@@ -160,6 +162,59 @@ def test_fetch_all_titles_deduplicates_urls_and_cwes():
     assert client.get.call_count == 2
     assert url_titles == {"https://example.com/a": "Advisory"}
     assert cwe_titles == {"CWE-79": "Cross-site Scripting"}
+
+
+def test_is_safe_url_allows_public_https():
+    assert _is_safe_url("https://nvd.nist.gov/vuln/detail/CVE-2023-1234") is True
+
+
+def test_is_safe_url_allows_public_http():
+    assert _is_safe_url("http://example.com/advisory") is True
+
+
+def test_is_safe_url_blocks_file_scheme():
+    assert _is_safe_url("file:///etc/passwd") is False
+
+
+def test_is_safe_url_blocks_loopback_ip():
+    assert _is_safe_url("http://127.0.0.1/") is False
+
+
+def test_is_safe_url_blocks_private_ip():
+    assert _is_safe_url("http://192.168.1.1/") is False
+    assert _is_safe_url("http://10.0.0.1/") is False
+
+
+def test_is_safe_url_blocks_link_local_ip():
+    assert _is_safe_url("http://169.254.169.254/latest/meta-data/") is False
+
+
+def test_is_safe_url_blocks_localhost_hostname():
+    assert _is_safe_url("http://localhost/") is False
+
+
+def test_is_safe_url_blocks_dot_local_hostname():
+    assert _is_safe_url("http://myserver.local/") is False
+
+
+def test_is_safe_url_blocks_internal_hostname():
+    assert _is_safe_url("http://db.internal/") is False
+
+
+def test_assert_safe_url_raises_for_private_ip():
+    request = MagicMock(spec=httpx.Request)
+    request.url = httpx.URL("http://192.168.1.1/")
+    try:
+        _assert_safe_url(request)
+        assert False, "Expected HTTPError"
+    except httpx.HTTPError:
+        pass
+
+
+def test_assert_safe_url_does_not_raise_for_public_url():
+    request = MagicMock(spec=httpx.Request)
+    request.url = httpx.URL("https://nvd.nist.gov/vuln/detail/CVE-2023-1234")
+    _assert_safe_url(request)  # Should not raise
 
 
 def test_fetch_all_titles_stops_when_budget_exceeded():
