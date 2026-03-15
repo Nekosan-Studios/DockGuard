@@ -119,6 +119,13 @@
     modalOpen = true;
   }
 
+  function handleRowKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      modalOpen = true;
+    }
+  }
+
   // If the backend didn't supply a `.packages` array but did supply top-level package fields, we wrap it in a mock array to keep the template logic identical.
   let packages = $derived(
     vuln.packages && vuln.packages.length > 0
@@ -145,7 +152,12 @@
   }
 </script>
 
-<Table.Row class="group cursor-pointer" onclick={handleRowClick}>
+<Table.Row
+  class="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+  tabindex="0"
+  onclick={handleRowClick}
+  onkeydown={handleRowKeydown}
+>
   <CveLinkCell
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}

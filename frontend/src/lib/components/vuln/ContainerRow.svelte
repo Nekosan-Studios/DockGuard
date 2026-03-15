@@ -621,7 +621,7 @@
                     </Table.Row>
                   </Table.Header>
                   <Table.Body>
-                    {#each visibleVulns as vuln, vi (vi)}
+                    {#each visibleVulns as vuln (vuln.vuln_id)}
                       <VulnRow
                         {vuln}
                         hasAnyVex={hasVexData}

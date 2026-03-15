@@ -174,11 +174,12 @@ def test_store_scan_parses_urls_as_comma_separated(test_db):
     assert "nvd.nist.gov" in vuln.urls
 
 
-@patch("backend.grype_scanner.fetch_reference_titles")
-def test_store_scan_persists_reference_titles(mock_fetch_titles, test_db):
-    mock_fetch_titles.return_value = {
-        "https://nvd.nist.gov/vuln/detail/CVE-2024-0001": "NVD title",
-    }
+@patch("backend.grype_scanner.fetch_all_titles")
+def test_store_scan_persists_reference_titles(mock_fetch_all, test_db):
+    mock_fetch_all.return_value = (
+        {"https://nvd.nist.gov/vuln/detail/CVE-2024-0001": "NVD title"},
+        {},
+    )
     scanner = GrypeScanner(watcher=MagicMock(), database=test_db, enable_reference_title_fetch=True)
     scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
 
@@ -189,12 +190,15 @@ def test_store_scan_persists_reference_titles(mock_fetch_titles, test_db):
     assert parsed["https://nvd.nist.gov/vuln/detail/CVE-2024-0001"] == "NVD title"
 
 
-@patch("backend.grype_scanner.fetch_cwe_titles")
-def test_store_scan_persists_cwe_titles(mock_fetch_cwe_titles, test_db):
-    mock_fetch_cwe_titles.return_value = {
-        "CWE-119": "Improper Restriction of Operations within the Bounds of a Memory Buffer",
-        "CWE-787": "Out-of-bounds Write",
-    }
+@patch("backend.grype_scanner.fetch_all_titles")
+def test_store_scan_persists_cwe_titles(mock_fetch_all, test_db):
+    mock_fetch_all.return_value = (
+        {},
+        {
+            "CWE-119": "Improper Restriction of Operations within the Bounds of a Memory Buffer",
+            "CWE-787": "Out-of-bounds Write",
+        },
+    )
     scanner = GrypeScanner(watcher=MagicMock(), database=test_db, enable_reference_title_fetch=True)
     scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
 
@@ -203,6 +207,15 @@ def test_store_scan_persists_cwe_titles(mock_fetch_cwe_titles, test_db):
     assert vuln.cwe_titles is not None
     parsed = json.loads(vuln.cwe_titles)
     assert parsed["CWE-119"].startswith("Improper Restriction")
+
+
+@patch("backend.grype_scanner.fetch_all_titles")
+def test_store_scan_calls_fetch_all_titles_once(mock_fetch_all, test_db):
+    """fetch_all_titles must be called exactly once per scan, not per match."""
+    mock_fetch_all.return_value = ({}, {})
+    scanner = GrypeScanner(watcher=MagicMock(), database=test_db, enable_reference_title_fetch=True)
+    scanner._store_scan(GRYPE_JSON_NGINX, "nginx:latest")
+    mock_fetch_all.assert_called_once()
 
 
 def test_store_scan_no_vulnerabilities(test_db):

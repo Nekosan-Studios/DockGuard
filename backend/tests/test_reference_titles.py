@@ -7,6 +7,7 @@ from backend.reference_titles import (
     _extract_cwe_name,
     _extract_html_title,
     _fetch_title,
+    fetch_all_titles,
     fetch_cwe_titles,
     fetch_reference_titles,
 )
@@ -124,3 +125,63 @@ def test_fetch_cwe_titles_uses_cwe_id_as_key_and_name_as_value():
         result = fetch_cwe_titles(["CWE-400", "cwe-400", "invalid"])
 
     assert result == {"CWE-400": "Uncontrolled Resource Consumption"}
+
+
+def test_fetch_all_titles_returns_empty_for_no_input():
+    url_titles, cwe_titles = fetch_all_titles([], [])
+    assert url_titles == {}
+    assert cwe_titles == {}
+
+
+def test_fetch_all_titles_deduplicates_urls_and_cwes():
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
+
+    url_response = MagicMock(
+        status_code=200,
+        headers={"content-type": "text/html"},
+        text="<title>Advisory</title>",
+    )
+    cwe_response = MagicMock(
+        status_code=200,
+        headers={"content-type": "text/html"},
+        text="<title>CWE - CWE-79: Cross-site Scripting</title>",
+    )
+    # Only 2 HTTP calls should be made despite duplicates in input
+    client.get.side_effect = [url_response, cwe_response]
+
+    with patch("backend.reference_titles.httpx.Client", return_value=client):
+        url_titles, cwe_titles = fetch_all_titles(
+            ["https://example.com/a", "https://example.com/a"],  # duplicate URL
+            ["CWE-79", "cwe-79"],  # duplicate CWE
+        )
+
+    assert client.get.call_count == 2
+    assert url_titles == {"https://example.com/a": "Advisory"}
+    assert cwe_titles == {"CWE-79": "Cross-site Scripting"}
+
+
+def test_fetch_all_titles_stops_when_budget_exceeded():
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
+    client.get.return_value = MagicMock(
+        status_code=200,
+        headers={"content-type": "text/html"},
+        text="<title>Advisory</title>",
+    )
+
+    # Simulate an already-expired budget by setting budget_seconds to 0 and
+    # patching monotonic so the deadline is immediately in the past.
+    with patch("backend.reference_titles.httpx.Client", return_value=client):
+        with patch("backend.reference_titles.time.monotonic", return_value=1000.0):
+            url_titles, cwe_titles = fetch_all_titles(
+                ["https://example.com/a", "https://example.com/b"],
+                [],
+                budget_seconds=0.0,  # deadline = 1000.0 + 0.0 = 1000.0, already met
+            )
+
+    client.get.assert_not_called()
+    assert url_titles == {}
+    assert cwe_titles == {}

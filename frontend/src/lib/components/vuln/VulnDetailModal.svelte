@@ -275,7 +275,7 @@
         onerror={(e) =>
           console.error("[DockGuard] vulnerability detail render error:", e)}
       >
-        <div class="space-y-5">
+        <div class="mt-4 space-y-5">
           <!-- Containers -->
           {#if showContainers && vuln.containers && vuln.containers.length > 0}
             <section>

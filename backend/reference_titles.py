@@ -1,6 +1,7 @@
 import html
 import logging
 import re
+import time
 from collections.abc import Iterable
 
 import httpx
@@ -10,6 +11,9 @@ logger = logging.getLogger(__name__)
 _TITLE_TIMEOUT_SECONDS = 2.5
 _MAX_URLS_PER_VULN = 8
 _MAX_CWES_PER_VULN = 8
+_MAX_URLS_PER_SCAN = 100
+_MAX_CWES_PER_SCAN = 50
+_GLOBAL_TITLE_BUDGET_SECONDS = 30.0
 _MAX_TITLE_LENGTH = 140
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _CWE_ID_RE = re.compile(r"^CWE-(\d+)$", re.IGNORECASE)
@@ -36,13 +40,15 @@ def _extract_html_title(body: str) -> str | None:
     return _clean_title(match.group(1))
 
 
-def _fetch_title(url: str, client: httpx.Client) -> str | None:
+def _fetch_title(url: str, client: httpx.Client, deadline: float | None = None) -> str | None:
+    if deadline is not None and time.monotonic() >= deadline:
+        return None
     try:
         response = client.get(
             url,
             headers={"User-Agent": "DockGuard/1.0 (+https://github.com/mattweinecke/DockGuard)"},
         )
-    except (httpx.HTTPError, ValueError):
+    except httpx.HTTPError, ValueError:
         return None
 
     if response.status_code < 200 or response.status_code >= 300:
@@ -98,6 +104,67 @@ def _extract_cwe_name(title: str, cwe_id: str) -> str | None:
     if match:
         return _clean_title(match.group(1))
     return None
+
+
+def fetch_all_titles(
+    all_urls: Iterable[str],
+    all_cwe_ids: Iterable[str],
+    budget_seconds: float = _GLOBAL_TITLE_BUDGET_SECONDS,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Fetch reference URL titles and CWE names for an entire scan in one pass.
+
+    Deduplicates across all vulnerabilities and stops once the global time budget
+    is exhausted. Returns (url_titles, cwe_titles).
+    """
+    seen_urls: set[str] = set()
+    unique_urls: list[str] = []
+    for raw_url in all_urls:
+        url = raw_url.strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        unique_urls.append(url)
+        if len(unique_urls) >= _MAX_URLS_PER_SCAN:
+            break
+
+    seen_cwes: set[str] = set()
+    unique_cwes: list[str] = []
+    for raw_cwe in all_cwe_ids:
+        cwe_id = _normalise_cwe_id(raw_cwe)
+        if not cwe_id or cwe_id in seen_cwes:
+            continue
+        seen_cwes.add(cwe_id)
+        unique_cwes.append(cwe_id)
+        if len(unique_cwes) >= _MAX_CWES_PER_SCAN:
+            break
+
+    if not unique_urls and not unique_cwes:
+        return {}, {}
+
+    url_titles: dict[str, str] = {}
+    cwe_titles: dict[str, str] = {}
+    deadline = time.monotonic() + budget_seconds
+
+    try:
+        with httpx.Client(timeout=_TITLE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+            for url in unique_urls:
+                title = _fetch_title(url, client, deadline)
+                if title:
+                    url_titles[url] = title
+
+            for cwe_id in unique_cwes:
+                cwe_num = cwe_id.replace("CWE-", "")
+                cwe_url = f"https://cwe.mitre.org/data/definitions/{cwe_num}.html"
+                title = _fetch_title(cwe_url, client, deadline)
+                if not title:
+                    continue
+                name = _extract_cwe_name(title, cwe_id)
+                if name:
+                    cwe_titles[cwe_id] = name
+    except Exception:
+        logger.debug("Reference title fetching skipped due to unexpected error", exc_info=True)
+
+    return url_titles, cwe_titles
 
 
 def fetch_cwe_titles(cwe_ids: Iterable[str]) -> dict[str, str]:
