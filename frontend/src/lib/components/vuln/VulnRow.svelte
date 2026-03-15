@@ -154,7 +154,7 @@
 
 <Table.Row
   class="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-  tabindex="0"
+  tabindex={0}
   onclick={handleRowClick}
   onkeydown={handleRowKeydown}
 >

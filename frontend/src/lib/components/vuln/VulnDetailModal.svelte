@@ -8,6 +8,7 @@
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
   import Clock from "@lucide/svelte/icons/clock";
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+  import { browser } from "$app/environment";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
   import type { Vulnerability } from "./VulnRow.svelte";
@@ -130,7 +131,7 @@
 
   function renderMarkdown(md: string): string {
     const raw = marked.parse(md, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
+    return browser ? DOMPurify.sanitize(raw) : raw;
   }
 
   // ─── Advisory enrichment ─────────────────────────────────────────────────
