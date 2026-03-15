@@ -323,8 +323,11 @@ async def send_daily_digest(db: Database) -> None:
                 deltas["total"] = total_vulns - prev.get("total", 0)
                 deltas["kev"] = kev_count - prev.get("kev", 0)
                 deltas["eol"] = eol_count - prev.get("eol", 0)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning(
+                    "Failed to parse last_digest_data from AppState; skipping delta computation: %s",
+                    exc,
+                )
 
         # Build digest body
         lines = [
