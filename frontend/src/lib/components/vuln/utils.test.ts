@@ -142,7 +142,8 @@ describe("vuln/utils", () => {
       const result = decodeCvssVector(
         "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
       );
-      expect(result).toEqual([
+      expect(result).not.toBeNull();
+      expect(result!.map((c) => ({ label: c.label, value: c.value }))).toEqual([
         { label: "Attack Vector", value: "Network" },
         { label: "Attack Complexity", value: "Low" },
         { label: "Privileges Required", value: "None" },
@@ -152,6 +153,12 @@ describe("vuln/utils", () => {
         { label: "Integrity", value: "High" },
         { label: "Availability", value: "High" },
       ]);
+      // Each component should have description and severity
+      for (const c of result!) {
+        expect(c).toHaveProperty("description");
+        expect(c).toHaveProperty("severity");
+        expect(["none", "low", "medium", "high"]).toContain(c.severity);
+      }
     });
 
     it("returns null when AV metric is missing", () => {
@@ -163,7 +170,22 @@ describe("vuln/utils", () => {
         "CVSS:3.1/AV:N/AC:X/PR:N/UI:N/S:U/C:H/I:H/A:H"
       );
       expect(result).not.toBeNull();
-      expect(result![1]).toEqual({ label: "Attack Complexity", value: "X" });
+      expect(result![1].label).toBe("Attack Complexity");
+      expect(result![1].value).toBe("X");
+    });
+
+    it("decodes a CVSS 4.0 vector", () => {
+      const result = decodeCvssVector(
+        "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+      );
+      expect(result).not.toBeNull();
+      expect(result!.length).toBe(11);
+      expect(result!.map((c) => c.label)).toContain("Attack Requirements");
+      expect(result!.map((c) => c.label)).toContain("Vuln. Availability");
+      expect(result!.map((c) => c.label)).toContain("Sub. Availability");
+      const va = result!.find((c) => c.label === "Vuln. Availability");
+      expect(va!.value).toBe("High");
+      expect(va!.severity).toBe("high");
     });
   });
 
