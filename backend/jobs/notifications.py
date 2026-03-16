@@ -219,7 +219,7 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
             if not scan:
                 continue
             scan_container_names = sorted(set(containers_by_scan.get(scan_id, [])))
-            container_labels = scan_container_names or [scan.image_name]
+            container_labels = [f"{name} ({scan.image_name})" for name in scan_container_names] or [scan.image_name]
             for v in vulns:
                 for container_label in container_labels:
                     all_by_container.setdefault(container_label, []).append(v)

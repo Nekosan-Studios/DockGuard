@@ -543,6 +543,44 @@ class TestProcessScanNotifications:
             assert "urgent" not in log_types
 
     @pytest.mark.anyio
+    async def test_new_vuln_notification_includes_container_and_image_label(self, test_db):
+        scan = seed_scan(
+            test_db,
+            "nginx:latest",
+            "sha256:aaa",
+            [VULN_HIGH],
+            container_names=["web-1"],
+        )
+
+        with Session(test_db.engine) as session:
+            session.add(
+                NotificationChannel(
+                    name="AllNew",
+                    apprise_url="json://localhost",
+                    enabled=True,
+                    notify_all_new=True,
+                )
+            )
+            session.commit()
+
+        from backend.jobs.notifications import process_scan_notifications
+
+        with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+            mock_instance = MockApprise.return_value
+            mock_instance.add.return_value = True
+            mock_instance.notify.return_value = True
+
+            await process_scan_notifications(test_db, [scan.id], [None])
+
+        with Session(test_db.engine) as session:
+            logs = session.exec(
+                NotificationLog.__table__.select()  # type: ignore[attr-defined]
+            ).all()
+            new_logs = [row for row in logs if row.notification_type == "new_vulns"]
+            assert len(new_logs) == 1
+            assert "web-1 (nginx:latest)" in new_logs[0].body
+
+    @pytest.mark.anyio
     async def test_no_notification_when_scan_id_does_not_exist(self, test_db):
         """If scan IDs don't correspond to real Scan rows, no notifications fire.
         This is the exact scenario the original bug produced."""

@@ -186,6 +186,42 @@ class GrypeScanner:
                 (r[0], r[1], r[2]): r[3] for r in existing_rows if r[3] is not None
             }
 
+            # Best-effort lineage stitching for first scan of a new image_name.
+            # If this image_name has no prior vulnerability history, inherit
+            # first_seen_at from prior scans in the same repository where at
+            # least one scan-time container name overlaps.
+            #
+            # Tradeoff: container names can change in compose/docker and will
+            # break this continuity; this is intentional and acceptable.
+            if not first_seen_map and normalised_container_names:
+                inherited_rows = session.exec(
+                    select(
+                        Vulnerability.vuln_id,
+                        Vulnerability.package_name,
+                        Vulnerability.installed_version,
+                        func.min(Vulnerability.first_seen_at),
+                    )
+                    .join(Scan, Vulnerability.scan_id == Scan.id)
+                    .join(ScanContainer, ScanContainer.scan_id == Scan.id)
+                    .where(Scan.image_repository == image_repository)
+                    .where(Scan.image_name != image_name)
+                    .where(ScanContainer.container_name.in_(normalised_container_names))
+                    .group_by(
+                        Vulnerability.vuln_id,
+                        Vulnerability.package_name,
+                        Vulnerability.installed_version,
+                    )
+                ).all()
+                for vuln_id, package_name, installed_version, earliest_first_seen in inherited_rows:
+                    if earliest_first_seen is None:
+                        continue
+                    key = (vuln_id, package_name, installed_version)
+                    existing_first_seen = first_seen_map.get(key)
+                    if existing_first_seen is None:
+                        first_seen_map[key] = earliest_first_seen
+                    else:
+                        first_seen_map[key] = min(existing_first_seen, earliest_first_seen)
+
             # Fetch all reference titles and CWE names in one pass before the
             # match loop, deduplicating across all vulnerabilities and applying
             # a single global time budget.
