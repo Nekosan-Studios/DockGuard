@@ -39,6 +39,8 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 
 - **Track history over time** — See how your exposure changes as you update images and compare results across versions.
 
+- **Notifications** — Get alerted when new vulnerabilities are found. DockGuard supports Apprise-compatible notification channels (Slack, Discord, email, and many more).
+
 - **Fully self-hosted** — No cloud account. No telemetry. No subscription. DockGuard runs entirely on your machine and stores all data locally in a SQLite database.
 
 
