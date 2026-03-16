@@ -46,23 +46,28 @@ def upgrade() -> None:
     )
 
     # Recompute first_seen_at with correct lineage semantics (image_name).
+    # Pre-aggregates the earliest scanned_at per (vuln, package, version, image)
+    # in one pass, then joins back — avoids a correlated subquery per row.
     bind.execute(
         sa.text(
             """
             UPDATE vulnerability
-            SET first_seen_at = (
-                SELECT MIN(s.scanned_at)
+            SET first_seen_at = earliest.min_scanned_at
+            FROM (
+                SELECT v2.vuln_id,
+                       v2.package_name,
+                       v2.installed_version,
+                       s.image_name,
+                       MIN(s.scanned_at) AS min_scanned_at
                 FROM vulnerability v2
                 JOIN scan s ON s.id = v2.scan_id
-                WHERE v2.vuln_id = vulnerability.vuln_id
-                  AND v2.package_name = vulnerability.package_name
-                  AND v2.installed_version = vulnerability.installed_version
-                  AND s.image_name = (
-                      SELECT s0.image_name
-                      FROM scan s0
-                      WHERE s0.id = vulnerability.scan_id
-                  )
-            )
+                GROUP BY v2.vuln_id, v2.package_name, v2.installed_version, s.image_name
+            ) AS earliest
+            JOIN scan s ON s.id = vulnerability.scan_id
+            WHERE vulnerability.vuln_id          = earliest.vuln_id
+              AND vulnerability.package_name      = earliest.package_name
+              AND vulnerability.installed_version = earliest.installed_version
+              AND s.image_name                    = earliest.image_name
             """
         )
     )
