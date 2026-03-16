@@ -713,3 +713,330 @@ class TestProcessScanNotifications:
             ).all()
             eol_logs = [row for row in logs if row.notification_type == "eol"]
             assert len(eol_logs) == 0
+
+
+# ---------------------------------------------------------------------------
+# Helper function unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestVulnLabel:
+    def test_plain_text_when_no_base_url(self):
+        from backend.jobs.notifications import _vuln_label
+
+        assert _vuln_label("CVE-2024-0001", "") == "CVE-2024-0001"
+
+    def test_markdown_link_when_base_url_set(self):
+        from backend.jobs.notifications import _vuln_label
+
+        result = _vuln_label("CVE-2024-0001", "https://dockguard.example.com")
+        assert result == "[CVE-2024-0001](https://dockguard.example.com/vulnerabilities?cve=CVE-2024-0001)"
+
+    def test_base_url_trailing_slash_stripped(self):
+        from backend.jobs.notifications import _vuln_label
+
+        result = _vuln_label("CVE-2024-0001", "https://dockguard.example.com/")
+        assert result == "[CVE-2024-0001](https://dockguard.example.com/vulnerabilities?cve=CVE-2024-0001)"
+
+
+class TestPriorityCountsStr:
+    def test_multiple_priorities(self):
+        from backend.jobs.notifications import _priority_counts_str
+
+        result = _priority_counts_str({"Urgent": 2, "High": 4, "Medium": 3})
+        assert result == "2 Urgent, 4 High, 3 Medium"
+
+    def test_zero_count_omitted(self):
+        from backend.jobs.notifications import _priority_counts_str
+
+        result = _priority_counts_str({"Urgent": 0, "High": 1})
+        assert result == "1 High"
+
+    def test_empty_dict(self):
+        from backend.jobs.notifications import _priority_counts_str
+
+        assert _priority_counts_str({}) == "0 vulnerabilities"
+
+
+class TestBuildVulnBody:
+    """Coverage for all three tiers of _build_vuln_body."""
+
+    def _make_vuln(self, vuln_id: str, risk_score: float, is_kev: bool = False):
+        from backend.models import Vulnerability
+
+        return Vulnerability(
+            scan_id=1,
+            vuln_id=vuln_id,
+            severity="High",
+            package_name="pkg",
+            installed_version="1.0",
+            risk_score=risk_score,
+            is_kev=is_kev,
+        )
+
+    def test_tier1_full_detail(self):
+        """≤5 vulns → full per-CVE listing."""
+        from backend.jobs.notifications import _build_vuln_body
+
+        vulns = [self._make_vuln(f"CVE-2024-000{i}", 70.0) for i in range(3)]
+        body = _build_vuln_body({"web": vulns}, base_url="")
+        assert "CVE-2024-0000" in body
+        assert "web" in body
+
+    def test_tier1_includes_kev_badge(self):
+        from backend.jobs.notifications import _build_vuln_body
+
+        vuln = self._make_vuln("CVE-2024-9999", 70.0, is_kev=True)
+        body = _build_vuln_body({"web": [vuln]}, base_url="")
+        assert "[KEV]" in body
+
+    def test_tier1_includes_markdown_link_with_base_url(self):
+        from backend.jobs.notifications import _build_vuln_body
+
+        vuln = self._make_vuln("CVE-2024-9999", 70.0)
+        body = _build_vuln_body({"web": [vuln]}, base_url="https://example.com")
+        assert "[CVE-2024-9999](" in body
+
+    def test_tier2_per_container_summary(self):
+        """6–10 total vulns with ≤10 containers → per-container summary lines."""
+        from backend.jobs.notifications import _build_vuln_body
+
+        # 6 vulns in 2 containers — exceeds DETAIL_THRESHOLD of 5
+        vulns = [self._make_vuln(f"CVE-2024-{i:04d}", 70.0) for i in range(3)]
+        body = _build_vuln_body({"web": vulns, "db": vulns}, base_url="")
+        # Tier 2 shows container names as bold labels
+        assert "**web**" in body
+        assert "**db**" in body
+        # Tier 2 does NOT list individual CVE IDs
+        assert "CVE-2024-0000" not in body
+
+    def test_tier2_kev_count_in_summary(self):
+        from backend.jobs.notifications import _build_vuln_body
+
+        vulns = [self._make_vuln(f"CVE-2024-{i:04d}", 70.0, is_kev=(i == 0)) for i in range(3)]
+        body = _build_vuln_body({"web": vulns, "db": vulns}, base_url="")
+        assert "KEV" in body
+
+    def test_tier3_rolled_up_total(self):
+        """More than 10 containers → single rolled-up summary."""
+        from backend.jobs.notifications import _build_vuln_body
+
+        # 11 containers, 1 vuln each → triggers tier 3
+        containers = {f"container-{i}": [self._make_vuln(f"CVE-2024-{i:04d}", 70.0)] for i in range(11)}
+        body = _build_vuln_body(containers, base_url="")
+        assert "**11** containers" in body
+        assert "**11**" in body
+
+    def test_tier3_kev_count_shown(self):
+        from backend.jobs.notifications import _build_vuln_body
+
+        containers = {f"container-{i}": [self._make_vuln(f"CVE-2024-{i:04d}", 70.0, is_kev=True)] for i in range(11)}
+        body = _build_vuln_body(containers, base_url="")
+        assert "CISA KEV" in body
+
+
+class TestFindNewVulnerabilitiesEmpty:
+    def test_empty_scan_ids_returns_empty_dict(self, test_db):
+        from backend.jobs.notifications import find_new_vulnerabilities
+
+        with Session(test_db.engine) as session:
+            result = find_new_vulnerabilities(session, [])
+
+        assert result == {}
+
+
+class TestProcessScanNotificationsNoChannels:
+    @pytest.mark.anyio
+    async def test_returns_early_when_no_enabled_channels(self, test_db):
+        """process_scan_notifications must no-op when there are no enabled channels."""
+        from backend.jobs.notifications import process_scan_notifications
+
+        scan = seed_scan(test_db, "nginx:latest", "sha256:aaa", [VULN_CRITICAL])
+
+        with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+            await process_scan_notifications(test_db, [scan.id], [None])
+            # Apprise should never be instantiated when there are no channels
+            MockApprise.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# send_daily_digest
+# ---------------------------------------------------------------------------
+
+
+class TestSendDailyDigest:
+    def _add_digest_channel(self, test_db):
+        with Session(test_db.engine) as session:
+            ch = NotificationChannel(
+                name="Digest",
+                apprise_url="json://localhost",
+                enabled=True,
+                notify_digest=True,
+            )
+            session.add(ch)
+            session.commit()
+
+    @pytest.mark.anyio
+    async def test_no_channels_returns_early(self, test_db):
+        from backend.jobs.notifications import send_daily_digest
+
+        with patch("backend.jobs.notifications.DockerWatcher") as MockWatcher:
+            await send_daily_digest(test_db)
+            MockWatcher.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_no_running_containers_returns_early(self, test_db):
+        from backend.jobs.notifications import send_daily_digest
+
+        self._add_digest_channel(test_db)
+
+        with patch("backend.jobs.notifications.DockerWatcher") as MockWatcher:
+            MockWatcher.return_value.list_running_containers.return_value = []
+            await send_daily_digest(test_db)
+
+        # No notification log created
+        with Session(test_db.engine) as session:
+            logs = session.exec(NotificationLog.__table__.select()).all()  # type: ignore[attr-defined]
+        assert len(logs) == 0
+
+    @pytest.mark.anyio
+    async def test_sends_digest_and_saves_app_state(self, test_db):
+        from backend.jobs.notifications import send_daily_digest
+        from backend.models import AppState
+
+        self._add_digest_channel(test_db)
+        seed_scan(test_db, "nginx:latest", "sha256:aaa", [VULN_CRITICAL, VULN_HIGH])
+
+        with patch("backend.jobs.notifications.DockerWatcher") as MockWatcher:
+            MockWatcher.return_value.list_running_containers.return_value = [
+                {"image_name": "nginx:latest"},
+            ]
+            with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+                mock_inst = MockApprise.return_value
+                mock_inst.add.return_value = True
+                mock_inst.notify.return_value = True
+
+                await send_daily_digest(test_db)
+
+        # Notification log should be written
+        with Session(test_db.engine) as session:
+            logs = session.exec(NotificationLog.__table__.select()).all()  # type: ignore[attr-defined]
+            digest_logs = [r for r in logs if r.notification_type == "digest"]
+        assert len(digest_logs) == 1
+
+        # AppState.last_digest_data should be persisted
+        with Session(test_db.engine) as session:
+            state = session.get(AppState, 1)
+        assert state is not None
+        assert state.last_digest_data is not None
+        import json
+
+        data = json.loads(state.last_digest_data)
+        assert data["total"] == 2
+
+    @pytest.mark.anyio
+    async def test_includes_delta_on_second_run(self, test_db):
+        """Second digest run computes deltas against saved AppState."""
+        from backend.jobs.notifications import send_daily_digest
+
+        self._add_digest_channel(test_db)
+        seed_scan(test_db, "nginx:latest", "sha256:aaa", [VULN_CRITICAL])
+
+        with patch("backend.jobs.notifications.DockerWatcher") as MockWatcher:
+            MockWatcher.return_value.list_running_containers.return_value = [{"image_name": "nginx:latest"}]
+            with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+                mock_inst = MockApprise.return_value
+                mock_inst.add.return_value = True
+                mock_inst.notify.return_value = True
+                # First run — establishes baseline
+                await send_daily_digest(test_db)
+                captured_bodies: list[str] = []
+                mock_inst.notify.side_effect = lambda **kw: captured_bodies.append(kw.get("body", "")) or True
+                # Second run — should include "Changes since last digest"
+                await send_daily_digest(test_db)
+
+        assert any("Changes since last digest" in b for b in captured_bodies)
+
+    @pytest.mark.anyio
+    async def test_invalid_last_digest_data_does_not_crash(self, test_db):
+        """Corrupt AppState.last_digest_data → warning logged, no crash."""
+        from backend.jobs.notifications import send_daily_digest
+        from backend.models import AppState
+
+        self._add_digest_channel(test_db)
+        seed_scan(test_db, "nginx:latest", "sha256:aaa", [VULN_CRITICAL])
+
+        with Session(test_db.engine) as session:
+            state = AppState(id=1, last_digest_data="not-valid-json")
+            session.add(state)
+            session.commit()
+
+        with patch("backend.jobs.notifications.DockerWatcher") as MockWatcher:
+            MockWatcher.return_value.list_running_containers.return_value = [{"image_name": "nginx:latest"}]
+            with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+                mock_inst = MockApprise.return_value
+                mock_inst.add.return_value = True
+                mock_inst.notify.return_value = True
+                # Should not raise despite corrupt data
+                await send_daily_digest(test_db)
+
+        with Session(test_db.engine) as session:
+            logs = session.exec(NotificationLog.__table__.select()).all()  # type: ignore[attr-defined]
+        assert len([r for r in logs if r.notification_type == "digest"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Notifier service: uncovered branches
+# ---------------------------------------------------------------------------
+
+
+class TestNotifierServiceBranches:
+    @pytest.mark.anyio
+    async def test_all_urls_rejected_returns_false(self):
+        from backend.services.notifier import send
+
+        with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+            mock_inst = MockApprise.return_value
+            mock_inst.add.return_value = False
+            # ap.__bool__ must return False so `if not ap:` is True
+            mock_inst.__bool__ = lambda self: False
+
+            ok, err = await send(["bad://url"], "Title", "Body")
+
+        assert ok is False
+        assert err is not None
+        assert "No valid Apprise URLs" in err
+
+    @pytest.mark.anyio
+    async def test_partial_url_rejection_warns_but_succeeds(self):
+        from backend.services.notifier import send
+
+        add_calls: list[str] = []
+
+        def _add(url):
+            add_calls.append(url)
+            # First URL valid, second invalid
+            return url == "json://localhost"
+
+        with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+            mock_inst = MockApprise.return_value
+            mock_inst.add.side_effect = _add
+            mock_inst.__bool__ = lambda self: True
+            mock_inst.notify.return_value = True
+
+            ok, err = await send(["json://localhost", "bad://url"], "Title", "Body")
+
+        assert ok is True
+        assert err is None
+
+    @pytest.mark.anyio
+    async def test_exception_in_thread_returns_error(self):
+        from backend.services.notifier import send
+
+        with patch("backend.services.notifier.apprise.Apprise") as MockApprise:
+            MockApprise.side_effect = RuntimeError("boom")
+
+            ok, err = await send(["json://localhost"], "Title", "Body")
+
+        assert ok is False
+        assert "boom" in (err or "")

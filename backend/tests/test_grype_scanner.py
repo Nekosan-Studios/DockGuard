@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from sqlmodel import Session, select
 
-from backend.grype_scanner import GrypeScanner
+from backend.grype_scanner import GrypeScanner, _parse_image_repository
 from backend.models import Scan, Vulnerability
 from backend.tests.fixtures import GRYPE_JSON_NGINX, MOCK_DOCKER_IMAGES
 
@@ -270,3 +270,40 @@ def test_parse_datetime_valid(test_db):
 def test_parse_datetime_none(test_db):
     scanner = _make_scanner(test_db)
     assert scanner._parse_datetime(None) is None
+
+
+def test_parse_datetime_go_zero_time(test_db):
+    scanner = _make_scanner(test_db)
+    # Go emits 0001-01-01T00:00:00Z when DB is uninitialised; treat as absent
+    assert scanner._parse_datetime("0001-01-01T00:00:00Z") is None
+
+
+def test_parse_datetime_invalid_string(test_db):
+    scanner = _make_scanner(test_db)
+    assert scanner._parse_datetime("not-a-date") is None
+
+
+# ---------------------------------------------------------------------------
+# _parse_image_repository
+# ---------------------------------------------------------------------------
+
+
+def test_parse_image_repository_simple_tag():
+    assert _parse_image_repository("nginx:latest") == "nginx"
+
+
+def test_parse_image_repository_no_tag():
+    assert _parse_image_repository("nginx") == "nginx"
+
+
+def test_parse_image_repository_full_ref_with_tag():
+    assert _parse_image_repository("ghcr.io/owner/repo:tag") == "ghcr.io/owner/repo"
+
+
+def test_parse_image_repository_registry_with_port_no_tag():
+    # Last colon is the port separator; remainder contains '/' so tag is absent
+    assert _parse_image_repository("registry.com:5000/nginx") == "registry.com:5000/nginx"
+
+
+def test_parse_image_repository_registry_with_port_and_tag():
+    assert _parse_image_repository("myregistry.com:5000/nginx:latest") == "myregistry.com:5000/nginx"
