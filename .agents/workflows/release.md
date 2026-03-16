@@ -26,5 +26,5 @@ The Settings page in the published container will show **DockGuard v1.3.0**.
 
 - **No version bump commits needed.** `pyproject.toml`, `package.json`, and lockfiles are permanently set to `0.0.0` — the git tag is the authoritative version.
 - **Local dev builds** show `DockGuard vDevelopment build` in Settings (no `APP_VERSION` env var set).
-- **Manual CI builds** (via `workflow_dispatch`) will also use `Development build` since no tag is present; this is expected for dev/test builds.
+- **Manual CI builds** (via `workflow_dispatch`) will show the sanitized branch name (e.g. `DockGuard vsemantics_rewrite`) so ad-hoc builds are identifiable.
 - **Semver tagging**: use `vMAJOR.MINOR.PATCH` format (e.g. `v1.3.0`). The `v` prefix is stripped when baking into the image (`APP_VERSION=1.3.0`).

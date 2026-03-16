@@ -113,7 +113,9 @@ jobs:
             # Strip the leading "v" from the tag (v0.2.0 → 0.2.0)
             echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=" >> "$GITHUB_OUTPUT"
+            # Use sanitized branch name so ad-hoc builds are identifiable
+            BRANCH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            echo "value=${BRANCH}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Resolve image tag
