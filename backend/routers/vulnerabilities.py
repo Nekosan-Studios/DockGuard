@@ -220,7 +220,11 @@ def get_critical_vulnerabilities_running(session: Session = Depends(db.get_sessi
 @router.get("/vulnerabilities")
 def get_vulnerabilities_across_running(
     report: str = Query(
-        "all", description="Filter report type. Options: 'critical', 'kev', 'new', 'vex_annotated', 'all'"
+        "all",
+        description=(
+            "Filter report type. Options: 'urgent', 'kev', 'new', 'vex_annotated', 'all'. "
+            "The legacy value 'critical' is still accepted as an alias for 'urgent'."
+        ),
     ),
     hide_vex: bool = Query(False, description="Hide vulnerabilities resolved by VEX"),
     sort_by: str = Query("severity", description="Column to sort by"),

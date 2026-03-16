@@ -142,9 +142,8 @@ Apply this exact definition to all of:
 
 **Response changes**
 
-- Add `new_findings` (latest-scan delta aggregate across latest scans of running image lineages).
-- Keep `new_vulns_24h` as a temporary alias for one compatibility window, but set it equal to `new_findings`.
-- After frontend rollout, remove `new_vulns_24h` in cleanup phase.
+- Replace legacy `new_vulns_24h` with `new_findings` (latest-scan delta aggregate across latest scans of running image lineages).
+- `new_vulns_24h` is no longer returned by this endpoint; all consumers must read `new_findings` instead.
 
 **Frontend consumers**
 
