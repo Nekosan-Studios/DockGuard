@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from backend.jobs.containers import check_running_containers
 from backend.jobs.grype_db import check_db_update
 from backend.jobs.maintenance import purge_old_data
-from backend.models import Scan, Vulnerability
+from backend.models import Scan, ScanContainer, Vulnerability
 from backend.scheduler import ContainerScheduler
 from backend.tests.conftest import VULN_CRITICAL, VULN_HIGH, seed_scan
 
@@ -101,6 +101,30 @@ def test_updated_image_same_tag_triggers_scan(mock_watcher_cls, mock_create_task
 
     mock_create_task.assert_called_once()
     assert "sha256:bbbb" in seen_digests
+
+
+@patch("backend.jobs.containers.GrypeScanner.scan_image_async", new_callable=MagicMock)
+@patch("backend.jobs.containers.asyncio.create_task")
+@patch("backend.jobs.containers.DockerWatcher")
+def test_known_digest_does_not_insert_retroactive_scan_container_rows(
+    mock_watcher_cls, mock_create_task, mock_scan, test_db
+):
+    """check_running_containers must not write ScanContainer rows for already-known images.
+    ScanContainer is a historical record written only at scan completion time."""
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
+    seen_digests = {"sha256:aaaa"}
+    semaphore = asyncio.Semaphore(1)
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("nginx:latest", "sha256:aaaa", "web-1"),
+    ]
+
+    asyncio.run(check_running_containers(test_db, seen_digests, semaphore))
+
+    with Session(test_db.engine) as session:
+        rows = session.exec(select(ScanContainer)).all()
+    # seed_scan writes ScanContainer rows for its container_names argument; since we
+    # passed none, the only way rows could exist is if check_running_containers wrote them.
+    assert rows == [], "check_running_containers must not retroactively insert ScanContainer rows"
 
 
 @patch("backend.jobs.containers.GrypeScanner.scan_image_async", new_callable=MagicMock)

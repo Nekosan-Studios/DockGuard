@@ -61,7 +61,8 @@ def get_vulnerabilities(
     # Group by vuln_id
     grouped_vulns: dict[str, dict] = {}
     for v in vulns:
-        key = v.vuln_id
+        vuln_id = v.vuln_id
+        new_key = (v.vuln_id, v.package_name, v.installed_version)
         pkg_entry = {
             "package_name": v.package_name,
             "installed_version": v.installed_version,
@@ -71,17 +72,17 @@ def get_vulnerabilities(
             "severity": v.severity,
             "cvss_base_score": v.cvss_base_score,
         }
-        if key not in grouped_vulns:
+        if vuln_id not in grouped_vulns:
             vd = _serialise_vuln(v)
             vd["packages"] = [pkg_entry]
-            vd["is_new"] = key in new_keys
-            grouped_vulns[key] = vd
+            vd["is_new"] = new_key in new_keys
+            grouped_vulns[vuln_id] = vd
         else:
-            gv = grouped_vulns[key]
+            gv = grouped_vulns[vuln_id]
             pkg_key = (v.package_name, v.installed_version)
             if not any((p["package_name"], p["installed_version"]) == pkg_key for p in gv["packages"]):
                 gv["packages"].append(pkg_entry)
-            if key in new_keys:
+            if new_key in new_keys:
                 gv["is_new"] = True
             if _severity_rank(v.severity) < _severity_rank(gv.get("severity", "Unknown")):
                 gv["severity"] = v.severity
