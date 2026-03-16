@@ -129,8 +129,8 @@
       group: "Maintenance",
     },
     DAILY_DIGEST_HOUR_UTC: {
-      label: "Daily Digest Hour (UTC)",
-      desc: "Hour of day (0-23) in UTC when the daily vulnerability digest notification is sent.",
+      label: "Daily Digest Hour",
+      desc: "Hour of day (0-23) when the daily vulnerability digest notification is sent. Interpreted in the timezone set by the TZ environment variable, or UTC if TZ is not set.",
       group: "Notifications",
     },
     BASE_URL: {

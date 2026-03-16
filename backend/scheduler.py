@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
 _active_scheduler: "ContainerScheduler | None" = None
 
-_DEFAULT_DIGEST_HOUR_UTC = 0
+_DEFAULT_DIGEST_HOUR = 0
 
 
 def _parse_digest_hour(raw_value: str) -> int:
@@ -31,19 +33,33 @@ def _parse_digest_hour(raw_value: str) -> int:
         hour = int(raw_value)
     except (ValueError, TypeError):
         logger.warning(
-            "DAILY_DIGEST_HOUR_UTC=%r is not a valid integer; falling back to %d UTC",
+            "DAILY_DIGEST_HOUR_UTC=%r is not a valid integer; falling back to %d",
             raw_value,
-            _DEFAULT_DIGEST_HOUR_UTC,
+            _DEFAULT_DIGEST_HOUR,
         )
-        return _DEFAULT_DIGEST_HOUR_UTC
+        return _DEFAULT_DIGEST_HOUR
     if not 0 <= hour <= 23:
         logger.warning(
-            "DAILY_DIGEST_HOUR_UTC=%d is outside the valid range 0–23; falling back to %d UTC",
+            "DAILY_DIGEST_HOUR_UTC=%d is outside the valid range 0–23; falling back to %d",
             hour,
-            _DEFAULT_DIGEST_HOUR_UTC,
+            _DEFAULT_DIGEST_HOUR,
         )
-        return _DEFAULT_DIGEST_HOUR_UTC
+        return _DEFAULT_DIGEST_HOUR
     return hour
+
+
+def _get_digest_timezone() -> ZoneInfo:
+    """Return the timezone for digest scheduling.
+
+    Uses the TZ environment variable if set and valid; otherwise falls back to UTC.
+    """
+    tz_str = os.environ.get("TZ")
+    if tz_str:
+        try:
+            return ZoneInfo(tz_str)
+        except ZoneInfoNotFoundError:
+            logger.warning("TZ=%r is not a recognised timezone; falling back to UTC for digest scheduling", tz_str)
+    return ZoneInfo("UTC")
 
 
 class ContainerScheduler:
@@ -61,6 +77,7 @@ class ContainerScheduler:
             self.data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
             self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
 
+        self.digest_timezone = _get_digest_timezone()
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
         self._scheduler = AsyncIOScheduler()
         self._bootstrap_seen_digests()
@@ -92,7 +109,7 @@ class ContainerScheduler:
         )
         self._scheduler.add_job(
             self._run_daily_digest,
-            CronTrigger(hour=self.digest_hour, minute=0),
+            CronTrigger(hour=self.digest_hour, minute=0, timezone=self.digest_timezone),
             id="daily_digest",
             name="Send daily vulnerability digest",
             replace_existing=True,
@@ -134,8 +151,12 @@ class ContainerScheduler:
             digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
             if digest_hour != self.digest_hour:
                 self.digest_hour = digest_hour
-                self._scheduler.reschedule_job("daily_digest", trigger=CronTrigger(hour=self.digest_hour, minute=0))
-                logger.info("Scheduler updated daily_digest hour to %d UTC", self.digest_hour)
+                self._scheduler.reschedule_job(
+                    "daily_digest", trigger=CronTrigger(hour=self.digest_hour, minute=0, timezone=self.digest_timezone)
+                )
+                logger.info(
+                    "Scheduler updated daily_digest hour to %d (%s)", self.digest_hour, self.digest_timezone.key
+                )
 
     def get_jobs(self):
         return self._scheduler.get_jobs()
