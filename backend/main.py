@@ -22,7 +22,7 @@ async def lifespan(_: FastAPI):
     logger.info("Startup: db.init() done (%.2fs)", time.perf_counter() - t_start)
 
     colorlog.basicConfig(
-        level=colorlog.INFO,
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(log_color)s%(levelname)-8s%(reset)s %(name)s - %(message)s",
         force=True,
     )

@@ -66,12 +66,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # Access host Docker daemon
     environment:
       TZ: UTC  # Set your local timezone
+      BASE_URL: http://your-server-ip:8764  # Public URL for deep links in notifications
+
     restart: unless-stopped
 ```
 
 2. Review the compose file and adjust as needed:
    - Change `./data` to your preferred location for the scan database
    - Update the Docker socket path if it is not at the default `/var/run/docker.sock`
+   - Update the BASE_URL to enable clickable links in notifications
    - Set the `TZ` environment variable to your local timezone
 
 3. Start it:
