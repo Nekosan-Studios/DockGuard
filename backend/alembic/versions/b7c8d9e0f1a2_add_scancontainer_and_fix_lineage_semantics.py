@@ -46,31 +46,40 @@ def upgrade() -> None:
     )
 
     # Recompute first_seen_at with correct lineage semantics (image_name).
-    # Pre-aggregates the earliest scanned_at per (vuln, package, version, image)
-    # in one pass, then joins back — avoids a correlated subquery per row.
+    # SQLite doesn't support UPDATE...FROM with a joined subquery, so we
+    # pre-aggregate into a temp table in one pass, then look up from it.
+    bind.execute(
+        sa.text(
+            """
+            CREATE TEMP TABLE _first_seen_tmp AS
+            SELECT v2.vuln_id,
+                   v2.package_name,
+                   v2.installed_version,
+                   s.image_name,
+                   MIN(s.scanned_at) AS min_scanned_at
+            FROM vulnerability v2
+            JOIN scan s ON s.id = v2.scan_id
+            GROUP BY v2.vuln_id, v2.package_name, v2.installed_version, s.image_name
+            """
+        )
+    )
     bind.execute(
         sa.text(
             """
             UPDATE vulnerability
-            SET first_seen_at = earliest.min_scanned_at
-            FROM (
-                SELECT v2.vuln_id,
-                       v2.package_name,
-                       v2.installed_version,
-                       s.image_name,
-                       MIN(s.scanned_at) AS min_scanned_at
-                FROM vulnerability v2
-                JOIN scan s ON s.id = v2.scan_id
-                GROUP BY v2.vuln_id, v2.package_name, v2.installed_version, s.image_name
-            ) AS earliest
-            JOIN scan s ON s.id = vulnerability.scan_id
-            WHERE vulnerability.vuln_id          = earliest.vuln_id
-              AND vulnerability.package_name      = earliest.package_name
-              AND vulnerability.installed_version = earliest.installed_version
-              AND s.image_name                    = earliest.image_name
+            SET first_seen_at = (
+                SELECT t.min_scanned_at
+                FROM _first_seen_tmp t
+                JOIN scan s ON s.id = vulnerability.scan_id
+                WHERE t.vuln_id          = vulnerability.vuln_id
+                  AND t.package_name     = vulnerability.package_name
+                  AND t.installed_version = vulnerability.installed_version
+                  AND t.image_name       = s.image_name
+            )
             """
         )
     )
+    bind.execute(sa.text("DROP TABLE _first_seen_tmp"))
 
 
 def downgrade() -> None:
