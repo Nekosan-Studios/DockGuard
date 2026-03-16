@@ -370,11 +370,9 @@ async def _dispatch(
     body: str,
     notify_type: str,
 ) -> None:
-    """Send a notification to multiple channels and log results."""
-    urls = [c.apprise_url for c in channels]
-    ok, error = await notifier.send(urls, title, body, notify_type)
-
+    """Send a notification to each channel individually and log results."""
     for channel in channels:
+        ok, error = await notifier.send([channel.apprise_url], title, body, notify_type)
         log = NotificationLog(
             channel_id=channel.id,  # type: ignore[arg-type]
             notification_type=notification_type,

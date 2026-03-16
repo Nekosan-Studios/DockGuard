@@ -32,6 +32,9 @@ omit = ["backend/tests/*", "backend/migrations/*"]
 show_missing = true
 
 [tool.ruff]
+# Pinned to py313: py314 caused Ruff to strip parentheses from multi-exception
+# handlers (e.g. `except (A, B):` → `except A, B:`), producing invalid Python 3
+# syntax. Revisit when the upstream Ruff issue is resolved.
 target-version = "py313"
 line-length = 120
 

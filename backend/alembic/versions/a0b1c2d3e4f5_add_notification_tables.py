@@ -1,7 +1,7 @@
 """add notification tables
 
 Revision ID: a0b1c2d3e4f5
-Revises: f1a2b3c4d5e6
+Revises: c6d7e8f9a0b1
 Create Date: 2026-03-15 00:00:00.000000
 """
 

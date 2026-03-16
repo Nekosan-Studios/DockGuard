@@ -289,8 +289,6 @@ class TestRunScansThenNotify:
         to process_scan_notifications — NOT the SystemTask IDs."""
         from backend.jobs.containers import _run_scans_then_notify
 
-        batch_started = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
-
         # Create SystemTask rows (these have their own auto-increment IDs)
         with Session(test_db.engine) as session:
             for i in range(3):
@@ -303,6 +301,9 @@ class TestRunScansThenNotify:
                     )
                 )
             session.commit()
+
+        # Record the max scan ID before the batch so only new scans are captured
+        batch_min_scan_id = 0
 
         # Create Scan rows (simulating what scan_image_async would produce)
         scan = seed_scan(
@@ -322,7 +323,7 @@ class TestRunScansThenNotify:
                 test_db,
                 [noop()],
                 [999],  # SystemTask ID — should NOT appear in scan_ids
-                batch_started,
+                batch_min_scan_id,
             )
 
             mock_notify.assert_called_once()
@@ -342,8 +343,6 @@ class TestRunScansThenNotify:
         appended to the lists passed to process_scan_notifications."""
         from backend.jobs.containers import _run_scans_then_notify
 
-        batch_started = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
-
         async def failing_scan():
             raise RuntimeError("grype crashed")
 
@@ -352,7 +351,7 @@ class TestRunScansThenNotify:
                 test_db,
                 [failing_scan()],
                 [42],  # SystemTask ID for the failed scan
-                batch_started,
+                0,  # batch_min_scan_id — no prior scans in this test db
             )
 
             mock_notify.assert_called_once()
@@ -369,7 +368,8 @@ class TestRunScansThenNotify:
         """Mix of successful scans and failures produces correct ID/result lists."""
         from backend.jobs.containers import _run_scans_then_notify
 
-        batch_started = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
+        # Record baseline before seeding the batch scan
+        batch_min_scan_id = 0
 
         # Seed a successful scan
         scan = seed_scan(
@@ -391,7 +391,7 @@ class TestRunScansThenNotify:
                 test_db,
                 [success_coro(), fail_coro()],
                 [100, 200],  # SystemTask IDs
-                batch_started,
+                batch_min_scan_id,
             )
 
             mock_notify.assert_called_once()

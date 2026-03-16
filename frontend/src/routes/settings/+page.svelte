@@ -97,6 +97,13 @@
 
   const textSettings = new Set(["BASE_URL"]);
 
+  const numericConstraints: Record<
+    string,
+    { min?: number; max?: number; step?: number }
+  > = {
+    DAILY_DIGEST_HOUR_UTC: { min: 0, max: 23, step: 1 },
+  };
+
   const settingMeta: Record<
     string,
     { label: string; desc: string; group: string }
@@ -215,6 +222,7 @@
                       type={textSettings.has(key) ? "text" : "number"}
                       bind:value={localValues[key]}
                       oninput={handleInputChange}
+                      {...(numericConstraints[key] ?? {})}
                     />
                   {/if}
                 </div>

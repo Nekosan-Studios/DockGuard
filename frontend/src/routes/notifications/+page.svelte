@@ -43,15 +43,20 @@
   // Log pagination
   let logPage = $state(1);
 
-  notifications.channels.subscribe((v) => (channels = v));
-  notifications.log.subscribe((v) => (logEntries = v));
-
   onMount(async () => {
+    const unsubChannels = notifications.channels.subscribe((v) => (channels = v));
+    const unsubLog = notifications.log.subscribe((v) => (logEntries = v));
+
     await Promise.all([
       notifications.fetchChannels(),
       notifications.fetchLog(),
     ]);
     loading = false;
+
+    return () => {
+      unsubChannels();
+      unsubLog();
+    };
   });
 
   async function handleCreate() {

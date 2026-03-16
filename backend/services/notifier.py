@@ -43,11 +43,23 @@ async def send(
 
     def _send() -> tuple[bool, str | None]:
         ap = apprise.Apprise()
+        invalid_urls: list[str] = []
         for url in apprise_urls:
-            ap.add(url)
+            if not ap.add(url):
+                invalid_urls.append(url)
+        if not ap:
+            msg = "No valid Apprise URLs"
+            if invalid_urls:
+                msg += f": all {len(invalid_urls)} URL(s) were rejected"
+            return False, msg
         ok = ap.notify(title=title, body=body, notify_type=nt, body_format=apprise.NotifyFormat.MARKDOWN)
         if not ok:
-            return False, "Apprise notify() returned False — check URL validity"
+            msg = "Apprise notify() returned False — check URL validity"
+            if invalid_urls:
+                msg += f"; {len(invalid_urls)} URL(s) were also rejected before sending"
+            return False, msg
+        if invalid_urls:
+            logger.warning("Some Apprise URLs were rejected and skipped: %s", invalid_urls)
         return True, None
 
     try:

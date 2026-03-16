@@ -22,6 +22,29 @@ logger = logging.getLogger(__name__)
 # Set in ContainerScheduler.__init__; exposed for integration test introspection.
 _active_scheduler: "ContainerScheduler | None" = None
 
+_DEFAULT_DIGEST_HOUR_UTC = 0
+
+
+def _parse_digest_hour(raw_value: str) -> int:
+    """Parse and validate DAILY_DIGEST_HOUR_UTC, falling back to 0 on invalid input."""
+    try:
+        hour = int(raw_value)
+    except (ValueError, TypeError):
+        logger.warning(
+            "DAILY_DIGEST_HOUR_UTC=%r is not a valid integer; falling back to %d UTC",
+            raw_value,
+            _DEFAULT_DIGEST_HOUR_UTC,
+        )
+        return _DEFAULT_DIGEST_HOUR_UTC
+    if not 0 <= hour <= 23:
+        logger.warning(
+            "DAILY_DIGEST_HOUR_UTC=%d is outside the valid range 0–23; falling back to %d UTC",
+            hour,
+            _DEFAULT_DIGEST_HOUR_UTC,
+        )
+        return _DEFAULT_DIGEST_HOUR_UTC
+    return hour
+
 
 class ContainerScheduler:
     """Manages APScheduler and triggers background jobs for DockGuard."""
@@ -36,7 +59,7 @@ class ContainerScheduler:
             self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
             self.data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
-            self.digest_hour = int(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
+            self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
 
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
         self._scheduler = AsyncIOScheduler()
@@ -108,7 +131,7 @@ class ContainerScheduler:
                 self.data_retention_days = data_retention_days
                 logger.info("Scheduler updated data_retention_days to %d", self.data_retention_days)
 
-            digest_hour = int(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
+            digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
             if digest_hour != self.digest_hour:
                 self.digest_hour = digest_hour
                 self._scheduler.reschedule_job("daily_digest", trigger=CronTrigger(hour=self.digest_hour, minute=0))
