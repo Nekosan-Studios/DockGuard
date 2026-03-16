@@ -12,6 +12,8 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 
 > **Note:** DockGuard is currently limited to single-host setups. Features like multi-user support and connecting to remote Docker installations are on the roadmap but not yet available.
 
+> **Security:** DockGuard does not currently have authentication or user login. Do not expose it directly to the internet or untrusted networks. Run it behind a VPN, reverse proxy with authentication, or bind it only to `localhost` / your local network. If you need remote access, place it behind a solution like Authelia, Authentik, or your reverse proxy's built-in auth.
+
 ## Screenshots
 
 **Dashboard**
@@ -36,6 +38,8 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 - **Cut through false positives** — Some CVEs exist in an image but cannot actually be exploited in your environment. DockGuard supports [VEX (Vulnerability Exploitability eXchange)](https://www.cisa.gov/sites/default/files/2023-01/VEX_Use_Cases_Approved_508c.pdf) attestations: when an image publisher has officially marked a vulnerability as not exploitable in their image, DockGuard can suppresses it so you focus on real risk, not noise.
 
 - **Track history over time** — See how your exposure changes as you update images and compare results across versions.
+
+- **Notifications** — Get alerted when new vulnerabilities are found. DockGuard supports Apprise-compatible notification channels (Slack, Discord, email, and many more).
 
 - **Fully self-hosted** — No cloud account. No telemetry. No subscription. DockGuard runs entirely on your machine and stores all data locally in a SQLite database.
 
@@ -62,12 +66,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # Access host Docker daemon
     environment:
       TZ: UTC  # Set your local timezone
+      BASE_URL: http://your-server-ip:8764  # Public URL for deep links in notifications
+
     restart: unless-stopped
 ```
 
 2. Review the compose file and adjust as needed:
    - Change `./data` to your preferred location for the scan database
    - Update the Docker socket path if it is not at the default `/var/run/docker.sock`
+   - Update the BASE_URL to enable clickable links in notifications
    - Set the `TZ` environment variable to your local timezone
 
 3. Start it:
@@ -91,6 +98,7 @@ Most settings can be changed directly in the **Settings** page of the dashboard.
 | `SCAN_INTERVAL_SECONDS` | `60` | How often (in seconds) to check for new or updated containers. |
 | `MAX_CONCURRENT_SCANS` | `1` | How many images to scan in parallel. Increase with caution on low-memory systems. |
 | `DB_CHECK_INTERVAL_SECONDS` | `3600` | How often (in seconds) to check for an updated Grype vulnerability database. |
+| `BASE_URL` | _(empty)_ | Base URL of your DockGuard instance (e.g. `http://192.168.1.50:8764`). When set, notification messages include links to individual vulnerabilities. |
 
 ## License
 

@@ -76,13 +76,14 @@ def _extract_html_title(body: str) -> str | None:
 
 def _fetch_title(url: str, client: httpx.Client, deadline: float | None = None) -> str | None:
     if deadline is not None and time.monotonic() >= deadline:
+        logger.debug("Time budget exhausted, skipping fetch: %s", url)
         return None
     try:
         response = client.get(
             url,
             headers={"User-Agent": "DockGuard/1.0 (+https://github.com/mattweinecke/DockGuard)"},
         )
-    except httpx.HTTPError, ValueError:
+    except (httpx.HTTPError, ValueError):
         return None
 
     if response.status_code < 200 or response.status_code >= 300:
@@ -163,6 +164,7 @@ def fetch_all_titles(
         seen_urls.add(url)
         unique_urls.append(url)
         if len(unique_urls) >= _MAX_URLS_PER_SCAN:
+            logger.debug("URL list capped at per-scan limit (%d); additional URLs skipped", _MAX_URLS_PER_SCAN)
             break
 
     seen_cwes: set[str] = set()
@@ -174,14 +176,23 @@ def fetch_all_titles(
         seen_cwes.add(cwe_id)
         unique_cwes.append(cwe_id)
         if len(unique_cwes) >= _MAX_CWES_PER_SCAN:
+            logger.debug("CWE list capped at per-scan limit (%d); additional CWEs skipped", _MAX_CWES_PER_SCAN)
             break
 
     if not unique_urls and not unique_cwes:
         return {}, {}
 
+    logger.debug(
+        "Enrichment starting: %d URL(s), %d CWE(s) to resolve (budget %.1fs)",
+        len(unique_urls),
+        len(unique_cwes),
+        budget_seconds,
+    )
+
     url_titles: dict[str, str] = {}
     cwe_titles: dict[str, str] = {}
-    deadline = time.monotonic() + budget_seconds
+    start = time.monotonic()
+    deadline = start + budget_seconds
 
     try:
         with httpx.Client(
@@ -193,19 +204,33 @@ def fetch_all_titles(
                 title = _fetch_title(url, client, deadline)
                 if title:
                     url_titles[url] = title
+                    logger.debug("Resolved URL title: %s", url)
 
             for cwe_id in unique_cwes:
                 cwe_num = cwe_id.replace("CWE-", "")
                 cwe_url = f"https://cwe.mitre.org/data/definitions/{cwe_num}.html"
                 title = _fetch_title(cwe_url, client, deadline)
                 if not title:
+                    logger.debug("No title resolved for %s", cwe_id)
                     continue
                 name = _extract_cwe_name(title, cwe_id)
                 if name:
                     cwe_titles[cwe_id] = name
+                    logger.debug("Resolved CWE name: %s -> %s", cwe_id, name)
+                else:
+                    logger.debug("Could not extract CWE name from title for %s: %r", cwe_id, title)
     except Exception:
         logger.debug("Reference title fetching skipped due to unexpected error", exc_info=True)
 
+    elapsed = time.monotonic() - start
+    logger.debug(
+        "Enrichment complete in %.2fs: %d/%d URL titles, %d/%d CWE names resolved",
+        elapsed,
+        len(url_titles),
+        len(unique_urls),
+        len(cwe_titles),
+        len(unique_cwes),
+    )
     return url_titles, cwe_titles
 
 

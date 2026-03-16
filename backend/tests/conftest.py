@@ -24,8 +24,10 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 import docker as docker_sdk
+from backend.config import ConfigManager
 from backend.database import Database
 from backend.database import db as production_db
+from backend.docker_watcher import _connect_to_docker
 from backend.grype_scanner import _parse_image_repository
 from backend.main import app
 from backend.models import Scan, Vulnerability
@@ -74,20 +76,21 @@ def api_client(test_db):
                         with patch("backend.routers.tasks.db", test_db):
                             with patch("backend.routers.settings.db", test_db):
                                 with patch("backend.routers.internal.db", test_db):
-                                    with (
-                                        patch("backend.routers.containers.DockerWatcher") as cw,
-                                        patch("backend.routers.vulnerabilities.DockerWatcher") as vw,
-                                        patch("backend.jobs.containers.DockerWatcher") as jw,
-                                    ):
-                                        cw.return_value.list_images.return_value = []
-                                        cw.return_value.list_running_containers.return_value = []
-                                        vw.return_value.list_images.return_value = []
-                                        vw.return_value.list_running_containers.return_value = []
-                                        jw.return_value.list_images.return_value = []
-                                        jw.return_value.list_running_containers.return_value = []
-                                        with TestClient(app, raise_server_exceptions=True) as client:
-                                            # tests expect the mock instance
-                                            yield client, test_db, (cw, vw)
+                                    with patch("backend.routers.notifications.db", test_db):
+                                        with (
+                                            patch("backend.routers.containers.DockerWatcher") as cw,
+                                            patch("backend.routers.vulnerabilities.DockerWatcher") as vw,
+                                            patch("backend.jobs.containers.DockerWatcher") as jw,
+                                        ):
+                                            cw.return_value.list_images.return_value = []
+                                            cw.return_value.list_running_containers.return_value = []
+                                            vw.return_value.list_images.return_value = []
+                                            vw.return_value.list_running_containers.return_value = []
+                                            jw.return_value.list_images.return_value = []
+                                            jw.return_value.list_running_containers.return_value = []
+                                            with TestClient(app, raise_server_exceptions=True) as client:
+                                                # tests expect the mock instance
+                                                yield client, test_db, (cw, vw)
 
     app.dependency_overrides.clear()
 
@@ -208,10 +211,11 @@ def integration_client(tmp_path):
                     with patch("backend.routers.tasks.db", temp_db):
                         with patch("backend.routers.settings.db", temp_db):
                             with patch("backend.routers.internal.db", temp_db):
-                                with patch("backend.jobs.containers.DockerWatcher") as mock_watcher:
-                                    mock_watcher.return_value.list_images.return_value = []
-                                    with TestClient(app, raise_server_exceptions=True) as client:
-                                        yield client, temp_db
+                                with patch("backend.routers.notifications.db", temp_db):
+                                    with patch("backend.jobs.containers.DockerWatcher") as mock_watcher:
+                                        mock_watcher.return_value.list_images.return_value = []
+                                        with TestClient(app, raise_server_exceptions=True) as client:
+                                            yield client, temp_db
     app.dependency_overrides.clear()
 
 
@@ -224,7 +228,8 @@ def integration_client(tmp_path):
 def require_docker():
     """Skip the test if Docker daemon is not reachable."""
     try:
-        docker_sdk.from_env().ping()
+        client = _connect_to_docker()
+        client.ping()
     except Exception:
         pytest.skip("Docker daemon not available")
 
@@ -245,7 +250,7 @@ def test_container(require_docker):
 
     Yields dict: {"image_ref": "alpine:latest", "started_by_fixture": bool}
     """
-    client = docker_sdk.from_env()
+    client = _connect_to_docker()
     test_image = "alpine:latest"
     test_name = "dg-test"
 
@@ -278,6 +283,7 @@ def e2e_client(tmp_path, require_docker, require_grype):
     """
     db_file = tmp_path / "e2e.db"
     temp_db = Database(f"sqlite:///{db_file}")
+    original_get_setting = ConfigManager.get_setting
     app.dependency_overrides[production_db.get_session] = temp_db.get_session
     with patch("backend.database.DATABASE_PATH", str(db_file)):
         with patch("backend.main.db", temp_db):
@@ -286,10 +292,18 @@ def e2e_client(tmp_path, require_docker, require_grype):
                     with patch("backend.routers.tasks.db", temp_db):
                         with patch("backend.routers.settings.db", temp_db):
                             with patch("backend.routers.internal.db", temp_db):
-                                with patch("backend.scheduler.ConfigManager.get_setting") as mock_get:
-                                    mock_get.side_effect = lambda k, s: (
-                                        {"value": "5"} if k == "SCAN_INTERVAL_SECONDS" else {"value": "86400"}
-                                    )
-                                    with TestClient(app, raise_server_exceptions=True) as client:
-                                        yield client, temp_db
+                                with patch("backend.routers.notifications.db", temp_db):
+                                    with patch("backend.scheduler.ConfigManager.get_setting") as mock_get:
+                                        mock_get.side_effect = lambda k, s: (
+                                            {
+                                                "key": k,
+                                                "value": "5",
+                                                "source": "test",
+                                                "editable": True,
+                                            }
+                                            if k == "SCAN_INTERVAL_SECONDS"
+                                            else original_get_setting(k, s)
+                                        )
+                                        with TestClient(app, raise_server_exceptions=True) as client:
+                                            yield client, temp_db
     app.dependency_overrides.clear()

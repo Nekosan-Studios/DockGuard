@@ -7,7 +7,7 @@ import colorlog
 from fastapi import FastAPI
 
 from .database import db
-from .routers import containers, internal, settings, tasks, vulnerabilities
+from .routers import containers, internal, notifications, settings, tasks, vulnerabilities
 from .scheduler import ContainerScheduler
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ async def lifespan(_: FastAPI):
     logger.info("Startup: db.init() done (%.2fs)", time.perf_counter() - t_start)
 
     colorlog.basicConfig(
-        level=colorlog.INFO,
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(log_color)s%(levelname)-8s%(reset)s %(name)s - %(message)s",
         force=True,
     )
@@ -46,6 +46,7 @@ app.include_router(containers.router)
 app.include_router(tasks.router)
 app.include_router(settings.router)
 app.include_router(internal.router)
+app.include_router(notifications.router)
 
 
 _APP_VERSION = os.environ.get("APP_VERSION", "Development build")

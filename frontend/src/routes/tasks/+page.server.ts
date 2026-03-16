@@ -31,7 +31,7 @@ export const load: PageServerLoad = async ({ fetch }) => {
       error_message: null,
       result_details: job.interval_seconds
         ? `Every ${Math.floor(job.interval_seconds / 60)} minutes`
-        : null,
+        : "Every 24 hours",
     })
   );
 

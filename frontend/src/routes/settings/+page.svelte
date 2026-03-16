@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { onMount, getContext } from "svelte";
-  import type { Writable } from "svelte/store";
+  import { onMount } from "svelte";
   import { slide } from "svelte/transition";
   import * as Card from "$lib/components/ui/card";
   import { Label } from "$lib/components/ui/label";
@@ -15,41 +14,42 @@
 
   import { settings } from "$lib/stores/settings";
 
-  // The `pageTitle` store is provided by `+layout.svelte`.
-  const pageTitle = getContext<Writable<string>>("pageTitle");
-  if (pageTitle) {
-    $pageTitle = "Settings";
-  }
-
-  let isSaving = false;
-  let saveMessage: { type: "success" | "error"; text: string } | null = null;
-  let hasChanges = false;
-
-  // Local state to track editable fields
-  let localValues: Record<string, string> = {};
+  let isSaving = $state(false);
+  let saveMessage: { type: "success" | "error"; text: string } | null =
+    $state(null);
+  let hasChanges = $state(false);
+  let localValues: Record<string, string> = $state({});
+  let initialized = $state(false);
 
   onMount(async () => {
     await settings.fetch();
   });
 
-  // Reactivity to update localValues when settings fetch
-  $: if ($settings && Object.keys($settings).length > 0) {
-    // Only initialize localValues if they are empty
-    if (Object.keys(localValues).length === 0) {
-      for (const [key, conf] of Object.entries($settings)) {
-        localValues[key] = conf.value;
+  // Initialize localValues when settings first load
+  $effect(() => {
+    const s = $settings;
+    if (s && Object.keys(s).length > 0 && !initialized) {
+      const vals: Record<string, string> = {};
+      for (const [key, conf] of Object.entries(s)) {
+        vals[key] = conf.value;
       }
-    } else {
-      // Check if any local values differ from store meaning we have unsaved changes
-      let changed = false;
-      for (const [key, conf] of Object.entries($settings)) {
-        if (localValues[key] !== conf.value) {
-          changed = true;
-        }
-      }
-      hasChanges = changed;
+      localValues = vals;
+      initialized = true;
     }
-  }
+  });
+
+  // Track changes
+  $effect(() => {
+    const s = $settings;
+    if (!initialized || !s) return;
+    let changed = false;
+    for (const [key, conf] of Object.entries(s)) {
+      if (localValues[key] !== conf.value) {
+        changed = true;
+      }
+    }
+    hasChanges = changed;
+  });
 
   async function handleSave() {
     if (!hasChanges) return;
@@ -59,7 +59,6 @@
 
     const updates: Record<string, string> = {};
     for (const [key, conf] of Object.entries($settings)) {
-      // Only send updates for editable fields that changed
       if (conf.editable && String(localValues[key]) !== String(conf.value)) {
         updates[key] = String(localValues[key]);
       }
@@ -78,8 +77,6 @@
         text: "Settings saved successfully.",
       };
       hasChanges = false;
-
-      // Auto clear success message
       setTimeout(() => {
         saveMessage = null;
       }, 3000);
@@ -98,7 +95,15 @@
     saveMessage = null;
   }
 
-  // Setting descriptions for friendlier UI labels
+  const textSettings = new Set(["BASE_URL"]);
+
+  const numericConstraints: Record<
+    string,
+    { min?: number; max?: number; step?: number }
+  > = {
+    DAILY_DIGEST_HOUR_UTC: { min: 0, max: 23, step: 1 },
+  };
+
   const settingMeta: Record<
     string,
     { label: string; desc: string; group: string }
@@ -123,10 +128,19 @@
       desc: "Scans and task history older than this many days will be automatically purged each day. The most recent scan for each image is always kept.",
       group: "Maintenance",
     },
+    DAILY_DIGEST_HOUR_UTC: {
+      label: "Daily Digest Hour",
+      desc: "Hour of day (0-23) when the daily vulnerability digest notification is sent. Interpreted in the timezone set by the TZ environment variable, or UTC if TZ is not set.",
+      group: "Notifications",
+    },
+    BASE_URL: {
+      label: "Base URL",
+      desc: "Base URL of your DockGuard instance (e.g. http://192.168.1.50:8764). Used to include links to vulnerabilities in notifications. Leave empty to omit links.",
+      group: "Notifications",
+    },
   };
 
-  // Group settings
-  $: groups = (() => {
+  let groups = $derived.by(() => {
     const result: Record<string, string[]> = {};
     for (const key of Object.keys($settings)) {
       const group = settingMeta[key]?.group || "Other";
@@ -134,7 +148,7 @@
       result[group].push(key);
     }
     return result;
-  })();
+  });
 </script>
 
 <div class="space-y-6">
@@ -152,7 +166,13 @@
       Loading settings...
     </div>
   {:else}
-    <form on:submit|preventDefault={handleSave} class="space-y-8">
+    <form
+      onsubmit={(e) => {
+        e.preventDefault();
+        handleSave();
+      }}
+      class="space-y-8"
+    >
       {#each Object.entries(groups) as [groupName, keys] (groupName)}
         <Card.Root>
           <Card.Header>
@@ -199,9 +219,10 @@
                   {:else}
                     <Input
                       id={key}
-                      type="number"
+                      type={textSettings.has(key) ? "text" : "number"}
                       bind:value={localValues[key]}
                       oninput={handleInputChange}
+                      {...numericConstraints[key] ?? {}}
                     />
                   {/if}
                 </div>
