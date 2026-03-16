@@ -8,6 +8,7 @@ from ..api_helpers import (
     _VALID_SORT_COLS,
     _as_utc,
     _latest_scan_for_ref,
+    _new_vuln_keys_for_scans,
     _parse_image_query,
     _serialise_vuln,
     _severity_rank,
@@ -38,27 +39,7 @@ def get_vulnerabilities(
         raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
 
     scan = _latest_scan_for_ref(image_ref, session)
-    current_rows = session.exec(
-        select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
-            Vulnerability.scan_id == scan.id
-        )
-    ).all()
-    current_keys = {(row[0], row[1], row[2]) for row in current_rows}
-    prev_scan = session.exec(
-        select(Scan)
-        .where(Scan.image_name == scan.image_name, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at)
-        .order_by(Scan.scanned_at.desc())
-    ).first()
-    if prev_scan is None:
-        new_keys = current_keys
-    else:
-        prev_rows = session.exec(
-            select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
-                Vulnerability.scan_id == prev_scan.id
-            )
-        ).all()
-        prev_keys = {(row[0], row[1], row[2]) for row in prev_rows}
-        new_keys = current_keys - prev_keys
+    new_keys = _new_vuln_keys_for_scans(session, [scan]).get(scan.id, set())
 
     q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     if hide_vex:
@@ -326,32 +307,7 @@ def get_vulnerabilities_across_running(
     elif report == "kev":
         q = q.where(Vulnerability.is_kev)
     elif report == "new":
-        for scan in scans:
-            current_rows = session.exec(
-                select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
-                    Vulnerability.scan_id == scan.id
-                )
-            ).all()
-            current_keys = {(row[0], row[1], row[2]) for row in current_rows}
-
-            prev_scan = session.exec(
-                select(Scan)
-                .where(Scan.image_name == scan.image_name, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at)
-                .order_by(Scan.scanned_at.desc())
-            ).first()
-
-            if prev_scan is None:
-                new_keys_by_scan[scan.id] = current_keys
-                continue
-
-            prev_rows = session.exec(
-                select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
-                    Vulnerability.scan_id == prev_scan.id
-                )
-            ).all()
-            prev_keys = {(row[0], row[1], row[2]) for row in prev_rows}
-            new_keys_by_scan[scan.id] = current_keys - prev_keys
-
+        new_keys_by_scan = _new_vuln_keys_for_scans(session, scans)
         q = q.where(Vulnerability.scan_id.in_(list(new_keys_by_scan.keys())))
     elif report == "vex_annotated":
         q = q.where(Vulnerability.vex_status.isnot(None))

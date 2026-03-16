@@ -5,38 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
-from ..api_helpers import _as_utc, _priority_bucket, _severity_rank
+from ..api_helpers import _as_utc, _new_vuln_keys_for_scans, _priority_bucket, _severity_rank
 from ..database import db
 from ..docker_watcher import DockerWatcher
 from ..models import AppState, Scan, ScanContainer, SystemTask, Vulnerability
 from ..vex_discovery import check_vex_for_image
 
 router = APIRouter(tags=["Containers"])
-
-
-def _new_findings_count_for_scan(session: Session, scan: Scan) -> int:
-    current_rows = session.exec(
-        select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
-            Vulnerability.scan_id == scan.id
-        )
-    ).all()
-    current_keys = {(row[0], row[1], row[2]) for row in current_rows}
-
-    prev_scan = session.exec(
-        select(Scan)
-        .where(Scan.image_name == scan.image_name, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at)
-        .order_by(Scan.scanned_at.desc())
-    ).first()
-    if prev_scan is None:
-        return len(current_keys)
-
-    prev_rows = session.exec(
-        select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
-            Vulnerability.scan_id == prev_scan.id
-        )
-    ).all()
-    prev_keys = {(row[0], row[1], row[2]) for row in prev_rows}
-    return len(current_keys - prev_keys)
 
 
 @router.get("/containers/running")
@@ -275,7 +250,8 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
     new_findings = 0
     if running_images:
         latest_scans_for_running = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
-        new_findings = sum(_new_findings_count_for_scan(session, scan) for scan in latest_scans_for_running)
+        new_keys_by_scan = _new_vuln_keys_for_scans(session, latest_scans_for_running)
+        new_findings = sum(len(keys) for keys in new_keys_by_scan.values())
 
     active_tasks = session.exec(select(func.count(SystemTask.id)).where(SystemTask.status == "running")).one()
 

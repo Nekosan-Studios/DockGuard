@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -74,6 +75,56 @@ def _latest_scan_for_ref(image_ref: str, session: Session) -> Scan:
     if not scan:
         raise HTTPException(status_code=404, detail=f"No scans found for '{image_ref}'")
     return scan
+
+
+def _previous_scan(session: Session, scan: Scan) -> Scan | None:
+    """Find the most recent scan before `scan` for the same image_name lineage."""
+    return session.exec(
+        select(Scan)
+        .where(Scan.image_name == scan.image_name, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at)
+        .order_by(Scan.scanned_at.desc())
+    ).first()
+
+
+def _new_vuln_keys_for_scans(session: Session, scans: list[Scan]) -> dict[int, set[tuple[str, str, str]]]:
+    """Batch-compute new vulnerability keys for each scan vs its predecessor.
+
+    Returns {scan_id: set of (vuln_id, package_name, installed_version) keys that are new}.
+    """
+    if not scans:
+        return {}
+
+    # Find previous scan for each
+    prev_by_scan: dict[int, Scan | None] = {}
+    for scan in scans:
+        prev_by_scan[scan.id] = _previous_scan(session, scan)
+
+    # Batch load all vuln keys for current + previous scans in one query
+    all_scan_ids = [s.id for s in scans]
+    for prev in prev_by_scan.values():
+        if prev:
+            all_scan_ids.append(prev.id)
+
+    rows = session.exec(
+        select(
+            Vulnerability.scan_id, Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version
+        ).where(Vulnerability.scan_id.in_(all_scan_ids))
+    ).all()
+
+    keys_by_scan: dict[int, set[tuple[str, str, str]]] = defaultdict(set)
+    for scan_id, vuln_id, pkg_name, inst_ver in rows:
+        keys_by_scan[scan_id].add((vuln_id, pkg_name, inst_ver))
+
+    result: dict[int, set[tuple[str, str, str]]] = {}
+    for scan in scans:
+        current_keys = keys_by_scan.get(scan.id, set())
+        prev = prev_by_scan[scan.id]
+        if prev is None:
+            result[scan.id] = current_keys
+        else:
+            result[scan.id] = current_keys - keys_by_scan.get(prev.id, set())
+
+    return result
 
 
 def _parse_image_query(image: str) -> tuple[str, str]:
