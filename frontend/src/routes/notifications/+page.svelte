@@ -44,7 +44,9 @@
   let logPage = $state(1);
 
   onMount(async () => {
-    const unsubChannels = notifications.channels.subscribe((v) => (channels = v));
+    const unsubChannels = notifications.channels.subscribe(
+      (v) => (channels = v)
+    );
     const unsubLog = notifications.log.subscribe((v) => (logEntries = v));
 
     await Promise.all([

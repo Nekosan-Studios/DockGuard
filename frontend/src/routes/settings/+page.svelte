@@ -222,7 +222,7 @@
                       type={textSettings.has(key) ? "text" : "number"}
                       bind:value={localValues[key]}
                       oninput={handleInputChange}
-                      {...(numericConstraints[key] ?? {})}
+                      {...numericConstraints[key] ?? {}}
                     />
                   {/if}
                 </div>
