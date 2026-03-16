@@ -905,7 +905,9 @@
           <section class="text-muted-foreground border-t pt-3 text-xs">
             <div class="flex flex-wrap gap-x-6 gap-y-1">
               {#if vuln.first_seen_at}
-                <span>First seen in image: {formatDate(vuln.first_seen_at)}</span>
+                <span
+                  >First seen in image: {formatDate(vuln.first_seen_at)}</span
+                >
               {/if}
               {#if vuln.data_source}
                 <span>
