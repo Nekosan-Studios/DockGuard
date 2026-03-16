@@ -19,6 +19,9 @@
 
   let { data }: { data: PageData } = $props();
 
+  const firstSeenInImageTooltip =
+    "Scan where this vulnerability instance was first seen in this image. Not container specific.";
+
   // ── Deep link state ─────────────────────────────────────────────────────
   let activeCve = $derived($page.url.searchParams.get("cve"));
 
@@ -59,7 +62,6 @@
     try {
       const params = new URLSearchParams({
         report: reportValue,
-        new_hours: newHoursValue,
         hide_vex: String(hideVexValue),
         sort_by: sortByValue,
         sort_dir: sortDirValue,
@@ -117,15 +119,7 @@
     { value: "vex_annotated", label: "VEX Annotated" },
   ];
 
-  const newRanges = [
-    { value: "24", label: "1d" },
-    { value: "48", label: "2d" },
-    { value: "168", label: "7d" },
-    { value: "336", label: "14d" },
-  ];
-
   let reportValue = $derived($page.url.searchParams.get("report") || "urgent");
-  let newHoursValue = $derived($page.url.searchParams.get("new_hours") || "24");
   let sortByValue = $derived(
     $page.url.searchParams.get("sort_by") ||
       (reportValue === "new" ? "first_seen_at" : "severity")
@@ -139,7 +133,7 @@
   );
   let reportLabel = $derived(
     reportValue === "new"
-      ? `Newly Found (Last ${newRanges.find((r) => r.value === newHoursValue)?.label ?? "1d"})`
+      ? "Newly Found (Since Previous Scan)"
       : reports.find((r) => r.value === reportValue)?.label || "Urgent Priority"
   );
 
@@ -152,14 +146,7 @@
     } else {
       u.searchParams.delete("sort_by");
       u.searchParams.delete("sort_dir");
-      u.searchParams.delete("new_hours");
     }
-    goto(u.toString());
-  }
-
-  function handleNewRangeChange(hours: string) {
-    const u = new URL($page.url);
-    u.searchParams.set("new_hours", hours);
     goto(u.toString());
   }
 
@@ -302,22 +289,6 @@
             </Select.Group>
           </Select.Content>
         </Select.Root>
-
-        {#if reportValue === "new"}
-          <div class="flex items-center rounded-md border border-border">
-            {#each newRanges as range (range.value)}
-              <button
-                class="px-2.5 py-1 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md {newHoursValue ===
-                range.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-                onclick={() => handleNewRangeChange(range.value)}
-              >
-                {range.label}
-              </button>
-            {/each}
-          </div>
-        {/if}
       </div>
     </Card.Header>
     <Card.Content class="p-0 sm:p-6 sm:pt-0">
@@ -470,12 +441,20 @@
                   </Table.Head>
                 {/if}
                 <Table.Head class="text-center">
-                  <SortButton
-                    label="First Seen"
-                    size="sm"
-                    sortDirection={activeSortDir("first_seen_at")}
-                    onclick={() => toggleSort("first_seen_at")}
-                  />
+                  <Tooltip.Root>
+                    <Tooltip.Trigger>
+                      {#snippet child({ props })}
+                        <SortButton
+                          label="First Seen in Image"
+                          size="sm"
+                          sortDirection={activeSortDir("first_seen_at")}
+                          {...props}
+                          onclick={() => toggleSort("first_seen_at")}
+                        />
+                      {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>{firstSeenInImageTooltip}</Tooltip.Content>
+                  </Tooltip.Root>
                 </Table.Head>
                 <Table.Head class="pr-6">
                   <Tooltip.Root>

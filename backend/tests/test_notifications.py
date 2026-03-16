@@ -235,6 +235,35 @@ class TestFindNewVulnerabilities:
 
         assert scan2.id not in result
 
+    def test_different_tag_does_not_reuse_other_tag_history(self, test_db):
+        """First scan of image_name lineage should be all new, even if another tag
+        from the same repository was scanned previously."""
+        seed_scan(
+            test_db,
+            "postgres:18",
+            "sha256:aaa",
+            [VULN_CRITICAL],
+            scanned_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        scan2 = seed_scan(
+            test_db,
+            "postgres:17",
+            "sha256:bbb",
+            [VULN_CRITICAL, VULN_MEDIUM],
+            scanned_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+
+        from backend.jobs.notifications import find_new_vulnerabilities
+
+        with Session(test_db.engine) as session:
+            result = find_new_vulnerabilities(session, [scan2.id])
+
+        assert scan2.id in result
+        assert {v.vuln_id for v in result[scan2.id]} == {
+            VULN_CRITICAL["vuln_id"],
+            VULN_MEDIUM["vuln_id"],
+        }
+
 
 class TestNotifierService:
     def test_validate_url_valid(self):

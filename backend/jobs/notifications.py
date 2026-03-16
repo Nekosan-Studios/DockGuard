@@ -7,7 +7,8 @@ from sqlmodel import Session, col, func, select
 from backend.api_helpers import _priority_bucket
 from backend.config import ConfigManager
 from backend.database import Database
-from backend.models import AppState, NotificationChannel, NotificationLog, Scan, Vulnerability
+from backend.docker_watcher import DockerWatcher
+from backend.models import AppState, NotificationChannel, NotificationLog, Scan, ScanContainer, Vulnerability
 from backend.services import notifier
 
 logger = logging.getLogger(__name__)
@@ -113,12 +114,10 @@ def find_new_vulnerabilities(session: Session, scan_ids: list[int]) -> dict[int,
     result: dict[int, list[Vulnerability]] = {}
 
     for scan in scans:
-        # Get the previous scan for the same image_repository
+        # Get the previous scan for the same image lineage.
         prev_scan = session.exec(
             select(Scan)
-            .where(
-                Scan.image_repository == scan.image_repository, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at
-            )
+            .where(Scan.image_name == scan.image_name, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at)
             .order_by(col(Scan.scanned_at).desc())
         ).first()
 
@@ -188,7 +187,7 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
             prev_scan = session.exec(
                 select(Scan)
                 .where(
-                    Scan.image_repository == s.image_repository,
+                    Scan.image_name == s.image_name,
                     Scan.id != s.id,
                     Scan.scanned_at < s.scanned_at,
                 )
@@ -203,9 +202,11 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
                 title = "EOL Distro Alert"
                 lines = []
                 for s in eol_scans:
-                    lines.append(
-                        f"- **{s.image_name}** ({s.container_name or 'unknown'}): {s.distro_name} {s.distro_version}"
-                    )
+                    scan_container_names = session.exec(
+                        select(ScanContainer.container_name).where(ScanContainer.scan_id == s.id)
+                    ).all()
+                    container_display = ", ".join(sorted(set(scan_container_names))) or "unknown"
+                    lines.append(f"- **{s.image_name}** ({container_display}): {s.distro_name} {s.distro_version}")
                 body = "Containers running on end-of-life distributions:\n\n" + "\n".join(lines)
                 await _dispatch(session, eol_channels, "eol", title, body, "warning")
 
@@ -221,20 +222,32 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
         kev_total = 0
         all_total = 0
 
+        containers_by_scan: dict[int, list[str]] = {}
+        if new_vulns_by_scan:
+            rows = session.exec(
+                select(ScanContainer.scan_id, ScanContainer.container_name).where(
+                    ScanContainer.scan_id.in_(list(new_vulns_by_scan.keys()))
+                )
+            ).all()
+            for scan_id, container_name in rows:
+                containers_by_scan.setdefault(scan_id, []).append(container_name)
+
         for scan_id, vulns in new_vulns_by_scan.items():
             scan = scans_by_id.get(scan_id)
             if not scan:
                 continue
-            container_label = scan.container_name or scan.image_name
+            scan_container_names = sorted(set(containers_by_scan.get(scan_id, [])))
+            container_labels = scan_container_names or [scan.image_name]
             for v in vulns:
-                all_by_container.setdefault(container_label, []).append(v)
-                all_total += 1
-                if v.risk_score is not None and v.risk_score >= 80:
-                    urgent_by_container.setdefault(container_label, []).append(v)
-                    urgent_total += 1
-                if v.is_kev:
-                    kev_by_container.setdefault(container_label, []).append(v)
-                    kev_total += 1
+                for container_label in container_labels:
+                    all_by_container.setdefault(container_label, []).append(v)
+                    all_total += 1
+                    if v.risk_score is not None and v.risk_score >= 80:
+                        urgent_by_container.setdefault(container_label, []).append(v)
+                        urgent_total += 1
+                    if v.is_kev:
+                        kev_by_container.setdefault(container_label, []).append(v)
+                        kev_total += 1
 
         if urgent_by_container:
             urgent_channels = [c for c in channels if c.notify_urgent]
@@ -279,11 +292,16 @@ async def send_daily_digest(db: Database) -> None:
         if not channels:
             return
 
-        # Get latest scan per image_repository for running containers
-        subq = (
-            select(Scan.image_repository, func.max(Scan.id).label("max_id")).group_by(Scan.image_repository).subquery()
+        watcher = DockerWatcher()
+        running = watcher.list_running_containers()
+        if not running:
+            return
+
+        running_images = {item["image_name"] for item in running}
+        latest_scan_ids_subq = (
+            select(func.max(Scan.id)).where(Scan.image_name.in_(running_images)).group_by(Scan.image_name)
         )
-        latest_scans = session.exec(select(Scan).join(subq, Scan.id == subq.c.max_id)).all()
+        latest_scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_ids_subq))).all()
 
         if not latest_scans:
             return

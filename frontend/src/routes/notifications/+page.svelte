@@ -208,7 +208,8 @@
     {
       key: "notify_all_new",
       label: "All New",
-      description: "Any new vulnerabilities across all severities",
+      description:
+        "Any vulnerabilities newly introduced since the previous scan (all severities)",
     },
     {
       key: "notify_digest",

@@ -511,28 +511,30 @@ def test_get_vulnerabilities_across_running_report_kev(api_client):
 
 
 def test_get_vulnerabilities_across_running_report_new(api_client):
-    from datetime import datetime
-
-    from sqlmodel import Session, select
-
-    from backend.models import Vulnerability as V
-
     client, test_db, (_, mock_vw) = api_client
-    scan = seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
-
-    # Set first_seen_at on our seeded vulns so they appear in the "new" filter
-    with Session(test_db.engine) as session:
-        vulns = session.exec(select(V).where(V.scan_id == scan.id)).all()
-        for v in vulns:
-            v.first_seen_at = datetime.now(UTC)
-        session.commit()
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        scanned_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:bbbb",
+        [VULN_CRITICAL, VULN_HIGH],
+        scanned_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
 
     mock_vw.return_value.list_running_containers.return_value = [
-        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+        _make_running_container("my-nginx", "nginx:latest", "sha256:bbbb"),
     ]
 
-    data = client.get("/vulnerabilities?report=new&new_hours=24").json()
-    assert data["total_count"] >= 1
+    data = client.get("/vulnerabilities?report=new").json()
+    assert data["total_count"] == 1
+    assert data["vulnerabilities"][0]["vuln_id"] == VULN_HIGH["vuln_id"]
+    assert data["vulnerabilities"][0]["is_new"] is True
 
 
 def test_get_vulnerabilities_across_running_report_vex_annotated(api_client):

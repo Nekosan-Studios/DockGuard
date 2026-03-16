@@ -10,6 +10,7 @@ from backend.models import (  # noqa: F401
     NotificationChannel,
     NotificationLog,
     Scan,
+    ScanContainer,
     Setting,
     SystemTask,
     Vulnerability,

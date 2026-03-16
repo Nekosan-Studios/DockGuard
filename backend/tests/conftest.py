@@ -30,7 +30,7 @@ from backend.database import db as production_db
 from backend.docker_watcher import _connect_to_docker
 from backend.grype_scanner import _parse_image_repository
 from backend.main import app
-from backend.models import Scan, Vulnerability
+from backend.models import Scan, ScanContainer, Vulnerability
 
 # ---------------------------------------------------------------------------
 # Test database — fresh in-memory SQLite per test
@@ -101,7 +101,12 @@ def api_client(test_db):
 
 
 def seed_scan(
-    database: Database, image_name: str, image_digest: str, vulns: list[dict], scanned_at: datetime | None = None
+    database: Database,
+    image_name: str,
+    image_digest: str,
+    vulns: list[dict],
+    scanned_at: datetime | None = None,
+    container_names: list[str] | None = None,
 ) -> Scan:
     scan = Scan(
         scanned_at=scanned_at or datetime.now(UTC),
@@ -116,6 +121,8 @@ def seed_scan(
     with Session(database.engine) as session:
         session.add(scan)
         session.flush()
+        for container_name in sorted({name for name in (container_names or []) if name}):
+            session.add(ScanContainer(scan_id=scan.id, container_name=container_name))
         for v in vulns:
             session.add(Vulnerability(scan_id=scan.id, **v))
         session.commit()

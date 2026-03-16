@@ -1,5 +1,4 @@
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, func, select
@@ -39,6 +38,28 @@ def get_vulnerabilities(
         raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
 
     scan = _latest_scan_for_ref(image_ref, session)
+    current_rows = session.exec(
+        select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
+            Vulnerability.scan_id == scan.id
+        )
+    ).all()
+    current_keys = {(row[0], row[1], row[2]) for row in current_rows}
+    prev_scan = session.exec(
+        select(Scan)
+        .where(Scan.image_name == scan.image_name, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at)
+        .order_by(Scan.scanned_at.desc())
+    ).first()
+    if prev_scan is None:
+        new_keys = current_keys
+    else:
+        prev_rows = session.exec(
+            select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
+                Vulnerability.scan_id == prev_scan.id
+            )
+        ).all()
+        prev_keys = {(row[0], row[1], row[2]) for row in prev_rows}
+        new_keys = current_keys - prev_keys
+
     q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     if hide_vex:
         q = q.where((Vulnerability.vex_status.is_(None)) | (~Vulnerability.vex_status.in_(["not_affected", "fixed"])))
@@ -72,12 +93,15 @@ def get_vulnerabilities(
         if key not in grouped_vulns:
             vd = _serialise_vuln(v)
             vd["packages"] = [pkg_entry]
+            vd["is_new"] = key in new_keys
             grouped_vulns[key] = vd
         else:
             gv = grouped_vulns[key]
             pkg_key = (v.package_name, v.installed_version)
             if not any((p["package_name"], p["installed_version"]) == pkg_key for p in gv["packages"]):
                 gv["packages"].append(pkg_entry)
+            if key in new_keys:
+                gv["is_new"] = True
             if _severity_rank(v.severity) < _severity_rank(gv.get("severity", "Unknown")):
                 gv["severity"] = v.severity
             v_cvss = v.cvss_base_score or 0
@@ -216,7 +240,6 @@ def get_vulnerabilities_across_running(
     report: str = Query(
         "all", description="Filter report type. Options: 'critical', 'kev', 'new', 'vex_annotated', 'all'"
     ),
-    new_hours: int = Query(default=24, ge=1, le=336, description="Hours lookback for 'new' report (default 24)"),
     hide_vex: bool = Query(False, description="Hide vulnerabilities resolved by VEX"),
     sort_by: str = Query("severity", description="Column to sort by"),
     sort_dir: str = Query("asc", description="Sort direction: asc or desc"),
@@ -294,6 +317,8 @@ def get_vulnerabilities_across_running(
     if hide_vex:
         q = q.where((Vulnerability.vex_status.is_(None)) | (~Vulnerability.vex_status.in_(["not_affected", "fixed"])))
 
+    new_keys_by_scan: dict[int, set[tuple[str, str, str]]] = {}
+
     if report == "critical":
         q = q.where(Vulnerability.severity == "Critical")
     elif report == "urgent":
@@ -301,12 +326,44 @@ def get_vulnerabilities_across_running(
     elif report == "kev":
         q = q.where(Vulnerability.is_kev)
     elif report == "new":
-        cutoff = datetime.now(UTC) - timedelta(hours=new_hours)
-        q = q.where(Vulnerability.first_seen_at >= cutoff)
+        for scan in scans:
+            current_rows = session.exec(
+                select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
+                    Vulnerability.scan_id == scan.id
+                )
+            ).all()
+            current_keys = {(row[0], row[1], row[2]) for row in current_rows}
+
+            prev_scan = session.exec(
+                select(Scan)
+                .where(Scan.image_name == scan.image_name, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at)
+                .order_by(Scan.scanned_at.desc())
+            ).first()
+
+            if prev_scan is None:
+                new_keys_by_scan[scan.id] = current_keys
+                continue
+
+            prev_rows = session.exec(
+                select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
+                    Vulnerability.scan_id == prev_scan.id
+                )
+            ).all()
+            prev_keys = {(row[0], row[1], row[2]) for row in prev_rows}
+            new_keys_by_scan[scan.id] = current_keys - prev_keys
+
+        q = q.where(Vulnerability.scan_id.in_(list(new_keys_by_scan.keys())))
     elif report == "vex_annotated":
         q = q.where(Vulnerability.vex_status.isnot(None))
 
     vulns = session.exec(q).all()
+
+    if report == "new":
+        vulns = [
+            v
+            for v in vulns
+            if (v.vuln_id, v.package_name, v.installed_version) in new_keys_by_scan.get(v.scan_id, set())
+        ]
 
     grouped_vulns: dict[str, dict] = {}
     total_instances = 0
@@ -332,6 +389,7 @@ def get_vulnerabilities_across_running(
             vd = _serialise_vuln(v)
             vd["containers"] = [{"image_name": img_name, "container_name": c} for c in containers_for_img]
             vd["packages"] = [pkg_entry]
+            vd["is_new"] = report == "new"
             grouped_vulns[key] = vd
         else:
             gv = grouped_vulns[key]

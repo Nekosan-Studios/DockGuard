@@ -62,6 +62,7 @@
     fix_state: string | null;
     purl: string | null;
     package_language: string | null;
+    is_new?: boolean;
     containers?: ContainerInfo[]; // Optional: Present only in global view
     packages?: PackageInfo[]; // Optional: Present in grouped scenarios
   }
@@ -115,7 +116,7 @@
   function handleRowClick(e: MouseEvent) {
     // Don't open modal when clicking interactive elements
     const target = e.target as HTMLElement;
-    if (target.closest("a, button, [data-popover-trigger]")) return;
+    if (target.closest("a, [data-popover-trigger]")) return;
     modalOpen = true;
   }
 
@@ -161,7 +162,7 @@
   <CveLinkCell
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
-    firstSeenAt={vuln.first_seen_at}
+    isNew={vuln.is_new ?? false}
     class="group-hover:shadow-[inset_4px_0_0_var(--color-primary)]"
   />
 

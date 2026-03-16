@@ -2,13 +2,13 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from backend.database import Database
 from backend.docker_watcher import DockerWatcher
 from backend.grype_scanner import GrypeScanner
 from backend.jobs.notifications import process_scan_notifications
-from backend.models import Scan, SystemTask
+from backend.models import Scan, ScanContainer, SystemTask
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,12 @@ async def check_running_containers(
         watcher = DockerWatcher()
         running = watcher.list_running_containers()
 
+        # Group running containers by image digest so one scan job covers all
+        # containers sharing the same underlying image.
+        running_by_digest: dict[str, list[dict]] = {}
+        for item in running:
+            running_by_digest.setdefault(item["image_id"], []).append(item)
+
         new_scans_queued = 0
         scanner = GrypeScanner(watcher=watcher, database=db)
         scan_coros: list = []
@@ -82,23 +88,27 @@ async def check_running_containers(
             last_scan = session.exec(select(Scan).order_by(col(Scan.id).desc()).limit(1)).first()
             batch_min_scan_id = (last_scan.id or 0) if last_scan else 0
 
-        for img in running:
-            image_id = img["image_id"]  # full sha256:...
+        for image_id, image_group in running_by_digest.items():
             if image_id in seen_digests:
                 continue
+
+            representative = image_group[0]
+            image_name = representative["image_name"]
+            grype_ref = representative["grype_ref"]
+            container_names = [c["container_name"] for c in image_group]
 
             seen_digests.add(image_id)
             logger.info(
                 "New running image detected: %s (%s) — scheduling Grype scan",
-                img["image_name"],
-                img["hash"],
+                image_name,
+                representative["hash"],
             )
 
             # Create a queued task for the scan
             with Session(db.engine) as session:
                 scan_task = SystemTask(
                     task_type="scan",
-                    task_name=f"Scan {img['image_name']}",
+                    task_name=f"Scan image {image_name}",
                     status="queued",
                     created_at=datetime.now(UTC),
                 )
@@ -109,11 +119,44 @@ async def check_running_containers(
 
             new_scans_queued += 1
             scan_coros.append(
-                scanner.scan_image_async(
-                    img["image_name"], img["grype_ref"], scan_semaphore, img["container_name"], scan_task_id
-                )
+                scanner.scan_image_async(image_name, grype_ref, scan_semaphore, container_names, scan_task_id)
             )
             scan_task_ids.append(scan_task_id)
+
+        # Refresh current container memberships against latest known scan per image.
+        # This keeps blast-radius views current even when no new scan is queued.
+        if running:
+            image_names = {item["image_name"] for item in running}
+            with Session(db.engine) as session:
+                latest_scans = session.exec(
+                    select(Scan).where(
+                        Scan.id.in_(
+                            select(func.max(Scan.id)).where(Scan.image_name.in_(image_names)).group_by(Scan.image_name)
+                        )
+                    )
+                ).all()
+                latest_scan_by_image = {scan.image_name: scan for scan in latest_scans}
+                existing_links = {
+                    (row.scan_id, row.container_name)
+                    for row in session.exec(
+                        select(ScanContainer).where(ScanContainer.scan_id.in_([scan.id for scan in latest_scans]))
+                    ).all()
+                }
+
+                inserted_links = 0
+                for item in running:
+                    scan = latest_scan_by_image.get(item["image_name"])
+                    if not scan:
+                        continue
+                    key = (scan.id, item["container_name"])
+                    if key in existing_links:
+                        continue
+                    session.add(ScanContainer(scan_id=scan.id, container_name=item["container_name"]))
+                    existing_links.add(key)
+                    inserted_links += 1
+
+                if inserted_links:
+                    session.commit()
 
         # Gather scans and notify on completion instead of fire-and-forget
         if scan_coros:
@@ -125,7 +168,8 @@ async def check_running_containers(
                 task.status = "completed"
                 task.finished_at = datetime.now(UTC)
                 task.result_details = (
-                    f"Detected {len(running)} running containers. Queued {new_scans_queued} new scans."
+                    f"Detected {len(running)} running containers across {len(running_by_digest)} images. "
+                    f"Queued {new_scans_queued} image scans."
                 )
                 session.add(task)
                 session.commit()
