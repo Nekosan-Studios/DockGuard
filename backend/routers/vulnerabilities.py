@@ -298,7 +298,7 @@ def get_vulnerabilities_across_running(
     if hide_vex:
         q = q.where((Vulnerability.vex_status.is_(None)) | (~Vulnerability.vex_status.in_(["not_affected", "fixed"])))
 
-    new_keys_by_scan: dict[int, set[tuple[str, str, str]]] = {}
+    new_keys_by_scan = _new_vuln_keys_for_scans(session, scans)
 
     if report == "critical":
         q = q.where(Vulnerability.severity == "Critical")
@@ -307,7 +307,6 @@ def get_vulnerabilities_across_running(
     elif report == "kev":
         q = q.where(Vulnerability.is_kev)
     elif report == "new":
-        new_keys_by_scan = _new_vuln_keys_for_scans(session, scans)
         q = q.where(Vulnerability.scan_id.in_(list(new_keys_by_scan.keys())))
     elif report == "vex_annotated":
         q = q.where(Vulnerability.vex_status.isnot(None))
@@ -341,11 +340,13 @@ def get_vulnerabilities_across_running(
             "cvss_base_score": v.cvss_base_score,
         }
 
+        v_is_new = (v.vuln_id, v.package_name, v.installed_version) in new_keys_by_scan.get(v.scan_id, set())
+
         if key not in grouped_vulns:
             vd = _serialise_vuln(v)
             vd["containers"] = [{"image_name": img_name, "container_name": c} for c in containers_for_img]
             vd["packages"] = [pkg_entry]
-            vd["is_new"] = report == "new"
+            vd["is_new"] = v_is_new
             grouped_vulns[key] = vd
         else:
             gv = grouped_vulns[key]
@@ -361,6 +362,8 @@ def get_vulnerabilities_across_running(
             if not any((p["package_name"], p["installed_version"]) == pkg_key for p in existing_pkgs):
                 existing_pkgs.append(pkg_entry)
 
+            if v_is_new:
+                gv["is_new"] = True
             if _severity_rank(v.severity) < _severity_rank(gv.get("severity", "Unknown")):
                 gv["severity"] = v.severity
             v_cvss = v.cvss_base_score or 0

@@ -94,10 +94,24 @@ def _new_vuln_keys_for_scans(session: Session, scans: list[Scan]) -> dict[int, s
     if not scans:
         return {}
 
-    # Find previous scan for each
+    # Load all scans for the relevant image_name lineages in one query, then
+    # resolve previous scans in memory — avoids N per-scan round-trips.
+    image_names = {s.image_name for s in scans}
+    lineage_scans = session.exec(
+        select(Scan).where(Scan.image_name.in_(image_names)).order_by(Scan.scanned_at.asc())
+    ).all()
+    by_image: dict[str, list[Scan]] = defaultdict(list)
+    for s in lineage_scans:
+        by_image[s.image_name].append(s)  # ascending by scanned_at
+
     prev_by_scan: dict[int, Scan | None] = {}
     for scan in scans:
-        prev_by_scan[scan.id] = _previous_scan(session, scan)
+        prev = None
+        for h in reversed(by_image[scan.image_name]):
+            if h.scanned_at < scan.scanned_at and h.id != scan.id:
+                prev = h
+                break
+        prev_by_scan[scan.id] = prev
 
     # Batch load all vuln keys for current + previous scans in one query
     all_scan_ids = [s.id for s in scans]

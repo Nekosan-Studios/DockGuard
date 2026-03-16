@@ -26,3 +26,19 @@ def upgrade() -> None:
 def downgrade() -> None:
     with op.batch_alter_table("scan") as batch_op:
         batch_op.add_column(sa.Column("container_name", sa.String(), nullable=True))
+
+    # Backfill from scancontainer — pick the first container name alphabetically
+    # when a scan had multiple containers (the old column was single-valued).
+    bind = op.get_bind()
+    bind.execute(
+        sa.text(
+            """
+            UPDATE scan
+            SET container_name = (
+                SELECT MIN(container_name)
+                FROM scancontainer
+                WHERE scancontainer.scan_id = scan.id
+            )
+            """
+        )
+    )

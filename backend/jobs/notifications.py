@@ -231,10 +231,16 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
                         kev_by_container.setdefault(container_label, []).append(v)
                         kev_total += 1
 
+        def _title(n_vulns: int, n_containers: int, prefix: str) -> str:
+            v = "CVE" if n_vulns == 1 else "CVEs"
+            c = "container" if n_containers == 1 else "containers"
+            return f"{prefix}{n_vulns} {v} across {n_containers} {c}"
+
         if urgent_by_container:
             urgent_channels = [c for c in channels if c.notify_urgent]
             if urgent_channels:
-                title = f"Urgent: {urgent_total} Urgent-Priority Vulnerabilities Found"
+                unique_urgent = len({v.vuln_id for vulns in urgent_by_container.values() for v in vulns})
+                title = _title(unique_urgent, len(urgent_by_container), "Urgent: ")
                 body = "New vulnerabilities with Urgent priority (risk score >= 80) detected:\n\n" + _build_vuln_body(
                     urgent_by_container, base_url
                 )
@@ -243,7 +249,8 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
         if kev_by_container:
             kev_channels = [c for c in channels if c.notify_kev]
             if kev_channels:
-                title = f"KEV Alert: {kev_total} Known Exploited Vulnerabilities Found"
+                unique_kev = len({v.vuln_id for vulns in kev_by_container.values() for v in vulns})
+                title = _title(unique_kev, len(kev_by_container), "KEV: ")
                 body = (
                     "New vulnerabilities listed in CISA's Known Exploited Vulnerabilities catalog:\n\n"
                     + _build_vuln_body(kev_by_container, base_url)
@@ -253,7 +260,8 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
         if all_by_container:
             all_new_channels = [c for c in channels if c.notify_all_new]
             if all_new_channels:
-                title = f"{all_total} New Vulnerabilities Found"
+                unique_all = len({v.vuln_id for vulns in all_by_container.values() for v in vulns})
+                title = _title(unique_all, len(all_by_container), "New: ")
                 body = "New vulnerabilities detected across scanned images:\n\n" + _build_vuln_body(
                     all_by_container, base_url
                 )
