@@ -19,6 +19,8 @@
   } from "./utils.js";
   import VulnRow from "./VulnRow.svelte";
   import type { Vulnerability } from "./VulnRow.svelte";
+  import History from "@lucide/svelte/icons/history";
+  import ContainerHistoryDialog from "./ContainerHistoryDialog.svelte";
 
   // Priority order is imported from utils.ts
 
@@ -61,6 +63,7 @@
 
   // ── Local State (Replaces Parent `SvelteMap`s) ──────────────────────────
   let expanded = $state(false);
+  let historyOpen = $state(false);
 
   let vexStatus = $state(container.vex_status);
   let hasVex = $state(container.has_vex);
@@ -294,6 +297,18 @@
       <div>
         <div class="font-medium flex items-center gap-2">
           {container.container_name}
+          {#if container.has_scan}
+            <button
+              onclick={(e) => {
+                e.stopPropagation();
+                historyOpen = true;
+              }}
+              class="text-muted-foreground hover:text-foreground ml-1 rounded p-0.5 transition-colors"
+              title="View scan history"
+            >
+              <History class="h-3.5 w-3.5" />
+            </button>
+          {/if}
           {#if container.is_distro_eol}
             <Badge
               variant="outline"
@@ -675,3 +690,5 @@
     </Table.Cell>
   </Table.Row>
 {/if}
+
+<ContainerHistoryDialog bind:open={historyOpen} {container} />

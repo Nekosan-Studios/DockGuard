@@ -351,3 +351,133 @@ def get_recent_activity(
         )
 
     return {"activities": result}
+
+
+@router.get("/containers/{container_name}/scan-history")
+def get_container_scan_history(
+    container_name: str,
+    offset: int = 0,
+    limit: int = 10,
+    session: Session = Depends(db.get_session),
+):
+    """Paginated scan history for a container, with per-entry diffs vs predecessor."""
+    # 1. Find all scan_ids linked to this container_name
+    linked_scan_ids = session.exec(
+        select(ScanContainer.scan_id).where(ScanContainer.container_name == container_name)
+    ).all()
+
+    if not linked_scan_ids:
+        raise HTTPException(status_code=404, detail=f"No scans found for container '{container_name}'")
+
+    # 2. Get image_names from those scans to identify the lineage(s)
+    linked_scans = session.exec(select(Scan).where(Scan.id.in_(linked_scan_ids))).all()
+    image_names = {s.image_name for s in linked_scans}
+
+    # 3. Fetch all scans in the lineage (ascending) — needed for correct diff resolution
+    lineage_scans = session.exec(
+        select(Scan).where(Scan.image_name.in_(image_names)).order_by(Scan.scanned_at.asc())
+    ).all()
+
+    # Sort descending for pagination
+    lineage_desc = sorted(lineage_scans, key=lambda s: s.scanned_at, reverse=True)
+    total_scans = len(lineage_desc)
+    has_more = (offset + limit) < total_scans
+    paginated = lineage_desc[offset : offset + limit]
+
+    # Build per-image ascending index for predecessor lookup
+    by_image: dict[str, list[Scan]] = defaultdict(list)
+    for s in lineage_scans:
+        by_image[s.image_name].append(s)
+
+    # Find the previous scan (in lineage) for each paginated scan
+    prev_by_scan: dict[int, Scan | None] = {}
+    for scan in paginated:
+        prev = None
+        for h in reversed(by_image[scan.image_name]):
+            if h.scanned_at < scan.scanned_at and h.id != scan.id:
+                prev = h
+                break
+        prev_by_scan[scan.id] = prev
+
+    # 4. Batch load vuln details for paginated scans + their predecessors
+    all_scan_ids: list[int] = [s.id for s in paginated]
+    for prev in prev_by_scan.values():
+        if prev is not None and prev.id not in all_scan_ids:
+            all_scan_ids.append(prev.id)
+
+    keys_by_scan: dict[int, set[tuple[str, str, str]]] = defaultdict(set)
+    vuln_details: dict[tuple, dict] = {}
+
+    if all_scan_ids:
+        rows = session.exec(
+            select(
+                Vulnerability.scan_id,
+                Vulnerability.vuln_id,
+                Vulnerability.package_name,
+                Vulnerability.installed_version,
+                Vulnerability.severity,
+                Vulnerability.risk_score,
+                Vulnerability.is_kev,
+            ).where(Vulnerability.scan_id.in_(all_scan_ids))
+        ).all()
+        for scan_id, vuln_id, pkg_name, inst_ver, severity, risk_score, is_kev in rows:
+            key = (vuln_id, pkg_name, inst_ver)
+            keys_by_scan[scan_id].add(key)
+            vuln_details[(scan_id, key)] = {
+                "vuln_id": vuln_id,
+                "package_name": pkg_name,
+                "installed_version": inst_ver,
+                "severity": severity,
+                "risk_score": risk_score,
+                "is_kev": is_kev,
+            }
+
+    # 5. Build entries
+    entries = []
+    for scan in paginated:
+        current_keys = keys_by_scan.get(scan.id, set())
+        prev = prev_by_scan[scan.id]
+        is_baseline = prev is None
+
+        if is_baseline:
+            priority_counts: dict[str, int] = defaultdict(int)
+            for key in current_keys:
+                d = vuln_details.get((scan.id, key))
+                priority_counts[_priority_bucket(d["risk_score"] if d else None)] += 1
+            entries.append(
+                {
+                    "scan_id": scan.id,
+                    "scanned_at": _as_utc(scan.scanned_at),
+                    "image_name": scan.image_name,
+                    "total": len(current_keys),
+                    "is_baseline": True,
+                    "image_changed": None,
+                    "added": [],
+                    "removed": [],
+                    "vulns_by_priority": dict(priority_counts),
+                }
+            )
+        else:
+            prev_keys = keys_by_scan.get(prev.id, set())
+            added_keys = current_keys - prev_keys
+            removed_keys = prev_keys - current_keys
+            entries.append(
+                {
+                    "scan_id": scan.id,
+                    "scanned_at": _as_utc(scan.scanned_at),
+                    "image_name": scan.image_name,
+                    "total": len(current_keys),
+                    "is_baseline": False,
+                    "image_changed": scan.image_digest != prev.image_digest,
+                    "added": [vuln_details[(scan.id, k)] for k in added_keys if (scan.id, k) in vuln_details],
+                    "removed": [vuln_details[(prev.id, k)] for k in removed_keys if (prev.id, k) in vuln_details],
+                    "vulns_by_priority": None,
+                }
+            )
+
+    return {
+        "container_name": container_name,
+        "total_scans": total_scans,
+        "has_more": has_more,
+        "entries": entries,
+    }

@@ -1,0 +1,375 @@
+<script lang="ts">
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import { Skeleton } from "$lib/components/ui/skeleton/index.js";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
+  import { SvelteSet } from "svelte/reactivity";
+  import { PRIORITY_CLASSES, PRIORITY_ORDER, toUtcDate } from "./utils.js";
+  import type { ContainerRecord } from "./ContainerRow.svelte";
+
+  let {
+    container,
+    open = $bindable(false),
+  }: {
+    container: ContainerRecord;
+    open: boolean;
+  } = $props();
+
+  interface VulnDiff {
+    vuln_id: string;
+    package_name: string;
+    installed_version: string;
+    severity: string;
+    risk_score: number | null;
+    is_kev: boolean;
+  }
+
+  interface ScanEntry {
+    scan_id: number;
+    scanned_at: string;
+    image_name: string;
+    total: number;
+    is_baseline: boolean;
+    image_changed: boolean | null;
+    added: VulnDiff[];
+    removed: VulnDiff[];
+    vulns_by_priority: Record<string, number> | null;
+  }
+
+  interface HistoryResponse {
+    container_name: string;
+    total_scans: number;
+    has_more: boolean;
+    entries: ScanEntry[];
+  }
+
+  let loading = $state(false);
+  let error = $state<string | null>(null);
+  let history = $state<HistoryResponse | null>(null);
+  let loadingMore = $state(false);
+  let expandedEntries = new SvelteSet<number>();
+
+  function priorityForSeverity(severity: string): string {
+    // Simple mapping for display badge when risk_score is unavailable
+    if (severity === "Critical" || severity === "High") return severity;
+    if (severity === "Medium") return "Medium";
+    return "Low";
+  }
+
+  function priorityClass(severity: string, riskScore: number | null): string {
+    let priority: string;
+    if (riskScore != null) {
+      if (riskScore >= 80) priority = "Urgent";
+      else if (riskScore >= 50) priority = "High";
+      else if (riskScore >= 20) priority = "Medium";
+      else priority = "Low";
+    } else {
+      priority = priorityForSeverity(severity);
+    }
+    return PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES["Low"];
+  }
+
+  function priorityLabel(severity: string, riskScore: number | null): string {
+    if (riskScore != null) {
+      if (riskScore >= 80) return "Urgent";
+      if (riskScore >= 50) return "High";
+      if (riskScore >= 20) return "Medium";
+      return "Low";
+    }
+    return priorityForSeverity(severity);
+  }
+
+  function shortDate(iso: string): string {
+    return toUtcDate(iso).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  async function loadHistory(offset = 0) {
+    if (offset === 0) {
+      loading = true;
+      error = null;
+      history = null;
+    } else {
+      loadingMore = true;
+    }
+    try {
+      const params = new URLSearchParams({
+        offset: String(offset),
+        limit: "10",
+      });
+      const res = await fetch(
+        `/api/containers/${encodeURIComponent(container.container_name)}/scan-history?${params}`
+      );
+      if (!res.ok) {
+        error = `Failed to load history (HTTP ${res.status})`;
+        return;
+      }
+      const data: HistoryResponse = await res.json();
+      if (offset === 0) {
+        history = data;
+      } else if (history) {
+        history = {
+          ...data,
+          entries: [...history.entries, ...data.entries],
+        };
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to load history";
+    } finally {
+      loading = false;
+      loadingMore = false;
+    }
+  }
+
+  function toggleEntry(scanId: number) {
+    if (expandedEntries.has(scanId)) {
+      expandedEntries.delete(scanId);
+    } else {
+      expandedEntries.add(scanId);
+    }
+  }
+
+  $effect(() => {
+    if (open && !history && !loading) {
+      loadHistory(0);
+    }
+    if (!open) {
+      history = null;
+      error = null;
+      expandedEntries.clear();
+    }
+  });
+</script>
+
+<Dialog.Root bind:open>
+  <Dialog.Content class="max-w-3xl max-h-[85vh] overflow-y-auto">
+    <Dialog.Header>
+      <Dialog.Title>Scan History — {container.container_name}</Dialog.Title>
+      <Dialog.Description class="font-mono text-xs truncate">
+        {container.image_name}
+      </Dialog.Description>
+    </Dialog.Header>
+
+    <div class="mt-2 space-y-2">
+      {#if loading}
+        {#each [0, 1, 2, 3] as i (i)}
+          <Skeleton class="h-14 w-full rounded-md" />
+        {/each}
+      {:else if error}
+        <p class="text-destructive text-sm">{error}</p>
+      {:else if history}
+        {#if history.entries.length === 0}
+          <p class="text-muted-foreground text-sm">No scan history found.</p>
+        {:else}
+          {#each history.entries as entry (entry.scan_id)}
+            {@const isExpanded = expandedEntries.has(entry.scan_id)}
+            <div class="rounded-md border">
+              <!-- Entry header (always visible) -->
+              <button
+                class="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
+                onclick={() => toggleEntry(entry.scan_id)}
+              >
+                <ChevronRight
+                  class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {isExpanded
+                    ? 'rotate-90'
+                    : ''}"
+                />
+
+                {#if entry.is_baseline}
+                  <!-- Baseline header -->
+                  <div class="flex flex-1 flex-wrap items-center gap-2 min-w-0">
+                    <span
+                      class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                    >
+                      Baseline
+                    </span>
+                    <span class="text-xs text-muted-foreground"
+                      >{shortDate(entry.scanned_at)}</span
+                    >
+                    <div class="flex flex-wrap gap-1">
+                      {#each PRIORITY_ORDER as pri (pri)}
+                        {#if entry.vulns_by_priority && (entry.vulns_by_priority[pri] ?? 0) > 0}
+                          <span
+                            class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {PRIORITY_CLASSES[
+                              pri
+                            ]}"
+                          >
+                            {entry.vulns_by_priority[pri]}
+                            {pri}
+                          </span>
+                        {/if}
+                      {/each}
+                    </div>
+                  </div>
+                {:else}
+                  <!-- Diff header -->
+                  <div class="flex flex-1 flex-wrap items-center gap-2 min-w-0">
+                    <span class="text-xs font-medium"
+                      >{shortDate(entry.scanned_at)}</span
+                    >
+                    {#if entry.added.length > 0}
+                      <span
+                        class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                      >
+                        +{entry.added.length} added
+                      </span>
+                    {/if}
+                    {#if entry.removed.length > 0}
+                      <span
+                        class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                      >
+                        -{entry.removed.length} removed
+                      </span>
+                    {/if}
+                    {#if entry.added.length === 0 && entry.removed.length === 0}
+                      <span class="text-xs text-muted-foreground/60"
+                        >No changes</span
+                      >
+                    {/if}
+                    {#if entry.image_changed}
+                      <span
+                        class="text-xs italic text-muted-foreground/60 ml-auto"
+                        >new image</span
+                      >
+                    {/if}
+                  </div>
+                {/if}
+              </button>
+
+              <!-- Expanded body -->
+              {#if isExpanded}
+                <div class="border-t px-3 pb-3 pt-2 space-y-3">
+                  {#if entry.is_baseline}
+                    <p class="text-xs text-muted-foreground">
+                      Baseline scan — {entry.total} total vulnerabilities at first
+                      scan.
+                    </p>
+                  {:else if entry.added.length === 0 && entry.removed.length === 0}
+                    <p class="text-xs text-muted-foreground">
+                      No vulnerability changes from previous scan.
+                    </p>
+                  {:else}
+                    {#if entry.added.length > 0}
+                      <div>
+                        <p
+                          class="mb-1 text-xs font-semibold text-red-700 dark:text-red-400"
+                        >
+                          Added ({entry.added.length})
+                        </p>
+                        <div class="space-y-0.5">
+                          {#each entry.added as v (v.vuln_id + v.package_name + v.installed_version)}
+                            <div class="flex items-center gap-2 text-xs">
+                              <span
+                                class="inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium {priorityClass(
+                                  v.severity,
+                                  v.risk_score
+                                )}"
+                              >
+                                {priorityLabel(v.severity, v.risk_score)}
+                              </span>
+                              <span class="font-mono font-medium"
+                                >{v.vuln_id}</span
+                              >
+                              {#if v.is_kev}
+                                <Tooltip.Provider>
+                                  <Tooltip.Root>
+                                    <Tooltip.Trigger class="cursor-default">
+                                      <CircleCheck
+                                        class="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400"
+                                      />
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Content>
+                                      Known Exploited Vulnerability
+                                    </Tooltip.Content>
+                                  </Tooltip.Root>
+                                </Tooltip.Provider>
+                              {/if}
+                              <span class="text-muted-foreground"
+                                >{v.package_name}</span
+                              >
+                              <span class="text-muted-foreground/60"
+                                >{v.installed_version}</span
+                              >
+                            </div>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                    {#if entry.removed.length > 0}
+                      <div>
+                        <p
+                          class="mb-1 text-xs font-semibold text-green-700 dark:text-green-400"
+                        >
+                          Removed ({entry.removed.length})
+                        </p>
+                        <div class="space-y-0.5">
+                          {#each entry.removed as v (v.vuln_id + v.package_name + v.installed_version)}
+                            <div
+                              class="flex items-center gap-2 text-xs text-muted-foreground"
+                            >
+                              <span
+                                class="inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium opacity-60 {priorityClass(
+                                  v.severity,
+                                  v.risk_score
+                                )}"
+                              >
+                                {priorityLabel(v.severity, v.risk_score)}
+                              </span>
+                              <span class="font-mono line-through"
+                                >{v.vuln_id}</span
+                              >
+                              {#if v.is_kev}
+                                <Tooltip.Provider>
+                                  <Tooltip.Root>
+                                    <Tooltip.Trigger class="cursor-default">
+                                      <CircleCheck
+                                        class="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400"
+                                      />
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Content>
+                                      Known Exploited Vulnerability
+                                    </Tooltip.Content>
+                                  </Tooltip.Root>
+                                </Tooltip.Provider>
+                              {/if}
+                              <span>{v.package_name}</span>
+                              <span class="text-muted-foreground/60"
+                                >{v.installed_version}</span
+                              >
+                            </div>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/each}
+
+          {#if history.has_more}
+            <div class="flex justify-center pt-1">
+              <button
+                onclick={() => loadHistory(history!.entries.length)}
+                disabled={loadingMore}
+                class="text-xs text-muted-foreground hover:text-foreground underline disabled:opacity-50"
+              >
+                {loadingMore ? "Loading…" : "Show more"}
+              </button>
+            </div>
+          {/if}
+
+          <p class="text-center text-xs text-muted-foreground/50">
+            {history.entries.length} of {history.total_scans} scans
+          </p>
+        {/if}
+      {/if}
+    </div>
+  </Dialog.Content>
+</Dialog.Root>
