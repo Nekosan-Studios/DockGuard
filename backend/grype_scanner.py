@@ -374,7 +374,7 @@ class GrypeScanner:
             if image.attrs.get("RepoDigests"):
                 return image.attrs["RepoDigests"][0].split("@", 1)[1]
         except Exception as e:
-            logger.debug("Could not resolve repo digest for %s: %s", image_name, e)
+            logger.warning("Could not resolve repo digest for %s: %s", image_name, e)
         return config_digest
 
     def _check_vex_for_latest_scan(self, image_name: str) -> None:

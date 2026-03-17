@@ -165,4 +165,4 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
             session.add(task)
 
         session.commit()
-    logger.debug("Persisted last_db_checked_at = %s, grype_version = %s, db_built = %s", now, grype_version, db_built)
+    logger.info("Persisted last_db_checked_at = %s, grype_version = %s, db_built = %s", now, grype_version, db_built)

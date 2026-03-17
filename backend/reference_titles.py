@@ -76,7 +76,7 @@ def _extract_html_title(body: str) -> str | None:
 
 def _fetch_title(url: str, client: httpx.Client, deadline: float | None = None) -> str | None:
     if deadline is not None and time.monotonic() >= deadline:
-        logger.debug("Time budget exhausted, skipping fetch: %s", url)
+        logger.info("Time budget exhausted, skipping fetch: %s", url)
         return None
     try:
         response = client.get(
@@ -123,7 +123,7 @@ def fetch_reference_titles(urls: Iterable[str]) -> dict[str, str]:
                 if title:
                     titles[url] = title
     except Exception:
-        logger.debug("Reference title fetching skipped due to unexpected error", exc_info=True)
+        logger.warning("Reference title fetching skipped due to unexpected error", exc_info=True)
 
     return titles
 
@@ -164,7 +164,7 @@ def fetch_all_titles(
         seen_urls.add(url)
         unique_urls.append(url)
         if len(unique_urls) >= _MAX_URLS_PER_SCAN:
-            logger.debug("URL list capped at per-scan limit (%d); additional URLs skipped", _MAX_URLS_PER_SCAN)
+            logger.info("URL list capped at per-scan limit (%d); additional URLs skipped", _MAX_URLS_PER_SCAN)
             break
 
     seen_cwes: set[str] = set()
@@ -176,7 +176,7 @@ def fetch_all_titles(
         seen_cwes.add(cwe_id)
         unique_cwes.append(cwe_id)
         if len(unique_cwes) >= _MAX_CWES_PER_SCAN:
-            logger.debug("CWE list capped at per-scan limit (%d); additional CWEs skipped", _MAX_CWES_PER_SCAN)
+            logger.info("CWE list capped at per-scan limit (%d); additional CWEs skipped", _MAX_CWES_PER_SCAN)
             break
 
     if not unique_urls and not unique_cwes:
@@ -220,7 +220,7 @@ def fetch_all_titles(
                 else:
                     logger.debug("Could not extract CWE name from title for %s: %r", cwe_id, title)
     except Exception:
-        logger.debug("Reference title fetching skipped due to unexpected error", exc_info=True)
+        logger.warning("Reference title fetching skipped due to unexpected error", exc_info=True)
 
     elapsed = time.monotonic() - start
     logger.debug(
@@ -266,6 +266,6 @@ def fetch_cwe_titles(cwe_ids: Iterable[str]) -> dict[str, str]:
                 if name:
                     titles[cwe_id] = name
     except Exception:
-        logger.debug("CWE title fetching skipped due to unexpected error", exc_info=True)
+        logger.warning("CWE title fetching skipped due to unexpected error", exc_info=True)
 
     return titles
