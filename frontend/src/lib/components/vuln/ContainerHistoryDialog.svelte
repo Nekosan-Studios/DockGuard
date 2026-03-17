@@ -5,7 +5,12 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import { SvelteSet } from "svelte/reactivity";
-  import { PRIORITY_CLASSES, PRIORITY_ORDER, toUtcDate } from "./utils.js";
+  import {
+    PRIORITY_CLASSES,
+    PRIORITY_ORDER,
+    priorityFromRiskScore,
+    toUtcDate,
+  } from "./utils.js";
   import type { ContainerRecord } from "./ContainerRow.svelte";
 
   let {
@@ -20,7 +25,6 @@
     vuln_id: string;
     package_name: string;
     installed_version: string;
-    severity: string;
     risk_score: number | null;
     is_kev: boolean;
   }
@@ -49,36 +53,6 @@
   let history = $state<HistoryResponse | null>(null);
   let loadingMore = $state(false);
   let expandedEntries = new SvelteSet<number>();
-
-  function priorityForSeverity(severity: string): string {
-    // Simple mapping for display badge when risk_score is unavailable
-    if (severity === "Critical" || severity === "High") return severity;
-    if (severity === "Medium") return "Medium";
-    return "Low";
-  }
-
-  function priorityClass(severity: string, riskScore: number | null): string {
-    let priority: string;
-    if (riskScore != null) {
-      if (riskScore >= 80) priority = "Urgent";
-      else if (riskScore >= 50) priority = "High";
-      else if (riskScore >= 20) priority = "Medium";
-      else priority = "Low";
-    } else {
-      priority = priorityForSeverity(severity);
-    }
-    return PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES["Low"];
-  }
-
-  function priorityLabel(severity: string, riskScore: number | null): string {
-    if (riskScore != null) {
-      if (riskScore >= 80) return "Urgent";
-      if (riskScore >= 50) return "High";
-      if (riskScore >= 20) return "Medium";
-      return "Low";
-    }
-    return priorityForSeverity(severity);
-  }
 
   function shortDate(iso: string): string {
     return toUtcDate(iso).toLocaleDateString(undefined, {
@@ -266,12 +240,19 @@
                           {#each entry.added as v (v.vuln_id + v.package_name + v.installed_version)}
                             <div class="flex items-center gap-2 text-xs">
                               <span
-                                class="inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium {priorityClass(
-                                  v.severity,
-                                  v.risk_score
-                                )}"
+                                class="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium {PRIORITY_CLASSES[
+                                  priorityFromRiskScore(v.risk_score)
+                                ]}"
                               >
-                                {priorityLabel(v.severity, v.risk_score)}
+                                <span class="text-[10px] leading-none"
+                                  >{priorityFromRiskScore(v.risk_score)}</span
+                                >
+                                {#if v.risk_score != null}
+                                  <span
+                                    class="font-mono text-[9px] leading-none opacity-70"
+                                    >{v.risk_score.toFixed(1)}</span
+                                  >
+                                {/if}
                               </span>
                               <span class="font-mono font-medium"
                                 >{v.vuln_id}</span
@@ -314,12 +295,19 @@
                               class="flex items-center gap-2 text-xs text-muted-foreground"
                             >
                               <span
-                                class="inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium opacity-60 {priorityClass(
-                                  v.severity,
-                                  v.risk_score
-                                )}"
+                                class="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium opacity-60 {PRIORITY_CLASSES[
+                                  priorityFromRiskScore(v.risk_score)
+                                ]}"
                               >
-                                {priorityLabel(v.severity, v.risk_score)}
+                                <span class="text-[10px] leading-none"
+                                  >{priorityFromRiskScore(v.risk_score)}</span
+                                >
+                                {#if v.risk_score != null}
+                                  <span
+                                    class="font-mono text-[9px] leading-none opacity-70"
+                                    >{v.risk_score.toFixed(1)}</span
+                                  >
+                                {/if}
                               </span>
                               <span class="font-mono line-through"
                                 >{v.vuln_id}</span

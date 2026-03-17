@@ -162,6 +162,90 @@ class TestScanHistoryDiff:
         assert s1["is_baseline"] is True
 
 
+class TestScanHistoryMultipleImageNames:
+    def test_image_tag_change_produces_single_baseline(self, api_client):
+        """Container that ran two different image tags has exactly one baseline."""
+        client, test_db, _ = api_client
+        t1 = datetime.now(UTC) - timedelta(hours=3)
+        t2 = datetime.now(UTC) - timedelta(hours=2)
+        t3 = datetime.now(UTC) - timedelta(hours=1)
+
+        # First image tag: critical + high
+        seed_scan(
+            test_db,
+            "nginx:1.24",
+            "sha256:img1",
+            [VULN_CRITICAL, VULN_HIGH],
+            scanned_at=t1,
+            container_names=["my-nginx"],
+        )
+        # Second scan, same tag (medium added)
+        seed_scan(
+            test_db,
+            "nginx:1.24",
+            "sha256:img1b",
+            [VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM],
+            scanned_at=t2,
+            container_names=["my-nginx"],
+        )
+        # Container updated to new tag (medium gone, high gone)
+        seed_scan(
+            test_db,
+            "nginx:1.25",
+            "sha256:img2",
+            [VULN_CRITICAL],
+            scanned_at=t3,
+            container_names=["my-nginx"],
+        )
+
+        response = client.get("/containers/my-nginx/scan-history")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["total_scans"] == 3
+
+        baselines = [e for e in data["entries"] if e["is_baseline"]]
+        assert len(baselines) == 1, "should be exactly one baseline regardless of image tag changes"
+
+        # Most recent (tag switch to 1.25) diffs against the prior scan of 1.24
+        latest = data["entries"][0]
+        assert latest["is_baseline"] is False
+        assert latest["image_changed"] is True
+        removed_ids = {v["vuln_id"] for v in latest["removed"]}
+        assert VULN_HIGH["vuln_id"] in removed_ids
+        assert VULN_MEDIUM["vuln_id"] in removed_ids
+        assert latest["added"] == []
+
+    def test_other_container_same_image_not_included(self, api_client):
+        """Scans for a different container running the same image are excluded."""
+        client, test_db, _ = api_client
+        t1 = datetime.now(UTC) - timedelta(hours=2)
+        t2 = datetime.now(UTC) - timedelta(hours=1)
+
+        seed_scan(
+            test_db,
+            "nginx:latest",
+            "sha256:shared",
+            [VULN_CRITICAL],
+            scanned_at=t1,
+            container_names=["my-nginx"],
+        )
+        # Different container, same image — should not appear in my-nginx history
+        seed_scan(
+            test_db,
+            "nginx:latest",
+            "sha256:shared2",
+            [VULN_CRITICAL, VULN_HIGH],
+            scanned_at=t2,
+            container_names=["other-nginx"],
+        )
+
+        response = client.get("/containers/my-nginx/scan-history")
+        data = response.json()
+        assert data["total_scans"] == 1
+        assert data["entries"][0]["is_baseline"] is True
+
+
 class TestScanHistoryPagination:
     def test_pagination_offset_and_limit(self, api_client):
         client, test_db, _ = api_client

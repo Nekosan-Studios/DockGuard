@@ -26,7 +26,20 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     latest_scan_id_subq = select(func.max(Scan.id)).where(Scan.image_name.in_(image_names)).group_by(Scan.image_name)
     scans_by_image = {s.image_name: s for s in session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()}
 
-    scan_ids = [s.id for s in scans_by_image.values()]
+    # Fallback: for containers whose image_name doesn't match any scan (e.g. the
+    # same image was previously scanned under a different tag or registry prefix),
+    # look up by image digest so they don't appear as "not yet scanned".
+    unmatched_digests = [img["image_id"] for img in running if img["image_name"] not in scans_by_image]
+    scans_by_digest: dict[str, Scan] = {}
+    if unmatched_digests:
+        digest_scan_id_subq = (
+            select(func.max(Scan.id)).where(Scan.image_digest.in_(unmatched_digests)).group_by(Scan.image_digest)
+        )
+        scans_by_digest = {
+            s.image_digest: s for s in session.exec(select(Scan).where(Scan.id.in_(digest_scan_id_subq))).all()
+        }
+
+    scan_ids = [s.id for s in scans_by_image.values()] + [s.id for s in scans_by_digest.values()]
     severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
     priority_by_scan: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     severity_by_scan_no_vex: dict[int, dict[str, int]] = defaultdict(dict)
@@ -71,7 +84,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
 
     containers = []
     for img in running:
-        scan = scans_by_image.get(img["image_name"])
+        scan = scans_by_image.get(img["image_name"]) or scans_by_digest.get(img["image_id"])
         if not scan:
             containers.append(
                 {
@@ -361,7 +374,10 @@ def get_container_scan_history(
     session: Session = Depends(db.get_session),
 ):
     """Paginated scan history for a container, with per-entry diffs vs predecessor."""
-    # 1. Find all scan_ids linked to this container_name
+    # 1. Load all scans ever linked to this container, in chronological order.
+    #    ScanContainer rows are the authoritative lineage — we deliberately do NOT
+    #    broaden to "all scans for those image_names", which would include scans for
+    #    other containers running the same image and produce spurious extra baselines.
     linked_scan_ids = session.exec(
         select(ScanContainer.scan_id).where(ScanContainer.container_name == container_name)
     ).all()
@@ -369,35 +385,23 @@ def get_container_scan_history(
     if not linked_scan_ids:
         raise HTTPException(status_code=404, detail=f"No scans found for container '{container_name}'")
 
-    # 2. Get image_names from those scans to identify the lineage(s)
-    linked_scans = session.exec(select(Scan).where(Scan.id.in_(linked_scan_ids))).all()
-    image_names = {s.image_name for s in linked_scans}
+    all_scans_asc = session.exec(select(Scan).where(Scan.id.in_(linked_scan_ids)).order_by(Scan.scanned_at.asc())).all()
 
-    # 3. Fetch all scans in the lineage (ascending) — needed for correct diff resolution
-    lineage_scans = session.exec(
-        select(Scan).where(Scan.image_name.in_(image_names)).order_by(Scan.scanned_at.asc())
-    ).all()
-
-    # Sort descending for pagination
-    lineage_desc = sorted(lineage_scans, key=lambda s: s.scanned_at, reverse=True)
-    total_scans = len(lineage_desc)
+    # Paginate descending (most recent first)
+    scans_desc = list(reversed(all_scans_asc))
+    total_scans = len(scans_desc)
     has_more = (offset + limit) < total_scans
-    paginated = lineage_desc[offset : offset + limit]
+    paginated = scans_desc[offset : offset + limit]
 
-    # Build per-image ascending index for predecessor lookup
-    by_image: dict[str, list[Scan]] = defaultdict(list)
-    for s in lineage_scans:
-        by_image[s.image_name].append(s)
-
-    # Find the previous scan (in lineage) for each paginated scan
+    # 2. Global predecessor lookup: the scan immediately before each paginated scan
+    #    in the container's unified chronological history, regardless of image_name.
+    #    This means there is exactly one baseline (the very first scan ever), and
+    #    diffs span across image/tag changes — the image_changed flag marks those.
+    scan_index = {s.id: i for i, s in enumerate(all_scans_asc)}
     prev_by_scan: dict[int, Scan | None] = {}
     for scan in paginated:
-        prev = None
-        for h in reversed(by_image[scan.image_name]):
-            if h.scanned_at < scan.scanned_at and h.id != scan.id:
-                prev = h
-                break
-        prev_by_scan[scan.id] = prev
+        idx = scan_index[scan.id]
+        prev_by_scan[scan.id] = all_scans_asc[idx - 1] if idx > 0 else None
 
     # 4. Batch load vuln details for paginated scans + their predecessors
     all_scan_ids: list[int] = [s.id for s in paginated]
@@ -423,14 +427,17 @@ def get_container_scan_history(
         for scan_id, vuln_id, pkg_name, inst_ver, severity, risk_score, is_kev in rows:
             key = (vuln_id, pkg_name, inst_ver)
             keys_by_scan[scan_id].add(key)
-            vuln_details[(scan_id, key)] = {
-                "vuln_id": vuln_id,
-                "package_name": pkg_name,
-                "installed_version": inst_ver,
-                "severity": severity,
-                "risk_score": risk_score,
-                "is_kev": is_kev,
-            }
+            detail_key = (scan_id, key)
+            existing = vuln_details.get(detail_key)
+            if existing is None or (risk_score is not None and risk_score > (existing["risk_score"] or 0)):
+                vuln_details[detail_key] = {
+                    "vuln_id": vuln_id,
+                    "package_name": pkg_name,
+                    "installed_version": inst_ver,
+                    "severity": severity,
+                    "risk_score": risk_score,
+                    "is_kev": is_kev or (existing["is_kev"] if existing else False),
+                }
 
     # 5. Build entries
     entries = []
