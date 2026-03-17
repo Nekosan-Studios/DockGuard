@@ -57,24 +57,38 @@ That's it. Dockguard only supports local docker instances, so run it where your 
 
 ```yaml
 services:
+  socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1   # Allow listing/inspecting containers (read-only)
+      IMAGES: 1       # Allow listing images (read-only)
+    restart: unless-stopped
+
   dockguard:
     image: ghcr.io/nekosan-studios/dockguard:latest
     ports:
       - "8764:8764"
     volumes:
-      - ./data:/app/data                           # Persistent scan database
-      - /var/run/docker.sock:/var/run/docker.sock  # Access host Docker daemon
+      - ./data:/app/data  # Persistent scan database
     environment:
       TZ: UTC  # Set your local timezone
+      DOCKER_HOST: tcp://socket-proxy:2375
       BASE_URL: http://your-server-ip:8764  # Public URL for deep links in notifications
-
+    depends_on:
+      - socket-proxy
     restart: unless-stopped
 ```
 
+> **Why use a socket proxy?**
+> Mounting the Docker socket (`/var/run/docker.sock`) directly into a container grants it unrestricted root-equivalent access to your Docker daemon — it could start, stop, or delete any container, pull images, or escape to the host. [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) sits between DockGuard and the socket, blocking every API call except the ones explicitly allowed. DockGuard only needs to list running containers and images (`CONTAINERS=1` and `IMAGES=1`), so all other Docker API endpoints — including anything that could modify your environment — are denied.
+
+> **Note:** On startup, docker-socket-proxy logs a haproxy warning about missing timeouts for the `docker-events` backend. This is a known cosmetic issue ([#123](https://github.com/Tecnativa/docker-socket-proxy/issues/123)) and does not affect functionality. The proxy is working correctly if you see `Loading success.` at the end of its startup output.
+
 2. Review the compose file and adjust as needed:
    - Change `./data` to your preferred location for the scan database
-   - Update the Docker socket path if it is not at the default `/var/run/docker.sock`
-   - Update the BASE_URL to enable clickable links in notifications
+   - Update the `BASE_URL` to enable clickable links in notifications
    - Set the `TZ` environment variable to your local timezone
 
 3. Start it:
@@ -84,9 +98,9 @@ docker compose pull
 docker compose up -d
 ```
 
-3. Open [http://localhost:8764](http://localhost:8764).
+4. Open [http://localhost:8764](http://localhost:8764).
 
-DockGuard will check to make sure the vulnerability database is up to date and begin scanning your containers within a few mintues.
+DockGuard will check to make sure the vulnerability database is up to date and begin scanning your containers within a few minutes.
 
 ## Configuration
 
