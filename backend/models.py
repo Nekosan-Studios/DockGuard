@@ -18,6 +18,7 @@ class Scan(SQLModel, table=True):
     vex_source: str | None = None
     vex_checked_at: datetime | None = None
     vex_error: str | None = None
+    is_update_check: bool = Field(default=False)
 
     vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
     containers: list["ScanContainer"] = Relationship(back_populates="scan")
@@ -122,3 +123,16 @@ class SystemTask(SQLModel, table=True):
     finished_at: datetime | None = None
     error_message: str | None = None
     result_details: str | None = None  # Generic info (e.g. "Found 3 new containers")
+
+
+class ImageUpdateCheck(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    image_name: str = Field(unique=True, index=True)  # e.g. "nginx:latest"
+    running_digest: str  # local image_id (sha256:...)
+    registry_digest: str | None = None  # Docker-Content-Digest from registry
+    last_checked_at: datetime
+    # "up_to_date"|"update_available"|"scan_pending"|"scan_complete"|"check_failed"
+    status: str
+    update_scan_id: int | None = Field(default=None, foreign_key="scan.id", nullable=True)
+    current_scan_id: int | None = Field(default=None, foreign_key="scan.id", nullable=True)
+    error: str | None = None

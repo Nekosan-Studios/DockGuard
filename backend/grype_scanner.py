@@ -58,6 +58,7 @@ class GrypeScanner:
         semaphore: asyncio.Semaphore,
         container_names: list[str] | None = None,
         task_id: int | None = None,
+        is_update_check: bool = False,
     ) -> None:
         """Run a Grype scan asynchronously to avoid blocking the event loop."""
         async with semaphore:
@@ -70,7 +71,9 @@ class GrypeScanner:
                         session.add(task)
                         session.commit()
 
-            await asyncio.to_thread(self.scan_image_sync, image_name, grype_ref, container_names, task_id)
+            await asyncio.to_thread(
+                self.scan_image_sync, image_name, grype_ref, container_names, task_id, is_update_check
+            )
 
     def scan_image_sync(
         self,
@@ -78,11 +81,13 @@ class GrypeScanner:
         grype_ref: str,
         container_names: list[str] | None = None,
         task_id: int | None = None,
+        is_update_check: bool = False,
     ) -> None:
         """Scan a single image, check VEX, and update the task status."""
         try:
-            self.scan_image(image_name, grype_ref, container_names)
-            self._check_vex_for_latest_scan(image_name)
+            self.scan_image(image_name, grype_ref, container_names, is_update_check=is_update_check)
+            if not is_update_check:
+                self._check_vex_for_latest_scan(image_name)
 
             if task_id:
                 with Session(self.db.engine) as session:
@@ -111,7 +116,13 @@ class GrypeScanner:
                         session.add(task)
                         session.commit()
 
-    def scan_image(self, image_name: str, grype_ref: str, container_names: list[str] | None = None) -> None:
+    def scan_image(
+        self,
+        image_name: str,
+        grype_ref: str,
+        container_names: list[str] | None = None,
+        is_update_check: bool = False,
+    ) -> None:
         """Execute the grype CLI specifically and persist results to the database."""
         logger.info("Scanning %s", image_name)
         result = subprocess.run(
@@ -130,9 +141,15 @@ class GrypeScanner:
             logger.error("Failed to parse Grype JSON for %s: %s", image_name, e)
             raise
 
-        self._store_scan(grype_json, image_name, container_names)
+        self._store_scan(grype_json, image_name, container_names, is_update_check=is_update_check)
 
-    def _store_scan(self, grype_json: dict, image_name: str, container_names: list[str] | None = None) -> None:
+    def _store_scan(
+        self,
+        grype_json: dict,
+        image_name: str,
+        container_names: list[str] | None = None,
+        is_update_check: bool = False,
+    ) -> None:
         source = grype_json.get("source", {})
         target = source.get("target", {})
         distro = grype_json.get("distro", {})
@@ -160,6 +177,7 @@ class GrypeScanner:
             distro_name=distro.get("name") or None,
             distro_version=distro.get("version") or None,
             is_distro_eol=distro_eol,
+            is_update_check=is_update_check,
         )
 
         normalised_container_names = sorted({name for name in (container_names or []) if name})
@@ -176,6 +194,7 @@ class GrypeScanner:
                 )
                 .join(Scan, Vulnerability.scan_id == Scan.id)
                 .where(Scan.image_name == image_name)
+                .where(Scan.is_update_check == False)  # noqa: E712
                 .group_by(
                     Vulnerability.vuln_id,
                     Vulnerability.package_name,

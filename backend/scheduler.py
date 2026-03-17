@@ -13,6 +13,7 @@ from backend.jobs.containers import check_running_containers
 from backend.jobs.grype_db import check_db_update
 from backend.jobs.maintenance import purge_old_data
 from backend.jobs.notifications import send_daily_digest
+from backend.jobs.registry_updates import check_registry_updates
 from backend.models import Scan
 
 from .config import ConfigManager
@@ -76,6 +77,9 @@ class ContainerScheduler:
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
             self.data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
             self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR", session)["value"])
+            self.registry_check_interval = int(
+                ConfigManager.get_setting("REGISTRY_CHECK_INTERVAL_SECONDS", session)["value"]
+            )
 
         self.digest_timezone = _get_digest_timezone()
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
@@ -112,6 +116,14 @@ class ContainerScheduler:
             CronTrigger(hour=self.digest_hour, minute=0, timezone=self.digest_timezone),
             id="daily_digest",
             name="Send daily vulnerability digest",
+            replace_existing=True,
+        )
+        self._scheduler.add_job(
+            self._run_check_registry_updates,
+            IntervalTrigger(seconds=self.registry_check_interval),
+            id="check_registry_updates",
+            name="Check registries for image updates",
+            next_run_time=datetime.now(),
             replace_existing=True,
         )
         _active_scheduler = self
@@ -158,12 +170,22 @@ class ContainerScheduler:
                     "Scheduler updated daily_digest hour to %d (%s)", self.digest_hour, self.digest_timezone.key
                 )
 
+            registry_check_interval = int(
+                ConfigManager.get_setting("REGISTRY_CHECK_INTERVAL_SECONDS", session)["value"]
+            )
+            if registry_check_interval != self.registry_check_interval:
+                self.registry_check_interval = registry_check_interval
+                self._scheduler.reschedule_job(
+                    "check_registry_updates", trigger=IntervalTrigger(seconds=self.registry_check_interval)
+                )
+                logger.info("Scheduler updated check_registry_updates interval to %ds", self.registry_check_interval)
+
     def get_jobs(self):
         return self._scheduler.get_jobs()
 
     def _bootstrap_seen_digests(self) -> None:
         with Session(self.db.engine) as session:
-            rows = session.exec(select(Scan.image_digest)).all()
+            rows = session.exec(select(Scan.image_digest).where(Scan.is_update_check == False)).all()  # noqa: E712
             self._seen_digests = set(rows)
         logger.info("Scheduler: loaded %d known digest(s) from DB", len(self._seen_digests))
 
@@ -192,3 +214,6 @@ class ContainerScheduler:
 
     async def _run_daily_digest(self) -> None:
         await send_daily_digest(self.db)
+
+    async def _run_check_registry_updates(self) -> None:
+        await check_registry_updates(self.db, self._scan_semaphore)

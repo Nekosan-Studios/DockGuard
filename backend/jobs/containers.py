@@ -8,7 +8,7 @@ from backend.database import Database
 from backend.docker_watcher import DockerWatcher
 from backend.grype_scanner import GrypeScanner
 from backend.jobs.notifications import process_scan_notifications
-from backend.models import Scan, SystemTask
+from backend.models import ImageUpdateCheck, Scan, SystemTask
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,16 @@ async def check_running_containers(
                 image_name,
                 representative["hash"],
             )
+
+            # Invalidate any stale update check — the user pulled the update
+            with Session(db.engine) as session:
+                stale_check = session.exec(
+                    select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)
+                ).first()
+                if stale_check:
+                    session.delete(stale_check)
+                    session.commit()
+                    logger.info("Cleared stale ImageUpdateCheck for %s", image_name)
 
             # Create a queued task for the scan
             with Session(db.engine) as session:

@@ -8,7 +8,7 @@ from sqlmodel import Session, func, select
 from ..api_helpers import _as_utc, _new_vuln_keys_for_scans, _priority_bucket, _severity_rank
 from ..database import db
 from ..docker_watcher import DockerWatcher
-from ..models import AppState, Scan, ScanContainer, SystemTask, Vulnerability
+from ..models import AppState, ImageUpdateCheck, Scan, ScanContainer, SystemTask, Vulnerability
 from ..vex_discovery import check_vex_for_image
 
 router = APIRouter(tags=["Containers"])
@@ -23,7 +23,12 @@ def get_running_containers(session: Session = Depends(db.get_session)):
         return {"containers": []}
 
     image_names = [img["image_name"] for img in running]
-    latest_scan_id_subq = select(func.max(Scan.id)).where(Scan.image_name.in_(image_names)).group_by(Scan.image_name)
+    latest_scan_id_subq = (
+        select(func.max(Scan.id))
+        .where(Scan.image_name.in_(image_names))
+        .where(Scan.is_update_check == False)  # noqa: E712
+        .group_by(Scan.image_name)
+    )
     scans_by_image = {s.image_name: s for s in session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()}
 
     # Fallback: for containers whose image_name doesn't match any scan (e.g. the
@@ -33,11 +38,20 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     scans_by_digest: dict[str, Scan] = {}
     if unmatched_digests:
         digest_scan_id_subq = (
-            select(func.max(Scan.id)).where(Scan.image_digest.in_(unmatched_digests)).group_by(Scan.image_digest)
+            select(func.max(Scan.id))
+            .where(Scan.image_digest.in_(unmatched_digests))
+            .where(Scan.is_update_check == False)  # noqa: E712
+            .group_by(Scan.image_digest)
         )
         scans_by_digest = {
             s.image_digest: s for s in session.exec(select(Scan).where(Scan.id.in_(digest_scan_id_subq))).all()
         }
+
+    # Batch-load update check status for running images
+    update_checks_by_image: dict[str, ImageUpdateCheck] = {}
+    if image_names:
+        update_checks = session.exec(select(ImageUpdateCheck).where(ImageUpdateCheck.image_name.in_(image_names))).all()
+        update_checks_by_image = {uc.image_name: uc for uc in update_checks}
 
     scan_ids = [s.id for s in scans_by_image.values()] + [s.id for s in scans_by_digest.values()]
     severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
@@ -85,6 +99,15 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     containers = []
     for img in running:
         scan = scans_by_image.get(img["image_name"]) or scans_by_digest.get(img["image_id"])
+        update_check = update_checks_by_image.get(img["image_name"])
+        _UPDATE_STATUSES = {"scan_pending", "scan_complete", "update_available"}
+        has_update = update_check is not None and update_check.status in _UPDATE_STATUSES
+        update_scan_id = (
+            update_check.update_scan_id
+            if (update_check is not None and update_check.status == "scan_complete")
+            else None
+        )
+
         if not scan:
             containers.append(
                 {
@@ -102,6 +125,9 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                     "vulns_by_priority_no_vex": {},
                     "total": 0,
                     "has_scan": False,
+                    "has_update": has_update,
+                    "update_scan_id": update_scan_id,
+                    "update_status": update_check.status if update_check else None,
                 }
             )
             continue
@@ -131,6 +157,9 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                 "has_vex": scan.vex_status == "found",
                 "vex_status": scan.vex_status,
                 "vex_error": scan.vex_error,
+                "has_update": has_update,
+                "update_scan_id": update_scan_id,
+                "update_status": update_check.status if update_check else None,
             }
         )
 
@@ -195,7 +224,10 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
 
     if running_images:
         latest_scan_id_subq = (
-            select(func.max(Scan.id)).where(Scan.image_name.in_(running_images)).group_by(Scan.image_name)
+            select(func.max(Scan.id))
+            .where(Scan.image_name.in_(running_images))
+            .where(Scan.is_update_check == False)  # noqa: E712
+            .group_by(Scan.image_name)
         )
         row = session.exec(
             select(
@@ -212,7 +244,12 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         urgent_count, kev_count, eol_count = 0, 0, 0
 
     cutoff = datetime.now(UTC) - timedelta(days=30)
-    recent_scans = session.exec(select(Scan).where(Scan.scanned_at >= cutoff).order_by(Scan.scanned_at.asc())).all()
+    recent_scans = session.exec(
+        select(Scan)
+        .where(Scan.scanned_at >= cutoff)
+        .where(Scan.is_update_check == False)  # noqa: E712
+        .order_by(Scan.scanned_at.asc())
+    ).all()
 
     day_image_scan: dict[str, dict[str, Scan]] = defaultdict(dict)
     for scan in recent_scans:
@@ -319,7 +356,12 @@ def get_recent_activity(
     session: Session = Depends(db.get_session),
 ):
     """Most recent scans with per-severity and per-priority vulnerability counts."""
-    scans = session.exec(select(Scan).order_by(Scan.scanned_at.desc()).limit(limit)).all()
+    scans = session.exec(
+        select(Scan)
+        .where(Scan.is_update_check == False)  # noqa: E712
+        .order_by(Scan.scanned_at.desc())
+        .limit(limit)
+    ).all()
 
     scan_ids = [s.id for s in scans]
     scan_containers_by_scan: dict[int, list[str]] = defaultdict(list)
@@ -385,7 +427,12 @@ def get_container_scan_history(
     if not linked_scan_ids:
         raise HTTPException(status_code=404, detail=f"No scans found for container '{container_name}'")
 
-    all_scans_asc = session.exec(select(Scan).where(Scan.id.in_(linked_scan_ids)).order_by(Scan.scanned_at.asc())).all()
+    all_scans_asc = session.exec(
+        select(Scan)
+        .where(Scan.id.in_(linked_scan_ids))
+        .where(Scan.is_update_check == False)  # noqa: E712
+        .order_by(Scan.scanned_at.asc())
+    ).all()
 
     # Paginate descending (most recent first)
     scans_desc = list(reversed(all_scans_asc))
@@ -512,4 +559,70 @@ def get_container_scan_history(
         "total_scans": total_scans,
         "has_more": has_more,
         "entries": entries,
+    }
+
+
+@router.get("/update-scans/{scan_id}/diff")
+def get_update_scan_diff(scan_id: int, session: Session = Depends(db.get_session)):
+    """Vulnerability diff between a registry update scan and the current running scan."""
+    check = session.exec(select(ImageUpdateCheck).where(ImageUpdateCheck.update_scan_id == scan_id)).first()
+    if not check:
+        raise HTTPException(status_code=404, detail="No update check found for this scan")
+
+    update_scan = session.get(Scan, check.update_scan_id)
+    current_scan = session.get(Scan, check.current_scan_id) if check.current_scan_id else None
+
+    if not update_scan:
+        raise HTTPException(status_code=404, detail="Update scan not found")
+
+    def _vuln_keys(s: Scan) -> dict[tuple, dict]:
+        rows = session.exec(
+            select(
+                Vulnerability.vuln_id,
+                Vulnerability.package_name,
+                Vulnerability.installed_version,
+                Vulnerability.severity,
+                Vulnerability.risk_score,
+                Vulnerability.is_kev,
+                Vulnerability.data_source,
+            ).where(Vulnerability.scan_id == s.id)
+        ).all()
+        result: dict[tuple, dict] = {}
+        for vuln_id, pkg_name, inst_ver, severity, risk_score, is_kev, data_source in rows:
+            key = (vuln_id, pkg_name, inst_ver)
+            existing = result.get(key)
+            if existing is None or (risk_score is not None and risk_score > (existing["risk_score"] or 0)):
+                result[key] = {
+                    "vuln_id": vuln_id,
+                    "package_name": pkg_name,
+                    "installed_version": inst_ver,
+                    "severity": severity,
+                    "risk_score": risk_score,
+                    "is_kev": is_kev,
+                    "data_source": data_source,
+                }
+        return result
+
+    update_keys = _vuln_keys(update_scan)
+    current_keys = _vuln_keys(current_scan) if current_scan else {}
+
+    update_cves = {k[0] for k in update_keys}
+    current_cves = {k[0] for k in current_keys}
+
+    added_cve_ids = update_cves - current_cves
+    removed_cve_ids = current_cves - update_cves
+
+    added = [v for k, v in update_keys.items() if k[0] in added_cve_ids]
+    removed = [v for k, v in current_keys.items() if k[0] in removed_cve_ids]
+
+    return {
+        "image_name": check.image_name,
+        "running_digest": check.running_digest,
+        "registry_digest": check.registry_digest,
+        "current_scan_id": check.current_scan_id,
+        "update_scan_id": check.update_scan_id,
+        "added": added,
+        "removed": removed,
+        "added_count": len({v["vuln_id"] for v in added}),
+        "removed_count": len({v["vuln_id"] for v in removed}),
     }

@@ -144,7 +144,7 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
                 failed_images.append(f"{img_name}: {exc}")
             else:
                 scan = session.get(Scan, scan_id)
-                if scan:
+                if scan and not scan.is_update_check:
                     successful_scan_ids.append(scan_id)
                     scans_by_id[scan_id] = scan
 

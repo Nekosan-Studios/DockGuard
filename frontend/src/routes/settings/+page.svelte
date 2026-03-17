@@ -74,7 +74,7 @@
       await settings.updateSettings(updates);
       saveMessage = {
         type: "success",
-        text: "Settings saved successfully.",
+        text: "Settings saved. Changes to Max Concurrent Scans requires a restart to take effect.",
       };
       hasChanges = false;
       setTimeout(() => {
@@ -121,6 +121,11 @@
     DB_CHECK_INTERVAL_SECONDS: {
       label: "Grype DB Check Interval",
       desc: "How often (in seconds) to check for a new Grype vulnerability database update.",
+      group: "Updates",
+    },
+    REGISTRY_CHECK_INTERVAL_SECONDS: {
+      label: "Container Update Check Interval",
+      desc: "How often (in seconds) to check for updates to your containers.",
       group: "Updates",
     },
     DATA_RETENTION_DAYS: {

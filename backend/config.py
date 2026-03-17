@@ -17,6 +17,7 @@ class ConfigManager:
         "DATA_RETENTION_DAYS": "30",
         "DAILY_DIGEST_HOUR": "8",
         "BASE_URL": "",
+        "REGISTRY_CHECK_INTERVAL_SECONDS": "3600",
     }
 
     @staticmethod
@@ -66,6 +67,13 @@ class ConfigManager:
             return False  # Cannot override an environment variable
 
         db_setting = db_session.get(Setting, key)
+        if value == ConfigManager.DEFAULTS[key]:
+            # Value matches the default — remove any DB override so source reverts to "default"
+            if db_setting:
+                db_session.delete(db_setting)
+                db_session.commit()
+            return True
+
         if db_setting:
             db_setting.value = value
         else:

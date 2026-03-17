@@ -20,7 +20,9 @@
   import VulnRow from "./VulnRow.svelte";
   import type { Vulnerability } from "./VulnRow.svelte";
   import History from "@lucide/svelte/icons/history";
+  import ArrowUpCircle from "@lucide/svelte/icons/arrow-up-circle";
   import ContainerHistoryDialog from "./ContainerHistoryDialog.svelte";
+  import UpdateAvailableDialog from "./UpdateAvailableDialog.svelte";
 
   // Priority order is imported from utils.ts
 
@@ -47,6 +49,9 @@
     vulns_by_priority_no_vex: Record<string, number>;
     total?: number;
     scanned_at?: string | null;
+    has_update?: boolean;
+    update_scan_id?: number | null;
+    update_status?: string | null;
   }
 
   let {
@@ -64,11 +69,43 @@
   // ── Local State (Replaces Parent `SvelteMap`s) ──────────────────────────
   let expanded = $state(false);
   let historyOpen = $state(false);
+  let updateOpen = $state(false);
 
   let vexStatus = $state(container.vex_status);
   let hasVex = $state(container.has_vex);
   let vexError = $state(container.vex_error);
   let vexChecking = $state(false);
+
+  let diffSummary = $state<{ added: number; removed: number } | null>(null);
+
+  $effect(() => {
+    const scanId = container.update_scan_id;
+    if (!scanId) return;
+    fetch(`/api/update-scans/${scanId}/diff`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data)
+          diffSummary = {
+            added: data.added_count,
+            removed: data.removed_count,
+          };
+      })
+      .catch(() => {});
+  });
+
+  let updatePillSuffix = $derived.by(() => {
+    if (!diffSummary || (diffSummary.added === 0 && diffSummary.removed === 0))
+      return "";
+    const parts = [
+      diffSummary.added > 0 ? `${diffSummary.added} added` : "",
+      diffSummary.removed > 0 ? `${diffSummary.removed} removed` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const label =
+      diffSummary.added + diffSummary.removed === 1 ? "vuln" : "vulns";
+    return ` (${parts} ${label})`;
+  });
 
   async function recheckVex(e: MouseEvent) {
     e.stopPropagation();
@@ -357,6 +394,18 @@
                 {/if}
               </Tooltip.Content>
             </Tooltip.Root>
+          {/if}
+          {#if container.has_update}
+            <button
+              onclick={(e) => {
+                e.stopPropagation();
+                updateOpen = true;
+              }}
+              class="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-100/50 px-2 py-0.5 text-xs font-medium text-teal-700 transition-opacity hover:opacity-80 dark:border-teal-800 dark:bg-teal-900/40 dark:text-teal-300"
+            >
+              <ArrowUpCircle class="h-3 w-3" />
+              Update Available{updatePillSuffix}
+            </button>
           {/if}
         </div>
         <div class="text-muted-foreground font-mono text-xs">
@@ -692,3 +741,4 @@
 {/if}
 
 <ContainerHistoryDialog bind:open={historyOpen} {container} />
+<UpdateAvailableDialog bind:open={updateOpen} {container} />
