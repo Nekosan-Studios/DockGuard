@@ -28,19 +28,19 @@ _DEFAULT_DIGEST_HOUR = 0
 
 
 def _parse_digest_hour(raw_value: str) -> int:
-    """Parse and validate DAILY_DIGEST_HOUR_UTC, falling back to 0 on invalid input."""
+    """Parse and validate DAILY_DIGEST_HOUR, falling back to 0 on invalid input."""
     try:
         hour = int(raw_value)
     except (ValueError, TypeError):
         logger.warning(
-            "DAILY_DIGEST_HOUR_UTC=%r is not a valid integer; falling back to %d",
+            "DAILY_DIGEST_HOUR=%r is not a valid integer; falling back to %d",
             raw_value,
             _DEFAULT_DIGEST_HOUR,
         )
         return _DEFAULT_DIGEST_HOUR
     if not 0 <= hour <= 23:
         logger.warning(
-            "DAILY_DIGEST_HOUR_UTC=%d is outside the valid range 0–23; falling back to %d",
+            "DAILY_DIGEST_HOUR=%d is outside the valid range 0–23; falling back to %d",
             hour,
             _DEFAULT_DIGEST_HOUR,
         )
@@ -75,7 +75,7 @@ class ContainerScheduler:
             self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
             self.data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
-            self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
+            self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR", session)["value"])
 
         self.digest_timezone = _get_digest_timezone()
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
@@ -148,7 +148,7 @@ class ContainerScheduler:
                 self.data_retention_days = data_retention_days
                 logger.info("Scheduler updated data_retention_days to %d", self.data_retention_days)
 
-            digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR_UTC", session)["value"])
+            digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR", session)["value"])
             if digest_hour != self.digest_hour:
                 self.digest_hour = digest_hour
                 self._scheduler.reschedule_job(

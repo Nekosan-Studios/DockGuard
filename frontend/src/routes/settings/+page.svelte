@@ -101,7 +101,7 @@
     string,
     { min?: number; max?: number; step?: number }
   > = {
-    DAILY_DIGEST_HOUR_UTC: { min: 0, max: 23, step: 1 },
+    DAILY_DIGEST_HOUR: { min: 0, max: 23, step: 1 },
   };
 
   const settingMeta: Record<
@@ -128,7 +128,7 @@
       desc: "Scans and task history older than this many days will be automatically purged each day. The most recent scan for each image is always kept.",
       group: "Maintenance",
     },
-    DAILY_DIGEST_HOUR_UTC: {
+    DAILY_DIGEST_HOUR: {
       label: "Daily Digest Hour",
       desc: "Hour of day (0-23) when the daily vulnerability digest notification is sent. Interpreted in the timezone set by the TZ environment variable, or UTC if TZ is not set.",
       group: "Notifications",

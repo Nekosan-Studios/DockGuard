@@ -467,7 +467,7 @@ def test_update_job_intervals_reschedules_digest_job(test_db):
     new_hour = (original + 1) % 24
 
     with Session(test_db.engine) as session:
-        ConfigManager.set_setting("DAILY_DIGEST_HOUR_UTC", str(new_hour), session)
+        ConfigManager.set_setting("DAILY_DIGEST_HOUR", str(new_hour), session)
         session.commit()
 
     sched.update_job_intervals()

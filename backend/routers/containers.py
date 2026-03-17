@@ -445,20 +445,30 @@ def get_container_scan_history(
     entries = []
     for scan in paginated:
         current_keys = keys_by_scan.get(scan.id, set())
+        # Count unique CVE IDs (matches the container view's deduplication)
+        current_cves = {k[0] for k in current_keys}
         prev = prev_by_scan[scan.id]
         is_baseline = prev is None
 
         if is_baseline:
-            priority_counts: dict[str, int] = defaultdict(int)
+            # Priority counts by unique CVE, using the best (highest) risk score per CVE
+            cve_best_risk: dict[str, float | None] = {}
             for key in current_keys:
                 d = vuln_details.get((scan.id, key))
-                priority_counts[_priority_bucket(d["risk_score"] if d else None)] += 1
+                risk = d["risk_score"] if d else None
+                cve_id = key[0]
+                cur = cve_best_risk.get(cve_id)
+                if cve_id not in cve_best_risk or (risk is not None and risk > (cur or 0)):
+                    cve_best_risk[cve_id] = risk
+            priority_counts: dict[str, int] = defaultdict(int)
+            for risk in cve_best_risk.values():
+                priority_counts[_priority_bucket(risk)] += 1
             entries.append(
                 {
                     "scan_id": scan.id,
                     "scanned_at": _as_utc(scan.scanned_at),
                     "image_name": scan.image_name,
-                    "total": len(current_keys),
+                    "total": len(current_cves),
                     "is_baseline": True,
                     "image_changed": None,
                     "added": [],
@@ -468,18 +478,31 @@ def get_container_scan_history(
             )
         else:
             prev_keys = keys_by_scan.get(prev.id, set())
-            added_keys = current_keys - prev_keys
-            removed_keys = prev_keys - current_keys
+            prev_cves = {k[0] for k in prev_keys}
+            # Diff at the CVE level: only count a CVE as added/removed when it
+            # is entirely new or completely gone — not when it merely shifted packages.
+            added_cve_ids = current_cves - prev_cves
+            removed_cve_ids = prev_cves - current_cves
+            added_items = [
+                vuln_details[(scan.id, k)]
+                for k in current_keys
+                if k[0] in added_cve_ids and (scan.id, k) in vuln_details
+            ]
+            removed_items = [
+                vuln_details[(prev.id, k)]
+                for k in prev_keys
+                if k[0] in removed_cve_ids and (prev.id, k) in vuln_details
+            ]
             entries.append(
                 {
                     "scan_id": scan.id,
                     "scanned_at": _as_utc(scan.scanned_at),
                     "image_name": scan.image_name,
-                    "total": len(current_keys),
+                    "total": len(current_cves),
                     "is_baseline": False,
                     "image_changed": scan.image_digest != prev.image_digest,
-                    "added": [vuln_details[(scan.id, k)] for k in added_keys if (scan.id, k) in vuln_details],
-                    "removed": [vuln_details[(prev.id, k)] for k in removed_keys if (prev.id, k) in vuln_details],
+                    "added": added_items,
+                    "removed": removed_items,
                     "vulns_by_priority": None,
                 }
             )
