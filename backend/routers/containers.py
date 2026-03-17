@@ -422,9 +422,10 @@ def get_container_scan_history(
                 Vulnerability.severity,
                 Vulnerability.risk_score,
                 Vulnerability.is_kev,
+                Vulnerability.data_source,
             ).where(Vulnerability.scan_id.in_(all_scan_ids))
         ).all()
-        for scan_id, vuln_id, pkg_name, inst_ver, severity, risk_score, is_kev in rows:
+        for scan_id, vuln_id, pkg_name, inst_ver, severity, risk_score, is_kev, data_source in rows:
             key = (vuln_id, pkg_name, inst_ver)
             keys_by_scan[scan_id].add(key)
             detail_key = (scan_id, key)
@@ -437,6 +438,7 @@ def get_container_scan_history(
                     "severity": severity,
                     "risk_score": risk_score,
                     "is_kev": is_kev or (existing["is_kev"] if existing else False),
+                    "data_source": data_source,
                 }
 
     # 5. Build entries

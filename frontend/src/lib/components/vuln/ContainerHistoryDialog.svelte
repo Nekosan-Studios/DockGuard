@@ -1,9 +1,11 @@
 <script lang="ts">
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import * as Popover from "$lib/components/ui/popover/index.js";
   import { Skeleton } from "$lib/components/ui/skeleton/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
   import { SvelteSet } from "svelte/reactivity";
   import {
     PRIORITY_CLASSES,
@@ -27,6 +29,15 @@
     installed_version: string;
     risk_score: number | null;
     is_kev: boolean;
+    data_source: string | null;
+  }
+
+  interface GroupedVulnDiff {
+    vuln_id: string;
+    data_source: string | null;
+    risk_score: number | null;
+    is_kev: boolean;
+    packages: { package_name: string; installed_version: string }[];
   }
 
   interface ScanEntry {
@@ -62,6 +73,49 @@
       hour: "2-digit",
       minute: "2-digit",
     });
+  }
+
+  function groupByVulnId(vulns: VulnDiff[]): GroupedVulnDiff[] {
+    const map: Record<string, GroupedVulnDiff> = {};
+    for (const v of vulns) {
+      const existing = map[v.vuln_id];
+      if (!existing) {
+        map[v.vuln_id] = {
+          vuln_id: v.vuln_id,
+          data_source: v.data_source,
+          risk_score: v.risk_score,
+          is_kev: v.is_kev,
+          packages: [
+            {
+              package_name: v.package_name,
+              installed_version: v.installed_version,
+            },
+          ],
+        };
+      } else {
+        if (
+          v.risk_score != null &&
+          (existing.risk_score == null || v.risk_score > existing.risk_score)
+        ) {
+          existing.risk_score = v.risk_score;
+        }
+        if (v.is_kev) existing.is_kev = true;
+        existing.packages.push({
+          package_name: v.package_name,
+          installed_version: v.installed_version,
+        });
+      }
+    }
+    return Object.values(map);
+  }
+
+  function countByPriority(vulns: VulnDiff[]): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const v of groupByVulnId(vulns)) {
+      const pri = priorityFromRiskScore(v.risk_score);
+      counts[pri] = (counts[pri] ?? 0) + 1;
+    }
+    return counts;
   }
 
   async function loadHistory(offset = 0) {
@@ -187,20 +241,32 @@
                     <span class="text-xs font-medium"
                       >{shortDate(entry.scanned_at)}</span
                     >
-                    {#if entry.added.length > 0}
-                      <span
-                        class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                      >
-                        +{entry.added.length} added
-                      </span>
-                    {/if}
-                    {#if entry.removed.length > 0}
-                      <span
-                        class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                      >
-                        -{entry.removed.length} removed
-                      </span>
-                    {/if}
+                    {#each PRIORITY_ORDER as pri (pri)}
+                      {@const n = countByPriority(entry.added)[pri] ?? 0}
+                      {#if n > 0}
+                        <span
+                          class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400 {PRIORITY_CLASSES[
+                            pri
+                          ]}"
+                        >
+                          +{n}
+                          {pri}
+                        </span>
+                      {/if}
+                    {/each}
+                    {#each PRIORITY_ORDER as pri (pri + "-removed")}
+                      {@const n = countByPriority(entry.removed)[pri] ?? 0}
+                      {#if n > 0}
+                        <span
+                          class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400 {PRIORITY_CLASSES[
+                            pri
+                          ]}"
+                        >
+                          -{n}
+                          {pri}
+                        </span>
+                      {/if}
+                    {/each}
                     {#if entry.added.length === 0 && entry.removed.length === 0}
                       <span class="text-xs text-muted-foreground/60"
                         >No changes</span
@@ -230,14 +296,20 @@
                     </p>
                   {:else}
                     {#if entry.added.length > 0}
+                      {@const groupedAdded = groupByVulnId(entry.added).slice(
+                        0,
+                        50
+                      )}
+                      {@const hiddenAddedCount =
+                        groupByVulnId(entry.added).length - groupedAdded.length}
                       <div>
                         <p
-                          class="mb-1 text-xs font-semibold text-red-700 dark:text-red-400"
+                          class="mb-1 text-xs font-semibold text-green-700 dark:text-green-400"
                         >
-                          Added ({entry.added.length})
+                          Added ({groupByVulnId(entry.added).length})
                         </p>
                         <div class="space-y-0.5">
-                          {#each entry.added as v (v.vuln_id + v.package_name + v.installed_version)}
+                          {#each groupedAdded as v (v.vuln_id)}
                             <div class="flex items-center gap-2 text-xs">
                               <span
                                 class="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium {PRIORITY_CLASSES[
@@ -254,9 +326,16 @@
                                   >
                                 {/if}
                               </span>
-                              <span class="font-mono font-medium"
-                                >{v.vuln_id}</span
+                              <a
+                                href={v.data_source ??
+                                  `https://nvd.nist.gov/vuln/detail/${v.vuln_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-1 font-mono font-medium text-blue-600 hover:underline dark:text-blue-400"
                               >
+                                {v.vuln_id}
+                                <ExternalLink class="h-3 w-3 shrink-0" />
+                              </a>
                               {#if v.is_kev}
                                 <Tooltip.Provider>
                                   <Tooltip.Root>
@@ -272,25 +351,79 @@
                                 </Tooltip.Provider>
                               {/if}
                               <span class="text-muted-foreground"
-                                >{v.package_name}</span
+                                >{v.packages[0].package_name}</span
                               >
                               <span class="text-muted-foreground/60"
-                                >{v.installed_version}</span
+                                >{v.packages[0].installed_version}</span
                               >
+                              {#if v.packages.length > 1}
+                                <Popover.Root>
+                                  <Popover.Trigger>
+                                    <span
+                                      class="inline-flex cursor-pointer items-center rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                                    >
+                                      +{v.packages.length - 1} more
+                                    </span>
+                                  </Popover.Trigger>
+                                  <Popover.Content
+                                    class="w-72 p-0"
+                                    align="start"
+                                  >
+                                    <div
+                                      class="px-3 py-2 border-b border-border"
+                                    >
+                                      <p class="text-xs font-semibold">
+                                        All Affected Packages ({v.packages
+                                          .length})
+                                      </p>
+                                    </div>
+                                    <div
+                                      class="max-h-40 overflow-y-auto divide-y divide-border"
+                                    >
+                                      {#each v.packages as pkg, i (i)}
+                                        <div
+                                          class="px-3 py-2 text-xs font-mono"
+                                        >
+                                          <span class="font-medium"
+                                            >{pkg.package_name}</span
+                                          >
+                                          <span
+                                            class="text-muted-foreground ml-2"
+                                            >{pkg.installed_version}</span
+                                          >
+                                        </div>
+                                      {/each}
+                                    </div>
+                                  </Popover.Content>
+                                </Popover.Root>
+                              {/if}
                             </div>
                           {/each}
+                          {#if hiddenAddedCount > 0}
+                            <p
+                              class="text-xs text-muted-foreground/50 mt-1 pl-1"
+                            >
+                              ...and {hiddenAddedCount} more not shown
+                            </p>
+                          {/if}
                         </div>
                       </div>
                     {/if}
                     {#if entry.removed.length > 0}
+                      {@const groupedRemoved = groupByVulnId(
+                        entry.removed
+                      ).slice(0, 50)}
+                      {@const hiddenRemovedCount =
+                        groupByVulnId(entry.removed).length -
+                        groupedRemoved.length}
                       <div>
                         <p
-                          class="mb-1 text-xs font-semibold text-green-700 dark:text-green-400"
+                          class="mb-1 text-xs font-semibold text-red-700 dark:text-red-400"
                         >
-                          Removed ({entry.removed.length})
+                          Removed ({groupByVulnId(entry.removed).length})
                         </p>
                         <div class="space-y-0.5">
-                          {#each entry.removed as v (v.vuln_id + v.package_name + v.installed_version)}
+                          {#each groupedRemoved as v (v.vuln_id)}
                             <div
                               class="flex items-center gap-2 text-xs text-muted-foreground"
                             >
@@ -309,9 +442,16 @@
                                   >
                                 {/if}
                               </span>
-                              <span class="font-mono line-through"
-                                >{v.vuln_id}</span
+                              <a
+                                href={v.data_source ??
+                                  `https://nvd.nist.gov/vuln/detail/${v.vuln_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-1 font-mono line-through text-blue-600/60 hover:underline dark:text-blue-400/60"
                               >
+                                {v.vuln_id}
+                                <ExternalLink class="h-3 w-3 shrink-0" />
+                              </a>
                               {#if v.is_kev}
                                 <Tooltip.Provider>
                                   <Tooltip.Root>
@@ -326,12 +466,60 @@
                                   </Tooltip.Root>
                                 </Tooltip.Provider>
                               {/if}
-                              <span>{v.package_name}</span>
+                              <span>{v.packages[0].package_name}</span>
                               <span class="text-muted-foreground/60"
-                                >{v.installed_version}</span
+                                >{v.packages[0].installed_version}</span
                               >
+                              {#if v.packages.length > 1}
+                                <Popover.Root>
+                                  <Popover.Trigger>
+                                    <span
+                                      class="inline-flex cursor-pointer items-center rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                                    >
+                                      +{v.packages.length - 1} more
+                                    </span>
+                                  </Popover.Trigger>
+                                  <Popover.Content
+                                    class="w-72 p-0"
+                                    align="start"
+                                  >
+                                    <div
+                                      class="px-3 py-2 border-b border-border"
+                                    >
+                                      <p class="text-xs font-semibold">
+                                        All Affected Packages ({v.packages
+                                          .length})
+                                      </p>
+                                    </div>
+                                    <div
+                                      class="max-h-40 overflow-y-auto divide-y divide-border"
+                                    >
+                                      {#each v.packages as pkg, i (i)}
+                                        <div
+                                          class="px-3 py-2 text-xs font-mono"
+                                        >
+                                          <span class="font-medium"
+                                            >{pkg.package_name}</span
+                                          >
+                                          <span
+                                            class="text-muted-foreground ml-2"
+                                            >{pkg.installed_version}</span
+                                          >
+                                        </div>
+                                      {/each}
+                                    </div>
+                                  </Popover.Content>
+                                </Popover.Root>
+                              {/if}
                             </div>
                           {/each}
+                          {#if hiddenRemovedCount > 0}
+                            <p
+                              class="text-xs text-muted-foreground/50 mt-1 pl-1"
+                            >
+                              ...and {hiddenRemovedCount} more not shown
+                            </p>
+                          {/if}
                         </div>
                       </div>
                     {/if}
