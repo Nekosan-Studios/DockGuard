@@ -215,26 +215,40 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
             .group_by(Vulnerability.scan_id)
         ).all()
         urgent_by_scan = dict(urgent_rows)
+
+        kev_rows = session.exec(
+            select(Vulnerability.scan_id, func.count(Vulnerability.id))
+            .where(Vulnerability.scan_id.in_(trend_scan_ids))
+            .where(Vulnerability.is_kev)
+            .group_by(Vulnerability.scan_id)
+        ).all()
+        kev_by_scan = dict(kev_rows)
     else:
         urgent_by_scan = {}
+        kev_by_scan = {}
 
     trend = [
-        {"date": day, "urgent": sum(urgent_by_scan.get(s.id, 0) for s in day_image_scan[day].values())}
+        {
+            "date": day,
+            "urgent": sum(urgent_by_scan.get(s.id, 0) for s in day_image_scan[day].values()),
+            "kev": sum(kev_by_scan.get(s.id, 0) for s in day_image_scan[day].values()),
+        }
         for day in sorted(day_image_scan.keys())
     ]
 
-    # Override current day with the real-time exact urgent count of currently running containers
+    # Override current day with the real-time exact counts of currently running containers
     today_iso = datetime.now(UTC).date().isoformat()
     found_today = False
     for t in trend:
         if t["date"] == today_iso:
             t["urgent"] = urgent_count
+            t["kev"] = kev_count
             found_today = True
             break
 
     # If today is not in trend at all, append it so the chart is perfectly up to date
     if not found_today and (running_images or trend):
-        trend.append({"date": today_iso, "urgent": urgent_count})
+        trend.append({"date": today_iso, "urgent": urgent_count, "kev": kev_count})
 
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None

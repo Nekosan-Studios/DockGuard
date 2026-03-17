@@ -4,7 +4,8 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
-  import { LineChart } from "layerchart";
+  import { AreaChart } from "layerchart";
+  import { curveMonotoneX } from "d3-shape";
   import Shield from "@lucide/svelte/icons/shield";
   import Container from "@lucide/svelte/icons/container";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -30,20 +31,26 @@
     return PRIORITY_ORDER.filter((p) => (vulnsByPriority[p] ?? 0) > 0);
   }
 
-  // Chart config
+  // Chart config — fixed semantic colors independent of --chart-N theme tokens
   const chartConfig = {
     urgent: {
       label: "Urgent Priority",
-      color: "var(--chart-1)",
+      color: "oklch(0.577 0.245 27.325)", // red (matches --destructive)
+    },
+    kev: {
+      label: "Actively Exploited (KEV)",
+      color: "oklch(0.75 0.183 55)", // amber/orange — warning, not green
     },
   } satisfies Chart.ChartConfig;
 
   // Parse trend dates for display
   const trendData = $derived(
-    (data.summary.trend ?? []).map((d: { date: string; urgent: number }) => ({
-      ...d,
-      label: format(new Date(d.date + "T12:00:00"), "MMM d"),
-    }))
+    (data.summary.trend ?? []).map(
+      (d: { date: string; urgent: number; kev: number }) => ({
+        ...d,
+        label: format(new Date(d.date + "T12:00:00"), "MMM d"),
+      })
+    )
   );
 
   const hasTrend = $derived(trendData.length > 0);
@@ -291,10 +298,10 @@
   <!-- Critical vuln trend chart -->
   <Card.Root>
     <Card.Header>
-      <Card.Title>Urgent Priority — 30-Day Trend</Card.Title>
+      <Card.Title>30-Day Trend</Card.Title>
       <Card.Description>
-        Vulnerabilities with the highest risk scores across all scanned images
-        per day.
+        Urgent priority and actively exploited (KEV) vulnerabilities across all
+        scanned images per day.
       </Card.Description>
     </Card.Header>
     <Card.Content>
@@ -309,7 +316,7 @@
         </div>
       {:else}
         <Chart.Container config={chartConfig} class="h-[200px] w-full">
-          <LineChart
+          <AreaChart
             data={trendData}
             x="label"
             series={[
@@ -318,9 +325,22 @@
                 label: chartConfig.urgent.label,
                 color: chartConfig.urgent.color,
               },
+              {
+                key: "kev",
+                label: chartConfig.kev.label,
+                color: chartConfig.kev.color,
+                props: { line: { "stroke-dasharray": "5 3" } },
+              },
             ]}
             axis={true}
+            points={true}
             props={{
+              area: {
+                fillOpacity: 0.2,
+                line: { strokeWidth: 2 },
+                curve: curveMonotoneX,
+                motion: "tween",
+              },
               xAxis: {
                 format: (d: string) => d,
               },
@@ -333,8 +353,25 @@
             {#snippet tooltip()}
               <Chart.Tooltip indicator="line" />
             {/snippet}
-          </LineChart>
+          </AreaChart>
         </Chart.Container>
+        <!-- Legend -->
+        <div class="mt-3 flex flex-wrap items-center justify-center gap-4">
+          <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              class="h-2.5 w-2.5 rounded-full"
+              style="background-color: {chartConfig.urgent.color}"
+            ></span>
+            Urgent Priority
+          </span>
+          <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              class="h-2.5 w-2.5 rounded-full"
+              style="background-color: {chartConfig.kev.color}"
+            ></span>
+            Actively Exploited (KEV)
+          </span>
+        </div>
       {/if}
     </Card.Content>
   </Card.Root>

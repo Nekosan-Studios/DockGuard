@@ -75,6 +75,7 @@ def test_dashboard_summary_trend_includes_recent_scans(api_client):
     data = client.get("/dashboard/summary").json()
     assert len(data["trend"]) >= 1
     assert data["trend"][0]["urgent"] == 1
+    assert "kev" in data["trend"][0]
 
 
 def test_dashboard_summary_trend_current_day_adjustment(api_client):
