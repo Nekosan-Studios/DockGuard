@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from backend.jobs.containers import check_running_containers
 from backend.jobs.grype_db import check_db_update
 from backend.jobs.maintenance import purge_old_data
-from backend.models import Scan, Vulnerability
+from backend.models import Scan, ScanContainer, Vulnerability
 from backend.scheduler import ContainerScheduler
 from backend.tests.conftest import VULN_CRITICAL, VULN_HIGH, seed_scan
 
@@ -101,6 +101,30 @@ def test_updated_image_same_tag_triggers_scan(mock_watcher_cls, mock_create_task
 
     mock_create_task.assert_called_once()
     assert "sha256:bbbb" in seen_digests
+
+
+@patch("backend.jobs.containers.GrypeScanner.scan_image_async", new_callable=MagicMock)
+@patch("backend.jobs.containers.asyncio.create_task")
+@patch("backend.jobs.containers.DockerWatcher")
+def test_known_digest_does_not_insert_retroactive_scan_container_rows(
+    mock_watcher_cls, mock_create_task, mock_scan, test_db
+):
+    """check_running_containers must not write ScanContainer rows for already-known images.
+    ScanContainer is a historical record written only at scan completion time."""
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL])
+    seen_digests = {"sha256:aaaa"}
+    semaphore = asyncio.Semaphore(1)
+    mock_watcher_cls.return_value.list_running_containers.return_value = [
+        _make_running_container("nginx:latest", "sha256:aaaa", "web-1"),
+    ]
+
+    asyncio.run(check_running_containers(test_db, seen_digests, semaphore))
+
+    with Session(test_db.engine) as session:
+        rows = session.exec(select(ScanContainer)).all()
+    # seed_scan writes ScanContainer rows for its container_names argument; since we
+    # passed none, the only way rows could exist is if check_running_containers wrote them.
+    assert rows == [], "check_running_containers must not retroactively insert ScanContainer rows"
 
 
 @patch("backend.jobs.containers.GrypeScanner.scan_image_async", new_callable=MagicMock)
@@ -289,3 +313,163 @@ def test_purge_creates_completed_system_task_record(test_db):
     assert len(purge_tasks) == 1
     assert purge_tasks[0].status == "completed"
     assert purge_tasks[0].result_details is not None
+
+
+# ---------------------------------------------------------------------------
+# _parse_digest_hour
+# ---------------------------------------------------------------------------
+
+
+def test_parse_digest_hour_valid():
+    from backend.scheduler import _parse_digest_hour
+
+    assert _parse_digest_hour("8") == 8
+    assert _parse_digest_hour("0") == 0
+    assert _parse_digest_hour("23") == 23
+
+
+def test_parse_digest_hour_invalid_string_falls_back_to_zero(caplog):
+    from backend.scheduler import _parse_digest_hour
+
+    with caplog.at_level(logging.WARNING, logger="backend.scheduler"):
+        result = _parse_digest_hour("not-a-number")
+    assert result == 0
+    assert "not a valid integer" in caplog.text
+
+
+def test_parse_digest_hour_out_of_range_falls_back_to_zero(caplog):
+    from backend.scheduler import _parse_digest_hour
+
+    with caplog.at_level(logging.WARNING, logger="backend.scheduler"):
+        result = _parse_digest_hour("25")
+    assert result == 0
+    assert "outside the valid range" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# _get_digest_timezone
+# ---------------------------------------------------------------------------
+
+
+def test_get_digest_timezone_valid_tz(monkeypatch):
+    from backend.scheduler import _get_digest_timezone
+
+    monkeypatch.setenv("TZ", "America/New_York")
+    tz = _get_digest_timezone()
+    assert tz.key == "America/New_York"
+
+
+def test_get_digest_timezone_invalid_tz_falls_back_to_utc(monkeypatch, caplog):
+    from backend.scheduler import _get_digest_timezone
+
+    monkeypatch.setenv("TZ", "Not/A/Real/Timezone")
+    with caplog.at_level(logging.WARNING, logger="backend.scheduler"):
+        tz = _get_digest_timezone()
+    assert tz.key == "UTC"
+    assert "not a recognised timezone" in caplog.text
+
+
+def test_get_digest_timezone_no_env_returns_utc(monkeypatch):
+    from backend.scheduler import _get_digest_timezone
+
+    monkeypatch.delenv("TZ", raising=False)
+    tz = _get_digest_timezone()
+    assert tz.key == "UTC"
+
+
+# ---------------------------------------------------------------------------
+# ContainerScheduler._cleanup_stray_tasks
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_stray_tasks_marks_queued_and_running_as_failed(test_db):
+    from backend.models import SystemTask as ST
+
+    now = datetime.now(UTC)
+    with Session(test_db.engine) as session:
+        session.add(ST(task_type="scan", task_name="Scan A", status="running", created_at=now))
+        session.add(ST(task_type="scan", task_name="Scan B", status="queued", created_at=now))
+        session.add(ST(task_type="scan", task_name="Scan C", status="completed", created_at=now))
+        session.commit()
+
+    # Creating ContainerScheduler calls _cleanup_stray_tasks in __init__
+    ContainerScheduler(test_db)
+
+    with Session(test_db.engine) as session:
+        all_tasks = session.exec(select(ST)).all()
+
+    statuses = {t.task_name: t.status for t in all_tasks}
+    assert statuses["Scan A"] == "failed"
+    assert statuses["Scan B"] == "failed"
+    assert statuses["Scan C"] == "completed"
+
+
+def test_cleanup_stray_tasks_sets_error_message(test_db):
+    from backend.models import SystemTask as ST
+
+    with Session(test_db.engine) as session:
+        session.add(ST(task_type="scan", task_name="Interrupted", status="running", created_at=datetime.now(UTC)))
+        session.commit()
+
+    ContainerScheduler(test_db)
+
+    with Session(test_db.engine) as session:
+        task = session.exec(select(ST).where(ST.task_name == "Interrupted")).first()
+    assert task is not None
+    assert "restart" in (task.error_message or "").lower()
+    assert task.finished_at is not None
+
+
+# ---------------------------------------------------------------------------
+# ContainerScheduler.update_job_intervals
+# ---------------------------------------------------------------------------
+
+
+def test_update_job_intervals_reschedules_scan_job(test_db):
+    """Changing SCAN_INTERVAL_SECONDS reschedules the check_running_containers job."""
+    from backend.config import ConfigManager
+
+    sched = ContainerScheduler(test_db)
+    original_interval = sched.scan_interval
+
+    # Change the setting in DB
+    with Session(test_db.engine) as session:
+        new_value = original_interval + 60
+        ConfigManager.set_setting("SCAN_INTERVAL_SECONDS", str(new_value), session)
+        session.commit()
+
+    sched.update_job_intervals()
+
+    assert sched.scan_interval == new_value
+
+
+def test_update_job_intervals_reschedules_db_check_job(test_db):
+    from backend.config import ConfigManager
+
+    sched = ContainerScheduler(test_db)
+    original = sched.db_check_interval
+
+    with Session(test_db.engine) as session:
+        new_value = original + 60
+        ConfigManager.set_setting("DB_CHECK_INTERVAL_SECONDS", str(new_value), session)
+        session.commit()
+
+    sched.update_job_intervals()
+
+    assert sched.db_check_interval == new_value
+
+
+def test_update_job_intervals_reschedules_digest_job(test_db):
+    from backend.config import ConfigManager
+
+    sched = ContainerScheduler(test_db)
+    original = sched.digest_hour
+    new_hour = (original + 1) % 24
+
+    with Session(test_db.engine) as session:
+        ConfigManager.set_setting("DAILY_DIGEST_HOUR_UTC", str(new_hour), session)
+        session.commit()
+
+    sched.update_job_intervals()
+
+    assert sched.digest_hour == new_hour

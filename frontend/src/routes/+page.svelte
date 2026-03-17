@@ -255,29 +255,32 @@
       </a>
     </Card.Root>
 
-    <!-- New vulnerabilities (24h) -->
+    <!-- New findings since previous scan -->
     <Card.Root class="transition-colors hover:bg-muted/50">
       <a href="/vulnerabilities?report=new" class="block h-full">
         <Card.Header
           class="flex flex-row items-center justify-between space-y-0 pb-2"
         >
-          <Card.Title class="text-sm font-medium">New (Last 24h)</Card.Title>
+          <Card.Title class="text-sm font-medium"
+            >New (Since Previous Scan)</Card.Title
+          >
           <Shield class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.new_vulns_24h === null}
+          {@const newFindingCount = data.summary.new_findings ?? 0}
+          {#if data.summary.new_findings === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div
-              class="text-2xl font-bold {(data.summary.new_vulns_24h ?? 0) > 0
+              class="text-2xl font-bold {newFindingCount > 0
                 ? 'text-amber-600 dark:text-amber-400'
                 : ''}"
             >
-              {data.summary.new_vulns_24h ?? 0}
+              {newFindingCount}
             </div>
             <p class="text-muted-foreground text-xs">
-              newly discovered vulnerabilities
+              vulnerabilities newly introduced since previous scan
             </p>
           {/if}
         </Card.Content>
@@ -359,7 +362,7 @@
             <Table.Row>
               <Table.Head class="w-[80px]">Type</Table.Head>
               <Table.Head class="w-[130px]">Scanned</Table.Head>
-              <Table.Head>Container</Table.Head>
+              <Table.Head>Affected Containers</Table.Head>
               <Table.Head>Image</Table.Head>
               <Table.Head>Vulnerabilities</Table.Head>
             </Table.Row>
@@ -378,8 +381,28 @@
                   {timeAgo(activity.scanned_at)}
                 </Table.Cell>
                 <Table.Cell class="text-sm">
-                  {#if activity.container_name}
-                    {activity.container_name}
+                  {#if (activity.affected_container_count_at_scan ?? 0) > 0}
+                    {#if (activity.affected_container_count_at_scan ?? 0) <= 3}
+                      <div class="flex flex-wrap gap-1">
+                        {#each activity.affected_containers_at_scan ?? [] as containerName (containerName)}
+                          <span
+                            class="inline-flex max-w-[120px] truncate items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                            title={containerName}
+                          >
+                            {containerName}
+                          </span>
+                        {/each}
+                      </div>
+                    {:else}
+                      <span
+                        class="inline-flex items-center rounded border border-border/60 bg-muted/40 px-2 py-0.5 text-xs"
+                        title={(
+                          activity.affected_containers_at_scan ?? []
+                        ).join(", ")}
+                      >
+                        {activity.affected_container_count_at_scan}
+                      </span>
+                    {/if}
                   {:else}
                     <span class="text-muted-foreground">—</span>
                   {/if}

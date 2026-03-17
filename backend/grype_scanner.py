@@ -8,7 +8,7 @@ from sqlmodel import Session, func, select
 
 from .database import Database, db
 from .docker_watcher import DockerWatcher
-from .models import Scan, SystemTask, Vulnerability
+from .models import Scan, ScanContainer, SystemTask, Vulnerability
 from .reference_titles import fetch_all_titles
 from .vex_discovery import check_vex_for_image
 
@@ -56,7 +56,7 @@ class GrypeScanner:
         image_name: str,
         grype_ref: str,
         semaphore: asyncio.Semaphore,
-        container_name: str | None = None,
+        container_names: list[str] | None = None,
         task_id: int | None = None,
     ) -> None:
         """Run a Grype scan asynchronously to avoid blocking the event loop."""
@@ -70,14 +70,18 @@ class GrypeScanner:
                         session.add(task)
                         session.commit()
 
-            await asyncio.to_thread(self.scan_image_sync, image_name, grype_ref, container_name, task_id)
+            await asyncio.to_thread(self.scan_image_sync, image_name, grype_ref, container_names, task_id)
 
     def scan_image_sync(
-        self, image_name: str, grype_ref: str, container_name: str | None = None, task_id: int | None = None
+        self,
+        image_name: str,
+        grype_ref: str,
+        container_names: list[str] | None = None,
+        task_id: int | None = None,
     ) -> None:
         """Scan a single image, check VEX, and update the task status."""
         try:
-            self.scan_image(image_name, grype_ref, container_name)
+            self.scan_image(image_name, grype_ref, container_names)
             self._check_vex_for_latest_scan(image_name)
 
             if task_id:
@@ -86,7 +90,13 @@ class GrypeScanner:
                     if task:
                         task.status = "completed"
                         task.finished_at = datetime.now(UTC)
-                        task.result_details = "Scan completed successfully."
+                        affected = len(container_names or [])
+                        if affected:
+                            task.result_details = (
+                                f"Scanned image {image_name}; captured {affected} affected container(s)."
+                            )
+                        else:
+                            task.result_details = f"Scanned image {image_name} successfully."
                         session.add(task)
                         session.commit()
         except Exception as e:
@@ -97,11 +107,11 @@ class GrypeScanner:
                     if task:
                         task.status = "failed"
                         task.finished_at = datetime.now(UTC)
-                        task.error_message = str(e)
+                        task.error_message = f"{image_name}: {e}"
                         session.add(task)
                         session.commit()
 
-    def scan_image(self, image_name: str, grype_ref: str, container_name: str | None = None) -> None:
+    def scan_image(self, image_name: str, grype_ref: str, container_names: list[str] | None = None) -> None:
         """Execute the grype CLI specifically and persist results to the database."""
         logger.info("Scanning %s", image_name)
         result = subprocess.run(
@@ -120,9 +130,9 @@ class GrypeScanner:
             logger.error("Failed to parse Grype JSON for %s: %s", image_name, e)
             raise
 
-        self._store_scan(grype_json, image_name, container_name)
+        self._store_scan(grype_json, image_name, container_names)
 
-    def _store_scan(self, grype_json: dict, image_name: str, container_name: str | None = None) -> None:
+    def _store_scan(self, grype_json: dict, image_name: str, container_names: list[str] | None = None) -> None:
         source = grype_json.get("source", {})
         target = source.get("target", {})
         distro = grype_json.get("distro", {})
@@ -150,12 +160,13 @@ class GrypeScanner:
             distro_name=distro.get("name") or None,
             distro_version=distro.get("version") or None,
             is_distro_eol=distro_eol,
-            container_name=container_name,
         )
+
+        normalised_container_names = sorted({name for name in (container_names or []) if name})
 
         with Session(self.db.engine) as session:
             # Build lookup: (vuln_id, package_name, installed_version) -> earliest first_seen_at
-            # scoped to this image_repository so "new" is per-repo not per-tag.
+            # scoped to this image_name lineage.
             existing_rows = session.exec(
                 select(
                     Vulnerability.vuln_id,
@@ -164,7 +175,7 @@ class GrypeScanner:
                     func.min(Vulnerability.first_seen_at),
                 )
                 .join(Scan, Vulnerability.scan_id == Scan.id)
-                .where(Scan.image_repository == image_repository)
+                .where(Scan.image_name == image_name)
                 .group_by(
                     Vulnerability.vuln_id,
                     Vulnerability.package_name,
@@ -174,6 +185,42 @@ class GrypeScanner:
             first_seen_map: dict[tuple[str, str, str], datetime] = {
                 (r[0], r[1], r[2]): r[3] for r in existing_rows if r[3] is not None
             }
+
+            # Best-effort lineage stitching for first scan of a new image_name.
+            # If this image_name has no prior vulnerability history, inherit
+            # first_seen_at from prior scans in the same repository where at
+            # least one scan-time container name overlaps.
+            #
+            # Tradeoff: container names can change in compose/docker and will
+            # break this continuity; this is intentional and acceptable.
+            if not first_seen_map and normalised_container_names:
+                inherited_rows = session.exec(
+                    select(
+                        Vulnerability.vuln_id,
+                        Vulnerability.package_name,
+                        Vulnerability.installed_version,
+                        func.min(Vulnerability.first_seen_at),
+                    )
+                    .join(Scan, Vulnerability.scan_id == Scan.id)
+                    .join(ScanContainer, ScanContainer.scan_id == Scan.id)
+                    .where(Scan.image_repository == image_repository)
+                    .where(Scan.image_name != image_name)
+                    .where(ScanContainer.container_name.in_(normalised_container_names))
+                    .group_by(
+                        Vulnerability.vuln_id,
+                        Vulnerability.package_name,
+                        Vulnerability.installed_version,
+                    )
+                ).all()
+                for vuln_id, package_name, installed_version, earliest_first_seen in inherited_rows:
+                    if earliest_first_seen is None:
+                        continue
+                    key = (vuln_id, package_name, installed_version)
+                    existing_first_seen = first_seen_map.get(key)
+                    if existing_first_seen is None:
+                        first_seen_map[key] = earliest_first_seen
+                    else:
+                        first_seen_map[key] = min(existing_first_seen, earliest_first_seen)
 
             # Fetch all reference titles and CWE names in one pass before the
             # match loop, deduplicating across all vulnerabilities and applying
@@ -286,6 +333,8 @@ class GrypeScanner:
 
             session.add(scan)
             session.flush()
+            for container_name in normalised_container_names:
+                session.add(ScanContainer(scan_id=scan.id, container_name=container_name))
             for v in vulnerabilities:
                 v.scan_id = scan.id
                 session.add(v)

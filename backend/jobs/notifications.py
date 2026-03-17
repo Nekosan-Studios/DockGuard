@@ -2,12 +2,13 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, func, select
 
-from backend.api_helpers import _priority_bucket
+from backend.api_helpers import _new_vuln_keys_for_scans, _previous_scan, _priority_bucket
 from backend.config import ConfigManager
 from backend.database import Database
-from backend.models import AppState, NotificationChannel, NotificationLog, Scan, Vulnerability
+from backend.docker_watcher import DockerWatcher
+from backend.models import AppState, NotificationChannel, NotificationLog, Scan, ScanContainer, Vulnerability
 from backend.services import notifier
 
 logger = logging.getLogger(__name__)
@@ -97,10 +98,6 @@ def _build_vuln_body(
     return "\n".join(lines)
 
 
-def _dedup_key(v: Vulnerability) -> tuple[str, str, str]:
-    return (v.vuln_id, v.package_name, v.installed_version)
-
-
 def find_new_vulnerabilities(session: Session, scan_ids: list[int]) -> dict[int, list[Vulnerability]]:
     """For each scan in scan_ids, find vulns that are new compared to the previous scan of the same image.
 
@@ -110,31 +107,17 @@ def find_new_vulnerabilities(session: Session, scan_ids: list[int]) -> dict[int,
         return {}
 
     scans = session.exec(select(Scan).where(Scan.id.in_(scan_ids))).all()  # type: ignore[union-attr]
+    new_keys_by_scan = _new_vuln_keys_for_scans(session, scans)
+
+    # Load full Vulnerability objects for scans that have new keys
     result: dict[int, list[Vulnerability]] = {}
-
-    for scan in scans:
-        # Get the previous scan for the same image_repository
-        prev_scan = session.exec(
-            select(Scan)
-            .where(
-                Scan.image_repository == scan.image_repository, Scan.id != scan.id, Scan.scanned_at < scan.scanned_at
-            )
-            .order_by(col(Scan.scanned_at).desc())
-        ).first()
-
-        current_vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id == scan.id)).all()
-
-        if not prev_scan:
-            # First scan for this image — all vulns are new
-            result[scan.id] = list(current_vulns)
-            continue
-
-        prev_vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id == prev_scan.id)).all()
-        prev_keys = {_dedup_key(v) for v in prev_vulns}
-
-        new_vulns = [v for v in current_vulns if _dedup_key(v) not in prev_keys]
-        if new_vulns:
-            result[scan.id] = new_vulns
+    scans_with_new = [s_id for s_id, keys in new_keys_by_scan.items() if keys]
+    if scans_with_new:
+        all_vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id.in_(scans_with_new))).all()
+        for v in all_vulns:
+            key = (v.vuln_id, v.package_name, v.installed_version)
+            if key in new_keys_by_scan.get(v.scan_id, set()):
+                result.setdefault(v.scan_id, []).append(v)
 
     return result
 
@@ -185,27 +168,27 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
         for s in scans_by_id.values():
             if not s.is_distro_eol:
                 continue
-            prev_scan = session.exec(
-                select(Scan)
-                .where(
-                    Scan.image_repository == s.image_repository,
-                    Scan.id != s.id,
-                    Scan.scanned_at < s.scanned_at,
-                )
-                .order_by(col(Scan.scanned_at).desc())
-            ).first()
-            if prev_scan is None or not prev_scan.is_distro_eol:
+            prev = _previous_scan(session, s)
+            if prev is None or not prev.is_distro_eol:
                 eol_scans.append(s)
 
         if eol_scans:
             eol_channels = [c for c in channels if c.notify_eol]
             if eol_channels:
+                eol_scan_ids = [s.id for s in eol_scans]
+                eol_containers: dict[int, list[str]] = {}
+                for scan_id, cname in session.exec(
+                    select(ScanContainer.scan_id, ScanContainer.container_name).where(
+                        ScanContainer.scan_id.in_(eol_scan_ids)
+                    )
+                ).all():
+                    eol_containers.setdefault(scan_id, []).append(cname)
+
                 title = "EOL Distro Alert"
                 lines = []
                 for s in eol_scans:
-                    lines.append(
-                        f"- **{s.image_name}** ({s.container_name or 'unknown'}): {s.distro_name} {s.distro_version}"
-                    )
+                    container_display = ", ".join(sorted(set(eol_containers.get(s.id, [])))) or "unknown"
+                    lines.append(f"- **{s.image_name}** ({container_display}): {s.distro_name} {s.distro_version}")
                 body = "Containers running on end-of-life distributions:\n\n" + "\n".join(lines)
                 await _dispatch(session, eol_channels, "eol", title, body, "warning")
 
@@ -221,25 +204,43 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
         kev_total = 0
         all_total = 0
 
+        containers_by_scan: dict[int, list[str]] = {}
+        if new_vulns_by_scan:
+            rows = session.exec(
+                select(ScanContainer.scan_id, ScanContainer.container_name).where(
+                    ScanContainer.scan_id.in_(list(new_vulns_by_scan.keys()))
+                )
+            ).all()
+            for scan_id, container_name in rows:
+                containers_by_scan.setdefault(scan_id, []).append(container_name)
+
         for scan_id, vulns in new_vulns_by_scan.items():
             scan = scans_by_id.get(scan_id)
             if not scan:
                 continue
-            container_label = scan.container_name or scan.image_name
+            scan_container_names = sorted(set(containers_by_scan.get(scan_id, [])))
+            container_labels = [f"{name} ({scan.image_name})" for name in scan_container_names] or [scan.image_name]
             for v in vulns:
-                all_by_container.setdefault(container_label, []).append(v)
-                all_total += 1
-                if v.risk_score is not None and v.risk_score >= 80:
-                    urgent_by_container.setdefault(container_label, []).append(v)
-                    urgent_total += 1
-                if v.is_kev:
-                    kev_by_container.setdefault(container_label, []).append(v)
-                    kev_total += 1
+                for container_label in container_labels:
+                    all_by_container.setdefault(container_label, []).append(v)
+                    all_total += 1
+                    if v.risk_score is not None and v.risk_score >= 80:
+                        urgent_by_container.setdefault(container_label, []).append(v)
+                        urgent_total += 1
+                    if v.is_kev:
+                        kev_by_container.setdefault(container_label, []).append(v)
+                        kev_total += 1
+
+        def _title(n_total: int, n_unique: int, n_containers: int, prefix: str) -> str:
+            v = "Vulnerability" if n_total == 1 else "Vulnerabilities"
+            c = "container" if n_containers == 1 else "containers"
+            return f"{prefix}{n_total} {v} ({n_unique} Unique) across {n_containers} {c}"
 
         if urgent_by_container:
             urgent_channels = [c for c in channels if c.notify_urgent]
             if urgent_channels:
-                title = f"Urgent: {urgent_total} Urgent-Priority Vulnerabilities Found"
+                unique_urgent = len({v.vuln_id for vulns in urgent_by_container.values() for v in vulns})
+                title = _title(urgent_total, unique_urgent, len(urgent_by_container), "Urgent: ")
                 body = "New vulnerabilities with Urgent priority (risk score >= 80) detected:\n\n" + _build_vuln_body(
                     urgent_by_container, base_url
                 )
@@ -248,7 +249,8 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
         if kev_by_container:
             kev_channels = [c for c in channels if c.notify_kev]
             if kev_channels:
-                title = f"KEV Alert: {kev_total} Known Exploited Vulnerabilities Found"
+                unique_kev = len({v.vuln_id for vulns in kev_by_container.values() for v in vulns})
+                title = _title(kev_total, unique_kev, len(kev_by_container), "KEV: ")
                 body = (
                     "New vulnerabilities listed in CISA's Known Exploited Vulnerabilities catalog:\n\n"
                     + _build_vuln_body(kev_by_container, base_url)
@@ -258,7 +260,8 @@ async def process_scan_notifications(db: Database, scan_ids: list[int], results:
         if all_by_container:
             all_new_channels = [c for c in channels if c.notify_all_new]
             if all_new_channels:
-                title = f"{all_total} New Vulnerabilities Found"
+                unique_all = len({v.vuln_id for vulns in all_by_container.values() for v in vulns})
+                title = _title(all_total, unique_all, len(all_by_container), "New: ")
                 body = "New vulnerabilities detected across scanned images:\n\n" + _build_vuln_body(
                     all_by_container, base_url
                 )
@@ -279,11 +282,16 @@ async def send_daily_digest(db: Database) -> None:
         if not channels:
             return
 
-        # Get latest scan per image_repository for running containers
-        subq = (
-            select(Scan.image_repository, func.max(Scan.id).label("max_id")).group_by(Scan.image_repository).subquery()
+        watcher = DockerWatcher()
+        running = watcher.list_running_containers()
+        if not running:
+            return
+
+        running_images = {item["image_name"] for item in running}
+        latest_scan_ids_subq = (
+            select(func.max(Scan.id)).where(Scan.image_name.in_(running_images)).group_by(Scan.image_name)
         )
-        latest_scans = session.exec(select(Scan).join(subq, Scan.id == subq.c.max_id)).all()
+        latest_scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_ids_subq))).all()
 
         if not latest_scans:
             return
@@ -295,16 +303,18 @@ async def send_daily_digest(db: Database) -> None:
         eol_count = 0
         image_count = len(latest_scans)
 
+        scan_ids = [s.id for s in latest_scans]
+        all_vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id.in_(scan_ids))).all()
+
         for scan in latest_scans:
             if scan.is_distro_eol:
                 eol_count += 1
-            vulns = session.exec(select(Vulnerability).where(Vulnerability.scan_id == scan.id)).all()
-            for v in vulns:
-                total_vulns += 1
-                if v.severity in severity_counts:
-                    severity_counts[v.severity] += 1
-                if v.is_kev:
-                    kev_count += 1
+        for v in all_vulns:
+            total_vulns += 1
+            if v.severity in severity_counts:
+                severity_counts[v.severity] += 1
+            if v.is_kev:
+                kev_count += 1
 
         # Compute deltas from last digest
         current_data = {

@@ -26,6 +26,8 @@
   const SUBVIEW_MAX_ROWS = 400;
   const SUBVIEW_PAGE_SIZE = 200;
   const AUTO_FILTER_THRESHOLD = 15;
+  const FIRST_SEEN_IN_IMAGE_TOOLTIP =
+    "Scan where this vulnerability instance was first seen in this image. Not container specific.";
 
   export interface ContainerRecord {
     scan_id?: number | null;
@@ -578,15 +580,25 @@
                         </Table.Head>
                       {/if}
                       <Table.Head class="text-center">
-                        <SortButton
-                          label="First Seen"
-                          size="sm"
-                          sortDirection={sortCol === "first_seen_at"
-                            ? sortDir
-                            : false}
-                          onclick={(e: MouseEvent) =>
-                            toggleVulnSort("first_seen_at", e)}
-                        />
+                        <Tooltip.Root>
+                          <Tooltip.Trigger>
+                            {#snippet child({ props })}
+                              <SortButton
+                                label="First Seen in Image"
+                                size="sm"
+                                sortDirection={sortCol === "first_seen_at"
+                                  ? sortDir
+                                  : false}
+                                {...props}
+                                onclick={(e: MouseEvent) =>
+                                  toggleVulnSort("first_seen_at", e)}
+                              />
+                            {/snippet}
+                          </Tooltip.Trigger>
+                          <Tooltip.Content
+                            >{FIRST_SEEN_IN_IMAGE_TOOLTIP}</Tooltip.Content
+                          >
+                        </Tooltip.Root>
                       </Table.Head>
                       <Table.Head class="pr-6">
                         <Tooltip.Root>

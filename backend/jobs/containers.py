@@ -73,6 +73,12 @@ async def check_running_containers(
         watcher = DockerWatcher()
         running = watcher.list_running_containers()
 
+        # Group running containers by image digest so one scan job covers all
+        # containers sharing the same underlying image.
+        running_by_digest: dict[str, list[dict]] = {}
+        for item in running:
+            running_by_digest.setdefault(item["image_id"], []).append(item)
+
         new_scans_queued = 0
         scanner = GrypeScanner(watcher=watcher, database=db)
         scan_coros: list = []
@@ -82,23 +88,27 @@ async def check_running_containers(
             last_scan = session.exec(select(Scan).order_by(col(Scan.id).desc()).limit(1)).first()
             batch_min_scan_id = (last_scan.id or 0) if last_scan else 0
 
-        for img in running:
-            image_id = img["image_id"]  # full sha256:...
+        for image_id, image_group in running_by_digest.items():
             if image_id in seen_digests:
                 continue
+
+            representative = image_group[0]
+            image_name = representative["image_name"]
+            grype_ref = representative["grype_ref"]
+            container_names = [c["container_name"] for c in image_group]
 
             seen_digests.add(image_id)
             logger.info(
                 "New running image detected: %s (%s) — scheduling Grype scan",
-                img["image_name"],
-                img["hash"],
+                image_name,
+                representative["hash"],
             )
 
             # Create a queued task for the scan
             with Session(db.engine) as session:
                 scan_task = SystemTask(
                     task_type="scan",
-                    task_name=f"Scan {img['image_name']}",
+                    task_name=f"Scan image {image_name}",
                     status="queued",
                     created_at=datetime.now(UTC),
                 )
@@ -109,9 +119,7 @@ async def check_running_containers(
 
             new_scans_queued += 1
             scan_coros.append(
-                scanner.scan_image_async(
-                    img["image_name"], img["grype_ref"], scan_semaphore, img["container_name"], scan_task_id
-                )
+                scanner.scan_image_async(image_name, grype_ref, scan_semaphore, container_names, scan_task_id)
             )
             scan_task_ids.append(scan_task_id)
 
@@ -125,7 +133,8 @@ async def check_running_containers(
                 task.status = "completed"
                 task.finished_at = datetime.now(UTC)
                 task.result_details = (
-                    f"Detected {len(running)} running containers. Queued {new_scans_queued} new scans."
+                    f"Detected {len(running)} running containers across {len(running_by_digest)} images. "
+                    f"Queued {new_scans_queued} image scans."
                 )
                 session.add(task)
                 session.commit()

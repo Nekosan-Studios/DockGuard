@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
-from ..api_helpers import _as_utc, _priority_bucket, _severity_rank
+from ..api_helpers import _as_utc, _new_vuln_keys_for_scans, _priority_bucket, _severity_rank
 from ..database import db
 from ..docker_watcher import DockerWatcher
-from ..models import AppState, Scan, SystemTask, Vulnerability
+from ..models import AppState, Scan, ScanContainer, SystemTask, Vulnerability
 from ..vex_discovery import check_vex_for_image
 
 router = APIRouter(tags=["Containers"])
@@ -247,15 +247,11 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         grype_version = grype_version or (latest_scan.grype_version if latest_scan else None)
         db_built = db_built or (_as_utc(latest_scan.db_built) if latest_scan else None)
 
-    cutoff_24h = datetime.now(UTC) - timedelta(hours=24)
+    new_findings = 0
     if running_images:
-        new_vulns_24h = session.exec(
-            select(func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id.in_(latest_scan_id_subq))
-            .where(Vulnerability.first_seen_at >= cutoff_24h)
-        ).one()
-    else:
-        new_vulns_24h = 0
+        latest_scans_for_running = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
+        new_keys_by_scan = _new_vuln_keys_for_scans(session, latest_scans_for_running)
+        new_findings = sum(len(keys) for keys in new_keys_by_scan.values())
 
     active_tasks = session.exec(select(func.count(SystemTask.id)).where(SystemTask.status == "running")).one()
 
@@ -276,7 +272,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "critical_count": urgent_count,
         "urgent_count": urgent_count,
         "kev_count": kev_count,
-        "new_vulns_24h": int(new_vulns_24h),
+        "new_findings": int(new_findings),
         "trend": trend,
         "docker_connected": docker_connected,
         "grype_version": grype_version,
@@ -299,9 +295,15 @@ def get_recent_activity(
     scans = session.exec(select(Scan).order_by(Scan.scanned_at.desc()).limit(limit)).all()
 
     scan_ids = [s.id for s in scans]
+    scan_containers_by_scan: dict[int, list[str]] = defaultdict(list)
     severity_by_scan: dict[int, dict[str, int]] = defaultdict(dict)
     priority_by_scan: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     if scan_ids:
+        for scan_id, container_name in session.exec(
+            select(ScanContainer.scan_id, ScanContainer.container_name).where(ScanContainer.scan_id.in_(scan_ids))
+        ).all():
+            scan_containers_by_scan[scan_id].append(container_name)
+
         for scan_id, severity, risk_score, cnt in session.exec(
             select(
                 Vulnerability.scan_id,
@@ -326,7 +328,8 @@ def get_recent_activity(
                 "scanned_at": _as_utc(scan.scanned_at),
                 "image_name": scan.image_name,
                 "image_digest": scan.image_digest,
-                "container_name": scan.container_name,
+                "affected_containers_at_scan": sorted(set(scan_containers_by_scan.get(scan.id, []))),
+                "affected_container_count_at_scan": len(set(scan_containers_by_scan.get(scan.id, []))),
                 "vulns_by_severity": vulns_by_severity,
                 "vulns_by_priority": vulns_by_priority,
                 "total": sum(vulns_by_severity.values()),

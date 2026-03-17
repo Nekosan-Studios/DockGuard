@@ -1,103 +1,322 @@
-# Priority Badge Redesign — Phased Plan
+# Scan Identity + New Semantics Rewrite — Implementation Blueprint
 
 ## Goal
 
-Replace CVSS-based severity labels with risk-score/KEV-based **Priority** across the entire UI. The priority buckets:
+Implement a clean, image-centric scan model while preserving a container-centric UX.
 
-| Priority | Condition | Color |
-|---|---|---|
-| **Urgent** | `is_kev = true` | Red |
-| **High** | risk score ≥ 6 | Orange |
-| **Medium** | risk score ≥ 2 | Amber |
-| **Low** | risk score < 2 | Muted blue |
+This rewrite unifies the meaning of **New** across the product:
 
----
+- **New** = last-scan delta for the same `image_name` lineage.
+- **First scan for a lineage** = all findings are New.
+- No time-window semantics for New (remove 24h-based behavior).
 
-## Full Inventory of Severity Touchpoints
+Also split historical and current container scope consistently:
 
-### Backend
-1. **[containers.py](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/containers.py)** — `critical_count` stat, [critical](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py#157-174) trend data, `vulns_by_severity` in recent activity + running containers
-2. **[vulnerabilities.py](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py)** — `report == "critical"` filter, `?severity=Critical` param, `severity` sort/grouping
-3. **`api_helpers.py`** — `_severity_rank()` used for sort ordering
+- **Scan-triggered history/alerts** use scan-time container membership.
+- **Current dashboard/current-state views** use current running containers.
 
-### Frontend
-1. **Dashboard** ([+page.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/routes/+page.svelte)) — "Critical Vulnerabilities" stat card, 30-day trend chart, recent activity pills
-2. **Vulnerabilities page** — "Critical Vulnerabilities" report type, "Severity" column header + default sort
-3. **Containers page** — ContainerRow severity pills (interactive filters), SEVERITY_ORDER, "Severity" subview column header
-4. **[SeverityCell.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/lib/components/vuln/SeverityCell.svelte)** — row-level pill
-5. **[utils.ts](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/lib/components/vuln/utils.ts)** — `SEVERITY_CLASSES`, [riskScoreTooltip](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/lib/components/vuln/utils.ts#40-43)
+## Locked Product Decisions
 
----
+1. Keep container-focused UX (show impact by containers).
+2. Use image lineage identity (`image_name`) for comparison/history logic.
+3. No migration cutoff logic; treat old scan ordering uniformly.
+4. No DB wipe requirement for users.
+5. Time-based “new in last N hours” view is out of scope for now.
 
-## Phased Approach
+## Data Model Contract
 
-### Phase 1: Foundation + Row-Level Pills
-*Frontend only, no backend changes.*
+### Current issues
 
-**Files:**
-- **[utils.ts](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/lib/components/vuln/utils.ts)** — Add `PRIORITY_CLASSES`, `PRIORITY_ORDER`, `priorityFromVuln(riskScore, isKev)` function
-- **[SeverityCell.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/lib/components/vuln/SeverityCell.svelte)** → Rename to **`PriorityCell.svelte`** — pill now shows priority label + color from `priorityFromVuln()`, with risk score sub-label. Tooltip explains the buckets.
-- **[VulnRow.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/lib/components/vuln/VulnRow.svelte)** — Pass `isKev` to PriorityCell, update column header "Severity" → "Priority"
-- **Vulnerabilities page** ([+page.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/routes/+page.svelte)) — Column header "Severity" → "Priority"
-- **ContainerRow.svelte** — Column header "Severity" → "Priority" in the sub-table
+- `Scan.container_name` can only store one container even when many containers share an image.
+- Historical queries and notifications currently mix image and container semantics.
 
----
+### Target schema
 
-### Phase 2: Container-Level Pills + Backend Priority Filter
-*Container pills switch from severity to priority. Requires backend changes.*
+- `Scan` remains the image-scan record.
+- Add `ScanContainer` as scan-to-container membership:
+  - `id` (pk)
+  - `scan_id` (fk -> `scan.id`, indexed)
+  - `container_name` (text, indexed)
+  - unique constraint on (`scan_id`, `container_name`)
 
-**Backend:**
-- **[containers.py](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/containers.py)** — Add `vulns_by_priority` to `/running-containers` response (computed from risk_score + is_kev for each vuln in latest scan). Keep `vulns_by_severity` for backward compat during transition.
-- **[vulnerabilities.py](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py)** — Add `?priority=Urgent|High|Medium|Low` param to `/images/vulnerabilities` for the pill-filter interactions
+### Clean-break policy
 
-**Frontend:**
-- **[ContainerRow.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/lib/components/vuln/ContainerRow.svelte)** — Replace `SEVERITY_ORDER` → `PRIORITY_ORDER`, `SEVERITY_CLASSES` → `PRIORITY_CLASSES`, `vulns_by_severity` → `vulns_by_priority`, filter sends `priority=` instead of `severity=`
+- Remove use of `Scan.container_name` in all application logic.
+- Keep `Scan.container_name` only temporarily if needed for migration safety, then remove in a follow-up migration once all code paths are switched.
 
----
+## Migration Contract (No DB Reset)
 
-### Phase 3: Dashboard
-*Stat card, trend chart, and recent activity switch to priority.*
+### Migration steps
 
-**Backend:**
-- **[containers.py](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/containers.py)** — Replace `critical_count` with `urgent_count` (KEV-based). Trend data switches from [critical](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py#157-174) to `urgent` (history starts fresh — acceptable).
-- **[containers.py](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/containers.py)** — `/activity/recent` response adds `vulns_by_priority` alongside `vulns_by_severity`
+1. Create `scancontainer` table.
+2. Backfill from legacy `scan.container_name`:
+   - for each scan with non-null `container_name`, insert one `ScanContainer` row.
+3. Recompute `Vulnerability.first_seen_at` using lineage key:
+   - key = (`scan.image_name`, `vuln_id`, `package_name`, `installed_version`)
+   - set to earliest `scan.scanned_at` where the key appears.
 
-**Frontend:**
-- **Dashboard [+page.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/routes/+page.svelte)**:
-  - Stat card: "Critical Vulnerabilities" → "Urgent Priority" (links to `/vulnerabilities?report=urgent`)
-  - Trend chart: "Critical Vulnerabilities — 30-Day Trend" → "Urgent Priority — 30-Day Trend", key changes from [critical](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py#157-174) → `urgent`
-  - Recent activity table: pills switch from `SEVERITY_CLASSES` → `PRIORITY_CLASSES`, read `vulns_by_priority`
+### Expected historical limitations
 
----
+- Historical multi-container blast radius cannot be fully recovered before migration (legacy model stored at most one container per scan).
+- Old notification logs remain as historical records and may reflect old semantics.
 
-### Phase 4: Vulnerability Reports
-*Report types aligned with priority model.*
+### User-facing migration message
 
-**Backend:**
-- **[vulnerabilities.py](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py)** — Add `report=urgent` type: `WHERE is_kev = True` (same as `kev` report but with the priority label framing — or we merge them). Consider whether [critical](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py#157-174) report stays as a legacy option or gets removed.
+- Existing database is preserved.
+- “New” logic and first-seen lineage are corrected.
+- Some old historical container impact counts may be incomplete.
+- No action required by user; no data directory reset required.
 
-**Frontend:**
-- **Vulnerabilities [+page.svelte](file:///Users/mattweinecke/Documents/GitHub/DockGuard/frontend/src/routes/+page.svelte)**:
-  - Report dropdown: replace "Critical Vulnerabilities" → "Urgent Priority" (value: `urgent`)
-  - Default report changes from [critical](file:///Users/mattweinecke/Documents/GitHub/DockGuard/backend/routers/vulnerabilities.py#157-174) → `urgent`
-  - Dashboard card link changes from `?report=critical` → `?report=urgent`
+## Scan Pipeline Contract
 
-> [!IMPORTANT]
-> **Question:** The "Urgent" report and the existing "Actively Exploited (KEV)" report would now be identical (both = KEV). Should we:
-> - **(A)** Merge them into one "Urgent Priority" report (removes KEV as a separate entry)
-> - **(B)** Keep "Urgent Priority" as the default and keep "KEV" as a separate explicit report
-> - **(C)** Make "Urgent Priority" include both KEV *and* risk score ≥ 6 (so it's Urgent + High)?
-> 
-> My lean: **(A)** — merge them. The KEV card on the dashboard already gives the "actively exploited" framing, and having two identical reports is confusing. The report dropdown becomes: `All | Urgent Priority | Newly Found | VEX Annotated`.
+### Scheduler and polling
 
----
+- Keep digest-based scan dedup behavior for scan triggering.
+- Each poll cycle does two distinct operations:
+  1. Queue scan tasks for newly seen/changed digests.
+  2. Refresh container associations for all currently running containers against latest scan for each image lineage.
 
-## Verification Plan
+### Scan execution
 
-Per-phase:
-```bash
-uv run pytest -v
-cd frontend && npm run lint && npm run check && npm run test:unit -- run
-```
+- A scan task scans one image lineage/version (not one container instance).
+- On scan completion:
+  - persist `Scan` + vulnerabilities,
+  - persist scan-time `ScanContainer` rows for all currently running containers using that image.
 
-Plus visual verification in the running app after each phase.
+### Task wording changes
+
+- Task names and result details should describe image scans and affected container counts.
+- Avoid per-container scan task framing when multiple containers share one image.
+
+## Canonical New Semantics Contract
+
+### Definition
+
+For scan `S_n` in lineage `L = image_name`:
+
+- if `S_n` has no predecessor in `L`: all findings in `S_n` are New.
+- else New = findings in `S_n` not present in `S_(n-1)` by key:
+  - (`vuln_id`, `package_name`, `installed_version`)
+
+### Required consistency
+
+Apply this exact definition to all of:
+
+- `report=new` API response,
+- New pill/badge labeling in vulnerability rows,
+- Dashboard New count,
+- scan-triggered notifications (`notify_all_new`, urgent/kev subsets).
+
+## API Contract Changes
+
+### Endpoint-by-endpoint diff
+
+#### 1) `GET /vulnerabilities`
+
+**Request changes**
+
+- `report=new` remains valid, but meaning changes to last-scan delta.
+- `new_hours` is removed from backend behavior and from frontend query construction.
+
+**Response changes**
+
+- Add `is_new` boolean per grouped vulnerability row.
+- Keep `containers` as current-running scope for this endpoint.
+- Keep existing shape for `vulnerabilities`, `total_count`, `total_instances`, `has_more`.
+
+**Compatibility**
+
+- Ignore unknown `new_hours` if still sent by old clients (do not fail requests).
+
+**Frontend consumers**
+
+- `frontend/src/routes/vulnerabilities/+page.server.ts`
+- `frontend/src/routes/vulnerabilities/+page.svelte`
+- `frontend/src/routes/api/vulnerabilities-paged/+server.ts`
+
+#### 2) `GET /dashboard/summary`
+
+**Request changes**
+
+- None.
+
+**Response changes**
+
+- Replace legacy `new_vulns_24h` with `new_findings` (latest-scan delta aggregate across latest scans of running image lineages).
+- `new_vulns_24h` is no longer returned by this endpoint; all consumers must read `new_findings` instead.
+
+**Frontend consumers**
+
+- `frontend/src/routes/+page.server.ts`
+- `frontend/src/routes/+page.svelte`
+
+#### 3) `GET /activity/recent`
+
+**Request changes**
+
+- None (`limit` stays).
+
+**Response changes**
+
+- Replace `container_name` with scan-time membership fields:
+  - `affected_containers_at_scan: string[]`
+  - `affected_container_count_at_scan: number`
+- Keep image and vulnerability summary fields (`image_name`, `scan_id`, `scanned_at`, `vulns_by_*`, `total`).
+
+**Frontend consumers**
+
+- `frontend/src/routes/+page.server.ts`
+- `frontend/src/routes/+page.svelte` (recent activity table)
+
+#### 4) `GET /containers/running`
+
+**Request changes**
+
+- None.
+
+**Response changes**
+
+- Keep one row per currently running container.
+- No semantic change to current-time scope.
+- Ensure rows can reference same latest scan for shared images.
+- Keep priority/severity fields stable to avoid unrelated UI churn in this rewrite.
+
+**Frontend consumers**
+
+- `frontend/src/routes/containers/+page.server.ts`
+- `frontend/src/lib/components/vuln/ContainerRow.svelte`
+
+#### 5) `GET /tasks` and `GET /tasks/scheduled`
+
+**Request changes**
+
+- None.
+
+**Response changes**
+
+- No schema change required.
+- `task_name` and `result_details` text should shift to image-scan language (not per-container scan framing).
+
+**Frontend consumers**
+
+- `frontend/src/routes/tasks/+page.server.ts`
+- `frontend/src/routes/tasks/+page.svelte`
+
+#### 6) Notification channel APIs (`/notifications/channels`, `/notifications/log`)
+
+**Request/response changes**
+
+- No schema change required.
+- Semantics of `notify_all_new` become explicitly “new since previous scan”.
+
+**Frontend consumers**
+
+- `frontend/src/routes/notifications/+page.svelte`
+
+### Notification processing contract (backend jobs)
+
+#### Scan-triggered alerts
+
+- Compare previous scan by `image_name` lineage.
+- First scan in lineage => all findings are New.
+- Include scan-time blast radius from `ScanContainer`.
+
+#### Daily digest
+
+- Remains current-state scope (running containers/images at digest runtime).
+- Can include New counts, but using the same last-scan delta definition.
+
+## UI/Copy Contract
+
+### New wording
+
+- “New” always means **since previous scan**.
+- Remove “New (Last 24h)” wording.
+- Vulnerabilities report label for `report=new` should explicitly indicate previous-scan delta.
+
+### Surfaces to align
+
+- Dashboard summary card and description.
+- Vulnerabilities report dropdown labels and descriptions.
+- Row-level new pill/tooltip text.
+- Notification settings copy for “All New”.
+- Tasks page text to reflect image-level scan jobs and container blast-radius reporting.
+
+## Phased Execution Plan
+
+### Phase 1 — Schema + Migration Foundations
+
+1. Add `ScanContainer` model + migration.
+2. Backfill scan-container links from legacy field.
+3. Recompute `first_seen_at` by `image_name` lineage.
+4. Add migration tests for backfill/recompute behavior.
+
+### Phase 2 — Backend Scan/Query Semantics
+
+1. Refactor scan pipeline to persist scan-time container memberships.
+2. Convert new-finding comparison logic to `image_name` lineage everywhere.
+3. Update `/vulnerabilities?report=new`, `/dashboard/summary`, `/activity/recent`, scan-triggered notifications.
+4. Keep temporary compatibility fields only where unavoidable.
+
+### Phase 3 — Frontend Contract Alignment
+
+1. Remove time-based New controls (`new_hours`) from vulnerabilities route and UI.
+2. Update all New labels/tooltips/copy to “since previous scan”.
+3. Update dashboard/activity/tasks rendering for scan-time vs current-time scope.
+4. Update notification settings copy.
+
+### Phase 4 — Cleanup
+
+1. Remove deprecated backend compatibility fields/paths.
+2. Remove remaining uses of legacy `Scan.container_name`.
+3. Final pass on docs and release note text.
+
+## Regression Test Plan
+
+### Core semantic tests
+
+1. **Same image, multiple containers**: one scan lineage, multiple affected containers.
+2. **Same repository, different tags**: histories remain separate by `image_name`.
+3. **First scan behavior**: all findings are New.
+4. **Subsequent scan behavior**: only true delta findings are New.
+5. **Reintroduced finding**: reappearing finding after absence is New again.
+
+### Migration tests
+
+1. Backfill creates one `ScanContainer` row for legacy scans with `container_name`.
+2. Recomputed `first_seen_at` follows `image_name` lineage rules.
+3. No DB reset required; existing scans/vulns retained.
+
+### Notification tests
+
+1. Scan-triggered alerts use scan-time container scope.
+2. Daily digest uses current-running scope.
+3. `notify_all_new` payload and counts reflect last-scan delta semantics.
+
+## Validation Plan (Required for completion)
+
+Backend:
+
+1. `uv run ruff format`
+2. `uv run ruff check --fix`
+3. `uv run ruff check`
+4. `uv run pytest -v`
+
+Frontend (in `frontend/`):
+
+1. `npm run format`
+2. `npm run lint:fix`
+3. `npm run check`
+4. `npm run lint`
+5. `npm run format:check`
+6. `npm run test:unit:run`
+
+## Exit Criteria
+
+Rewrite is done when all are true:
+
+1. “New” has one meaning (last-scan delta) across API/UI/notifications.
+2. Scan-time and current-time container scopes are explicit and consistently applied.
+3. Multi-container single-image blast radius is represented correctly.
+4. Migration completes without requiring DB deletion.
+5. Full backend/frontend validation passes.

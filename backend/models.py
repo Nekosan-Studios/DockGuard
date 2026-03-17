@@ -14,13 +14,21 @@ class Scan(SQLModel, table=True):
     distro_name: str | None = None
     distro_version: str | None = None
     is_distro_eol: bool = Field(default=False)
-    container_name: str | None = None
     vex_status: str | None = None  # "found", "none", "error", "unchecked"
     vex_source: str | None = None
     vex_checked_at: datetime | None = None
     vex_error: str | None = None
 
     vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
+    containers: list["ScanContainer"] = Relationship(back_populates="scan")
+
+
+class ScanContainer(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    scan_id: int = Field(foreign_key="scan.id", index=True)
+    container_name: str = Field(index=True)
+
+    scan: Scan | None = Relationship(back_populates="containers")
 
 
 class Vulnerability(SQLModel, table=True):

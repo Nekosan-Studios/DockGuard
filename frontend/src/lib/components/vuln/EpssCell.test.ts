@@ -1,6 +1,12 @@
-import { render, screen } from "@testing-library/svelte";
+import { render, screen, fireEvent } from "@testing-library/svelte";
 import { describe, it, expect } from "vitest";
 import EpssCell from "./EpssCell.svelte";
+
+globalThis.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 describe("EpssCell", () => {
   it("renders a dash when score is null", () => {
@@ -42,5 +48,56 @@ describe("EpssCell", () => {
     // >= 0.5 epssClass should be red
     const cellNode = container.querySelector("td");
     expect(cellNode?.className).toContain("text-red-700");
+  });
+
+  it("shows '>50%' message in tooltip when percentile >= 50", async () => {
+    const { container } = render(EpssCell, { score: 0.3, percentile: 0.72 });
+    const trigger = container.querySelector("button");
+    if (trigger) fireEvent.pointerEnter(trigger);
+    const text = await screen.findByText(
+      /More likely to be exploited than 72% of all other/i
+    );
+    expect(text).toBeInTheDocument();
+  });
+
+  it("shows '<50%' message in tooltip when percentile < 50", async () => {
+    const { container } = render(EpssCell, { score: 0.05, percentile: 0.25 });
+    const trigger = container.querySelector("button");
+    if (trigger) fireEvent.pointerEnter(trigger);
+    const text = await screen.findByText(
+      /75% of all other vulnerabilities are more likely/i
+    );
+    expect(text).toBeInTheDocument();
+  });
+
+  it("applies red styling to percentile text when pct >= 90", async () => {
+    const { container } = render(EpssCell, { score: 0.5, percentile: 0.93 });
+    const trigger = container.querySelector("button");
+    if (trigger) fireEvent.pointerEnter(trigger);
+    const text = await screen.findByText(
+      /More likely to be exploited than 93%/i
+    );
+    expect(text.className).toContain("font-semibold");
+    expect(text.className).toContain("text-red-400");
+  });
+
+  it("applies orange styling to percentile text when 70 <= pct < 90", async () => {
+    const { container } = render(EpssCell, { score: 0.3, percentile: 0.75 });
+    const trigger = container.querySelector("button");
+    if (trigger) fireEvent.pointerEnter(trigger);
+    const text = await screen.findByText(
+      /More likely to be exploited than 75%/i
+    );
+    expect(text.className).toContain("text-orange-400");
+    expect(text.className).not.toContain("font-semibold");
+  });
+
+  it("does not show percentile section in tooltip when percentile is null", async () => {
+    const { container } = render(EpssCell, { score: 0.3, percentile: null });
+    const trigger = container.querySelector("button");
+    if (trigger) fireEvent.pointerEnter(trigger);
+    // Tooltip content renders, but no percentile paragraph
+    await screen.findByText(/more likely/i).catch(() => null);
+    expect(screen.queryByText(/more likely/i)).not.toBeInTheDocument();
   });
 });

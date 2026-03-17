@@ -25,7 +25,6 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
   }
 
   const report = reportParam;
-  const new_hours = url.searchParams.get("new_hours") || "24";
   const hide_vex = url.searchParams.get("hide_vex") || "false";
   const sort_by =
     url.searchParams.get("sort_by") ||
@@ -42,7 +41,6 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
 
   const params = new URLSearchParams({
     report,
-    new_hours,
     hide_vex,
     sort_by,
     sort_dir,

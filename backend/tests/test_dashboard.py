@@ -180,6 +180,30 @@ def test_dashboard_summary_eol_count(api_client):
     assert data["eol_count"] == 1
 
 
+def test_dashboard_summary_new_findings_uses_last_scan_delta(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        scanned_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:bbbb",
+        [VULN_CRITICAL, VULN_HIGH],
+        scanned_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:bbbb"),
+    ]
+
+    data = client.get("/dashboard/summary").json()
+    assert data["new_findings"] == 1
+
+
 # ---------------------------------------------------------------------------
 # GET /activity/recent
 # ---------------------------------------------------------------------------
@@ -238,3 +262,19 @@ def test_get_recent_activity_includes_severity_breakdown(api_client):
     assert activity["vulns_by_severity"]["Critical"] == 1
     assert activity["vulns_by_severity"]["High"] == 1
     assert activity["vulns_by_severity"]["Medium"] == 1
+
+
+def test_get_recent_activity_includes_scan_time_containers(api_client):
+    client, test_db, _ = api_client
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        container_names=["web-1", "web-2"],
+    )
+
+    activities = client.get("/activity/recent").json()["activities"]
+    activity = next(a for a in activities if a["image_name"] == "nginx:latest")
+    assert activity["affected_container_count_at_scan"] == 2
+    assert set(activity["affected_containers_at_scan"]) == {"web-1", "web-2"}

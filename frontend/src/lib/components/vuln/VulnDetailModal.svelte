@@ -92,13 +92,6 @@
       : []
   );
 
-  function isNew(firstSeenAt: string | null): boolean {
-    if (!firstSeenAt) return false;
-    const date = toUtcDate(firstSeenAt);
-    const hours = (Date.now() - date.getTime()) / (1000 * 60 * 60);
-    return hours <= 24;
-  }
-
   function formatDate(iso: string | null): string {
     if (!iso) return "Unknown";
     return toUtcDate(iso).toLocaleDateString("en-US", {
@@ -203,7 +196,7 @@
       {/if}
       <Dialog.Header>
         <div class="flex flex-wrap items-center gap-2">
-          {#if isNew(vuln.first_seen_at)}
+          {#if vuln.is_new ?? false}
             <span
               class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
             >
@@ -912,7 +905,9 @@
           <section class="text-muted-foreground border-t pt-3 text-xs">
             <div class="flex flex-wrap gap-x-6 gap-y-1">
               {#if vuln.first_seen_at}
-                <span>First seen: {formatDate(vuln.first_seen_at)}</span>
+                <span
+                  >First seen in image: {formatDate(vuln.first_seen_at)}</span
+                >
               {/if}
               {#if vuln.data_source}
                 <span>
