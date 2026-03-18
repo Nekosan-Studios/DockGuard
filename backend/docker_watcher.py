@@ -62,6 +62,31 @@ class DockerWatcher:
 
         return images
 
+    def get_manifest_digest(self, image_name: str) -> str | None:
+        """Return the manifest (repo) digest for *image_name* from Docker's RepoDigests.
+
+        This is the sha256 of the manifest — the same value that the registry
+        returns as ``Docker-Content-Digest`` — and is therefore comparable with
+        the result of ``registry_checker.get_registry_digest()``.
+
+        Returns None if the image is not found or has no recorded RepoDigests
+        (e.g. locally-built images that have never been pulled from a registry).
+        """
+        if not self.client:
+            return None
+        try:
+            image = self.client.images.get(image_name)
+            repo_digests = image.attrs.get("RepoDigests", [])
+            repo_prefix = image_name.split(":")[0]
+            for rd in repo_digests:
+                if rd.startswith(repo_prefix):
+                    return rd.split("@", 1)[1]
+            if repo_digests:
+                return repo_digests[0].split("@", 1)[1]
+        except Exception as exc:
+            logger.debug("Could not resolve manifest digest for %s: %s", image_name, exc)
+        return None
+
     def list_running_containers(self) -> list[dict]:
         """Return one entry per running container (not per image).
 

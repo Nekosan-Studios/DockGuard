@@ -35,12 +35,17 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
         watcher = DockerWatcher()
         running = watcher.list_running_containers()
 
-        # Collect unique tagged image names with their current digest
-        images: dict[str, str] = {}  # image_name -> image_id (running digest)
+        # Collect unique tagged image names with their manifest digest.
+        # We use the manifest digest (from Docker's RepoDigests) rather than the
+        # local image ID (config digest) because the registry returns the manifest
+        # digest via Docker-Content-Digest — the two hashes are never equal, which
+        # would cause every image to appear as having an update available.
+        images: dict[str, str] = {}  # image_name -> manifest digest (sha256:...)
         for item in running:
             name = item["image_name"]
             if "@" not in name and ":" in name:
-                images[name] = item["image_id"]
+                manifest_digest = watcher.get_manifest_digest(name)
+                images[name] = manifest_digest if manifest_digest else item["image_id"]
 
         checked = 0
         updates_found = 0
