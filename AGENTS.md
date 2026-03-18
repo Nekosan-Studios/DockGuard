@@ -13,7 +13,6 @@ These rules are important and should be preserved unless the user explicitly ask
 	- Main Vulnerabilities page (`frontend/src/routes/vulnerabilities/+page.svelte`)
 	- Container expanded sub-view (`frontend/src/lib/components/vuln/ContainerRow.svelte`)
 	- Preview Scan dialog (`frontend/src/lib/components/preview/PreviewScannerModal.svelte` + nested `ContainerRow`)
-- Keep `CveLinkCell` wrapping behavior consistent across all contexts (current default: wrapping enabled).
 - Prefer column rebalancing before adding new wrappers or per-view special-case hacks.
 - Preserve this sizing intent:
 	- Non-description columns keep readable minimums.
@@ -21,7 +20,7 @@ These rules are important and should be preserved unless the user explicitly ask
 	- Horizontal scrolling is acceptable only after those minimums are reached.
 - In Preview Scan dialog specifically:
 	- First try fitting by allocating more dialog width and explicit outer table columns.
-	- Avoid brittle nested selector hacks (for example, deep `table table` CSS overrides) when a scoped structural sizing fix is possible.
+- Avoid brittle nested selector hacks (for example, deep `table table` CSS overrides) when a scoped structural sizing fix is possible.
 - When adjusting one table context, check the other two for regressions before finalizing.
 
 ## Validation & Tests

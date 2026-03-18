@@ -104,15 +104,18 @@ async def check_running_containers(
                 representative["hash"],
             )
 
-            # Invalidate any stale update check — the user pulled the update
+            # Invalidate any stale update check only if the running digest actually
+            # changed (i.e. the user pulled a new image).  Do NOT delete when the
+            # digest is the same — that happens when seen_digests was cleared for an
+            # unrelated reason such as a Grype DB update or a server restart.
             with Session(db.engine) as session:
                 stale_check = session.exec(
                     select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)
                 ).first()
-                if stale_check:
+                if stale_check and stale_check.running_digest != image_id:
                     session.delete(stale_check)
                     session.commit()
-                    logger.info("Cleared stale ImageUpdateCheck for %s", image_name)
+                    logger.info("Cleared stale ImageUpdateCheck for %s (digest changed)", image_name)
 
             # Create a queued task for the scan
             with Session(db.engine) as session:

@@ -117,7 +117,7 @@ def test_streaming_async_happy_path(test_db):
         asyncio.run(
             scanner.scan_image_streaming_async(
                 image_name="nginx:latest",
-                grype_ref="registry:docker.io/library/nginx:latest",
+                grype_ref="registry:nginx:latest",
                 semaphore=semaphore,
                 task_id=task_id,
                 progress_store=progress_store,
@@ -165,7 +165,7 @@ def test_streaming_async_progress_deduplication(test_db):
         asyncio.run(
             scanner.scan_image_streaming_async(
                 image_name="nginx:latest",
-                grype_ref="registry:docker.io/library/nginx:latest",
+                grype_ref="registry:nginx:latest",
                 semaphore=semaphore,
                 task_id=task_id,
                 progress_store=progress_store,
@@ -225,7 +225,7 @@ def test_streaming_async_timeout_marks_task_failed(test_db):
             asyncio.run(
                 scanner.scan_image_streaming_async(
                     image_name="nginx:latest",
-                    grype_ref="registry:docker.io/library/nginx:latest",
+                    grype_ref="registry:nginx:latest",
                     semaphore=semaphore,
                     task_id=task_id,
                     progress_store=progress_store,
@@ -282,7 +282,7 @@ def test_streaming_async_cancelled_marks_task_failed(test_db):
         with patch("backend.grype_scanner.asyncio.create_subprocess_exec", side_effect=_fake_create_subprocess):
             coro = scanner.scan_image_streaming_async(
                 image_name="nginx:latest",
-                grype_ref="registry:docker.io/library/nginx:latest",
+                grype_ref="registry:nginx:latest",
                 semaphore=semaphore,
                 task_id=task_id,
                 progress_store=progress_store,

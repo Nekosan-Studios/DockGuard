@@ -21,39 +21,6 @@ _progress_store: dict[int, list[str]] = {}
 _active_tasks: dict[int, asyncio.Task] = {}
 
 
-def _to_grype_registry_ref(image_name: str) -> str:
-    """Return a fully-qualified `registry:<host>/...` ref for grype.
-
-    Docker Hub images omit the registry host (e.g. ``nginx:latest`` or
-    ``corentinth/it-tools:latest``).  Grype's ``registry:`` scheme requires
-    an explicit host, so we apply the same defaulting rules that Docker uses:
-
-    * No slash at all → official library image → ``docker.io/library/<name>``
-    * First path component has no ``.`` or ``:`` → Docker Hub user/org image
-      → ``docker.io/<name>``
-    * Otherwise the host is already present → use as-is.
-    """
-    # Determine the first path component (before the first slash), which is the
-    # registry host when present.  We must strip the tag carefully: the tag
-    # separator is the last ":" that is not followed by a "/", so we can't
-    # simply split on ":" — instead we work with the slash-based structure.
-    slash_idx = image_name.find("/")
-
-    if slash_idx == -1:
-        # No slash at all → official library image: nginx → docker.io/library/nginx
-        qualified = f"docker.io/library/{image_name}"
-    else:
-        first_component = image_name[:slash_idx]
-        if "." not in first_component and ":" not in first_component:
-            # First component is a user/org, not a host: corentinth/it-tools → docker.io/...
-            qualified = f"docker.io/{image_name}"
-        else:
-            # First component looks like a registry host (has dot or port colon)
-            qualified = image_name
-
-    return f"registry:{qualified}"
-
-
 class ParseComposeRequest(BaseModel):
     yaml_text: str
 
@@ -125,7 +92,7 @@ async def start_preview_scans(req: StartPreviewRequest, session: Session = Depen
     tasks_to_start: list[tuple[str, str, int]] = []
 
     for image_name in req.images:
-        grype_ref = _to_grype_registry_ref(image_name)
+        grype_ref = f"registry:{image_name}"
         task = SystemTask(
             task_type="preview_scan",
             task_name=f"Preview scan: {image_name}",
