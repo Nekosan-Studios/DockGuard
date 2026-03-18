@@ -6,7 +6,7 @@ from typing import Annotated
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from ..api_helpers import _as_utc, _priority_bucket, _severity_rank
@@ -17,7 +17,8 @@ from ..models import Scan, SystemTask, Vulnerability
 router = APIRouter(tags=["Preview Scans"])
 logger = logging.getLogger(__name__)
 
-_PREVIEW_SEMAPHORE = asyncio.Semaphore(2)
+_progress_store: dict[int, list[str]] = {}
+_active_tasks: dict[int, asyncio.Task] = {}
 
 
 def _to_grype_registry_ref(image_name: str) -> str:
@@ -59,10 +60,13 @@ class ParseComposeRequest(BaseModel):
 
 class StartPreviewRequest(BaseModel):
     images: list[str]
+    skip_enrichments: bool = False
+    max_concurrent: int = Field(default=1, ge=1, le=4)
 
 
 class DeletePreviewRequest(BaseModel):
     image_names: list[str]
+    task_ids: list[int] = []
 
 
 @router.post("/preview-scans/parse-compose")
@@ -115,6 +119,7 @@ async def start_preview_scans(req: StartPreviewRequest, session: Session = Depen
         raise HTTPException(status_code=400, detail="No images provided")
 
     scanner = GrypeScanner(watcher=None, database=db, enable_reference_title_fetch=True)
+    session_semaphore = asyncio.Semaphore(req.max_concurrent)
 
     preview_items = []
     tasks_to_start: list[tuple[str, str, int]] = []
@@ -135,15 +140,27 @@ async def start_preview_scans(req: StartPreviewRequest, session: Session = Depen
     session.commit()
 
     for image_name, grype_ref, task_id in tasks_to_start:
-        asyncio.create_task(
-            scanner.scan_image_async(
+        _progress_store[task_id] = []
+        async_task = asyncio.create_task(
+            scanner.scan_image_streaming_async(
                 image_name=image_name,
                 grype_ref=grype_ref,
-                semaphore=_PREVIEW_SEMAPHORE,
-                is_preview=True,
+                semaphore=session_semaphore,
                 task_id=task_id,
+                progress_store=_progress_store,
+                skip_enrichments=req.skip_enrichments,
             )
         )
+        _active_tasks[task_id] = async_task
+
+        def _make_done_callback(tid: int):
+            def _done(fut: asyncio.Future) -> None:
+                _active_tasks.pop(tid, None)
+                _progress_store.pop(tid, None)
+
+            return _done
+
+        async_task.add_done_callback(_make_done_callback(task_id))
 
     return {"preview_items": preview_items}
 
@@ -184,6 +201,7 @@ def get_preview_scan_status(
             "status": status,
             "error_message": task.error_message,
             "scan_data": None,
+            "progress_lines": _progress_store.get(task_id, []) if status in ("pending", "scanning") else [],
         }
 
         if status == "complete":
@@ -268,7 +286,13 @@ def get_preview_scan_status(
 
 @router.delete("/preview-scans", status_code=204)
 def delete_preview_scans(req: DeletePreviewRequest, session: Session = Depends(db.get_session)):
-    """Delete preview scan records and their vulnerabilities for the given images."""
+    """Delete preview scan records and their vulnerabilities for the given images. Cancels in-flight tasks."""
+    for task_id in req.task_ids:
+        task = _active_tasks.pop(task_id, None)
+        if task is not None:
+            task.cancel()
+        _progress_store.pop(task_id, None)
+
     if not req.image_names:
         return
 

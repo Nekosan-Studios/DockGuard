@@ -8,6 +8,7 @@
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import X from "@lucide/svelte/icons/x";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
   import { SvelteURLSearchParams } from "svelte/reactivity";
 
   let { open = $bindable(false) }: { open: boolean } = $props();
@@ -27,10 +28,13 @@
     status: "pending" | "scanning" | "complete" | "failed";
     error_message: string | null;
     scan_data: ContainerRecord | null;
+    progress_lines: string[];
   }
 
   let previewItems = $state<PreviewItem[]>([]);
   let pollingInterval: ReturnType<typeof setInterval> | null = null;
+  let skipEnrichments = $state(false);
+  let maxConcurrent = $state(1);
 
   function resetState() {
     step = "input";
@@ -40,18 +44,26 @@
     parseLoading = false;
     parseError = null;
     previewItems = [];
+    skipEnrichments = false;
+    maxConcurrent = 1;
     stopPolling();
   }
 
   $effect(() => {
     if (!open) {
-      // Clean up preview scans from DB when modal closes
+      // Clean up preview scans from DB when modal closes; cancel in-flight tasks
       const imagesToDelete = previewItems.map((i) => i.image_name);
+      const inFlightTaskIds = previewItems
+        .filter((i) => i.status !== "complete" && i.status !== "failed")
+        .map((i) => i.task_id);
       if (imagesToDelete.length > 0) {
         fetch("/api/preview-scans", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_names: imagesToDelete }),
+          body: JSON.stringify({
+            image_names: imagesToDelete,
+            task_ids: inFlightTaskIds,
+          }),
         }).catch(() => {});
       }
       stopPolling();
@@ -142,7 +154,11 @@
       const res = await fetch("/api/preview-scans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: parsedImages }),
+        body: JSON.stringify({
+          images: parsedImages,
+          skip_enrichments: skipEnrichments,
+          max_concurrent: maxConcurrent,
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -154,6 +170,7 @@
           status: "pending" as const,
           error_message: null,
           scan_data: null,
+          progress_lines: [] as string[],
         })
       );
       step = "scanning";
@@ -191,7 +208,11 @@
 
       previewItems = previewItems.map((item) => {
         const updated = data.find((d) => d.task_id === item.task_id);
-        return updated ?? item;
+        if (!updated) return item;
+        return {
+          ...updated,
+          progress_lines: updated.progress_lines ?? item.progress_lines,
+        };
       });
 
       // Stop polling if all done
@@ -221,7 +242,11 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-7xl flex flex-col">
+  <Dialog.Content
+    class="{step === 'scanning'
+      ? 'sm:max-w-7xl'
+      : 'sm:max-w-xl'} flex flex-col transition-[max-width] duration-300"
+  >
     <Dialog.Header class="shrink-0">
       <Dialog.Title class="flex items-center gap-2">
         <ScanLine class="h-5 w-5" />
@@ -321,6 +346,53 @@
             </div>
           </div>
 
+          <div class="flex flex-col gap-3 border-t border-border pt-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium">Parallel scans</p>
+                <p class="text-xs text-muted-foreground">
+                  Run up to {maxConcurrent} scan{maxConcurrent !== 1 ? "s" : ""} simultaneously
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  onclick={() =>
+                    (maxConcurrent = Math.max(1, maxConcurrent - 1))}
+                  disabled={maxConcurrent <= 1}
+                  class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background text-sm font-medium hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Decrease parallel scans"
+                >
+                  −
+                </button>
+                <span class="w-4 text-center text-sm font-mono"
+                  >{maxConcurrent}</span
+                >
+                <button
+                  onclick={() =>
+                    (maxConcurrent = Math.min(4, maxConcurrent + 1))}
+                  disabled={maxConcurrent >= 4}
+                  class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background text-sm font-medium hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Increase parallel scans"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <label class="flex cursor-pointer items-start gap-2">
+              <input
+                type="checkbox"
+                bind:checked={skipEnrichments}
+                class="mt-0.5 shrink-0"
+              />
+              <div>
+                <p class="text-sm font-medium">Quick scan</p>
+                <p class="text-xs text-muted-foreground">
+                  Skip extra HTTP calls
+                </p>
+              </div>
+            </label>
+          </div>
+
           <div class="flex justify-between gap-2">
             <button
               onclick={() => (step = "input")}
@@ -371,35 +443,56 @@
             <div class="flex flex-col gap-1">
               {#each pendingItems as item (item.task_id)}
                 <div
-                  class="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono"
+                  class="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono"
                 >
-                  <span class="truncate text-xs">{item.image_name}</span>
-                  {#if item.status === "pending"}
-                    <Badge variant="outline" class="text-xs shrink-0"
-                      >Queued</Badge
-                    >
-                  {:else if item.status === "scanning"}
-                    <span
-                      class="flex items-center gap-1 text-xs text-muted-foreground shrink-0"
-                    >
-                      <Loader2 class="h-3 w-3 animate-spin" />
-                      Scanning…
-                    </span>
-                  {:else if item.status === "failed"}
-                    <div class="flex flex-col items-end gap-0.5 shrink-0">
-                      <Badge
-                        variant="outline"
-                        class="text-xs border-red-300 text-red-700 bg-red-50 dark:border-red-700 dark:text-red-400 dark:bg-red-900/20"
+                  <div class="flex items-center justify-between">
+                    <span class="truncate text-xs">{item.image_name}</span>
+                    {#if item.status === "pending"}
+                      <Badge variant="outline" class="text-xs shrink-0"
+                        >Queued</Badge
                       >
-                        Failed
-                      </Badge>
-                      {#if item.error_message}
-                        <span
-                          class="text-xs text-red-600 dark:text-red-400 max-w-xs text-right leading-tight"
+                    {:else if item.status === "scanning"}
+                      <span
+                        class="flex items-center gap-1 text-xs text-muted-foreground shrink-0"
+                      >
+                        <Loader2 class="h-3 w-3 animate-spin" />
+                        Scanning…
+                      </span>
+                    {:else if item.status === "failed"}
+                      <div class="flex flex-col items-end gap-0.5 shrink-0">
+                        <Badge
+                          variant="outline"
+                          class="text-xs border-red-300 text-red-700 bg-red-50 dark:border-red-700 dark:text-red-400 dark:bg-red-900/20"
                         >
-                          {item.error_message}
-                        </span>
-                      {/if}
+                          Failed
+                        </Badge>
+                        {#if item.error_message}
+                          <span
+                            class="text-xs text-red-600 dark:text-red-400 max-w-xs text-right leading-tight"
+                          >
+                            {item.error_message}
+                          </span>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                  {#if item.status === "scanning" && item.progress_lines.length > 0}
+                    <div class="mt-1 flex flex-col gap-0.5">
+                      {#each item.progress_lines as line, i (line)}
+                        <div class="flex items-center gap-1.5 text-xs">
+                          {#if i < item.progress_lines.length - 1}
+                            <CheckCircle2
+                              class="h-3 w-3 shrink-0 text-green-500"
+                            />
+                            <span class="text-muted-foreground">{line}</span>
+                          {:else}
+                            <Loader2
+                              class="h-3 w-3 shrink-0 animate-spin text-muted-foreground"
+                            />
+                            <span class="text-muted-foreground">{line}</span>
+                          {/if}
+                        </div>
+                      {/each}
                     </div>
                   {/if}
                 </div>
@@ -409,8 +502,8 @@
 
           <!-- Completed results table -->
           {#if completedItems.length > 0}
-            <div class="overflow-x-auto">
-              <Table.Root>
+            <div class="preview-results overflow-x-auto">
+              <Table.Root class="w-full">
                 <Table.Header>
                   <Table.Row>
                     <Table.Head>Image</Table.Head>
@@ -448,3 +541,13 @@
     </div>
   </Dialog.Content>
 </Dialog.Root>
+
+<style>
+  /* Reduce the inner vuln table's min-width so it fits the dialog on typical laptop screens.
+     ContainerRow uses min-w-[1200px] globally; this only applies inside .preview-results
+     and does not affect the main containers page. The w-full on the outer Table.Root ensures
+     the table cell is wide enough for the tableScroller to actually scroll. */
+  .preview-results :global(table table) {
+    min-width: 860px;
+  }
+</style>
