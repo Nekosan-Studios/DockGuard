@@ -113,20 +113,6 @@
     }
   });
 
-  function handleRowClick(e: MouseEvent) {
-    // Don't open modal when clicking interactive elements
-    const target = e.target as HTMLElement;
-    if (target.closest("a, [data-popover-trigger]")) return;
-    modalOpen = true;
-  }
-
-  function handleRowKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      modalOpen = true;
-    }
-  }
-
   // If the backend didn't supply a `.packages` array but did supply top-level package fields, we wrap it in a mock array to keep the template logic identical.
   let packages = $derived(
     vuln.packages && vuln.packages.length > 0
@@ -153,17 +139,14 @@
   }
 </script>
 
-<Table.Row
-  class="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-  tabindex={0}
-  onclick={handleRowClick}
-  onkeydown={handleRowKeydown}
->
+<Table.Row>
   <CveLinkCell
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
     isNew={vuln.is_new ?? false}
-    class="group-hover:shadow-[inset_4px_0_0_var(--color-primary)]"
+    onDetailClick={() => {
+      modalOpen = true;
+    }}
   />
 
   {#if showContainers}
