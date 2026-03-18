@@ -95,7 +95,7 @@
   });
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="container mx-auto py-6 space-y-6">
   <div class="flex items-center gap-4">
     <div>
       <h1 class="text-2xl font-bold tracking-tight">Containers</h1>
@@ -173,51 +173,53 @@
           <Badge variant="outline">Waiting for data</Badge>
         </div>
       {:else}
-        <Table.Root>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>
-                <SortButton
-                  label="Container"
-                  sortDirection={parentSortCol === "container_name"
-                    ? parentSortDir
-                    : false}
-                  onclick={() => toggleParentSort("container_name")}
+        <div class="rounded-md border mt-4">
+          <Table.Root>
+            <Table.Header>
+              <Table.Row>
+                <Table.Head>
+                  <SortButton
+                    label="Container"
+                    sortDirection={parentSortCol === "container_name"
+                      ? parentSortDir
+                      : false}
+                    onclick={() => toggleParentSort("container_name")}
+                  />
+                </Table.Head>
+                <Table.Head>
+                  <SortButton
+                    label="Vulnerabilities"
+                    sortDirection={parentSortCol === "vulns"
+                      ? parentSortDir
+                      : false}
+                    onclick={() => toggleParentSort("vulns")}
+                  />
+                </Table.Head>
+                <Table.Head class="w-[180px] text-center">
+                  <SortButton
+                    label="Last Scanned"
+                    sortDirection={parentSortCol === "scanned_at"
+                      ? parentSortDir
+                      : false}
+                    onclick={() => toggleParentSort("scanned_at")}
+                  />
+                </Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {#each sortedContainers as container (container.container_name)}
+                <ContainerRow
+                  {container}
+                  {hideVexResolved}
+                  {activeCve}
+                  {expandedContainerName}
+                  onToggleExpand={handleToggleContainerExpand}
+                  onModalChange={handleModalChange}
                 />
-              </Table.Head>
-              <Table.Head>
-                <SortButton
-                  label="Vulnerabilities"
-                  sortDirection={parentSortCol === "vulns"
-                    ? parentSortDir
-                    : false}
-                  onclick={() => toggleParentSort("vulns")}
-                />
-              </Table.Head>
-              <Table.Head class="w-[180px] text-center">
-                <SortButton
-                  label="Last Scanned"
-                  sortDirection={parentSortCol === "scanned_at"
-                    ? parentSortDir
-                    : false}
-                  onclick={() => toggleParentSort("scanned_at")}
-                />
-              </Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {#each sortedContainers as container (container.container_name)}
-              <ContainerRow
-                {container}
-                {hideVexResolved}
-                {activeCve}
-                {expandedContainerName}
-                onToggleExpand={handleToggleContainerExpand}
-                onModalChange={handleModalChange}
-              />
-            {/each}
-          </Table.Body>
-        </Table.Root>
+              {/each}
+            </Table.Body>
+          </Table.Root>
+        </div>
       {/if}
     </Card.Content>
   </Card.Root>

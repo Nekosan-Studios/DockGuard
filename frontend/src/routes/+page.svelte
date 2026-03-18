@@ -63,7 +63,7 @@
   }
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="container mx-auto py-6 space-y-6">
   <div>
     <h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
     <p class="text-muted-foreground">

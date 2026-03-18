@@ -175,7 +175,7 @@
   });
 </script>
 
-<div class="space-y-6">
+<div class="container mx-auto py-6 max-w-5xl">
   <div>
     <h3 class="text-lg font-medium">Application Configuration</h3>
     <p class="text-sm text-muted-foreground">

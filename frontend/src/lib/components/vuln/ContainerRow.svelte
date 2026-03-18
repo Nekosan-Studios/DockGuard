@@ -175,11 +175,13 @@
   }
 
   function anchorExpandedRow() {
-    containerRowElement?.scrollIntoView({
-      block: "start",
-      inline: "nearest",
-      behavior: "auto",
-    });
+    if (typeof containerRowElement?.scrollIntoView === "function") {
+      containerRowElement.scrollIntoView({
+        block: "start",
+        inline: "nearest",
+        behavior: "auto",
+      });
+    }
     if (tableScroller) {
       tableScroller.scrollLeft = 0;
     }
@@ -556,7 +558,7 @@
                 : "No vulnerabilities found for this image."}
             </p>
           {:else if visibleVulns.length > 0}
-              <div bind:this={tableScroller} class="overflow-x-auto">
+            <div bind:this={tableScroller} class="overflow-x-auto">
               <Table.Root class="w-full min-w-[1200px] text-xs">
                 <colgroup>
                   <col class="w-[140px]" />
