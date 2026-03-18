@@ -175,7 +175,15 @@ def recheck_vex(scan_id: int, session: Session = Depends(db.get_session)):
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    vex_result = check_vex_for_image(scan.image_name, scan.image_digest or "")
+    # OCI Referrers API requires the manifest digest, not the config digest that
+    # Grype stores in image_digest (source.target.imageID).  Resolve via
+    # Docker's RepoDigests; fall back to the stored digest on failure.
+    config_digest = scan.image_digest or ""
+    watcher = DockerWatcher()
+    manifest_digest = watcher.get_manifest_digest(scan.image_name) if scan.image_name else None
+    digest_for_vex = manifest_digest or config_digest
+
+    vex_result = check_vex_for_image(scan.image_name, digest_for_vex)
     now = datetime.now(UTC)
 
     if vex_result.error:
