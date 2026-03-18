@@ -320,13 +320,11 @@
             <colgroup>
               <col class="w-[140px]" />
               <col class="w-[100px]" />
-              <col class="w-[140px]" />
-              <col class="w-[100px]" />
-              <col class="w-[100px]" />
+              <col class="w-[180px]" />
               <col class="w-[90px]" />
-              <col class="w-[80px]" />
-              <col class="w-[80px]" />
-              <col class="w-[80px]" />
+              <col class="w-[1%]" />
+              <col class="w-[1%]" />
+              <col class="w-[1%]" />
               {#if hasAnyVex}<col class="w-[80px]" />{/if}
               <col class="w-[100px]" />
               <col class="w-auto" />
@@ -352,8 +350,7 @@
                     onclick={() => toggleSort("package_name")}
                   />
                 </Table.Head>
-                <Table.Head class="text-center">Version</Table.Head>
-                <Table.Head class="text-center">Fixed In</Table.Head>
+
                 <Table.Head class="text-center">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
@@ -372,7 +369,7 @@
                     </Tooltip.Content>
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="text-center">
+                <Table.Head class="text-center px-1">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
                       {#snippet child({ props })}
@@ -390,7 +387,7 @@
                     >
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="text-center">
+                <Table.Head class="text-center px-1">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
                       {#snippet child({ props })}
@@ -408,7 +405,7 @@
                     >
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="text-center">
+                <Table.Head class="text-center px-1">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
                       {#snippet child({ props })}

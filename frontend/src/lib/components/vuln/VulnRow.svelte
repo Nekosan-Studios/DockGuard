@@ -241,6 +241,15 @@
           {/if}
         </Tooltip.Content>
       </Tooltip.Root>
+    </div>
+    <div
+      class="mt-0.5 flex flex-wrap items-center gap-2 text-muted-foreground font-mono text-[11px] leading-tight opacity-90"
+    >
+      <span>{rep.installed_version}</span>
+      <span class="opacity-60">→</span>
+      <span class={rep.fixed_version ? "text-foreground" : "italic"}>
+        {rep.fixed_version ?? "No fix"}
+      </span>
       {#if extraPkgs > 0}
         <Popover.Root>
           <Popover.Trigger>
@@ -308,28 +317,14 @@
     </div>
   </Table.Cell>
 
-  <Table.Cell class="text-center font-mono" title={rep.installed_version}>
-    <div class="mx-auto max-w-[100px] truncate">
-      {rep.installed_version}
-    </div>
-  </Table.Cell>
-  <Table.Cell
-    class="text-center font-mono"
-    title={rep.fixed_version ?? undefined}
-  >
-    <div class="mx-auto max-w-[100px] truncate">
-      {#if rep.fixed_version}
-        {rep.fixed_version}
-      {:else}
-        <span class="text-muted-foreground">No fix</span>
-      {/if}
-    </div>
-  </Table.Cell>
-
   <PriorityCell riskScore={vuln.risk_score} cvssVector={vuln.cvss_vector} />
-  <CvssCell score={vuln.cvss_base_score} />
-  <EpssCell score={vuln.epss_score} percentile={vuln.epss_percentile} />
-  <KevCell isKev={vuln.is_kev} />
+  <CvssCell class="px-1" score={vuln.cvss_base_score} />
+  <EpssCell
+    class="px-1"
+    score={vuln.epss_score}
+    percentile={vuln.epss_percentile}
+  />
+  <KevCell class="px-1" isKev={vuln.is_kev} />
 
   {#if hasAnyVex}
     <VexStatusCell
