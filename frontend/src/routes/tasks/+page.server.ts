@@ -49,7 +49,9 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
       error_message: null,
       result_details: job.interval_seconds
         ? `Every ${formatInterval(job.interval_seconds)}`
-        : null,
+        : job.id === "daily_digest"
+          ? "Every 24 hours"
+          : null,
     })
   );
 

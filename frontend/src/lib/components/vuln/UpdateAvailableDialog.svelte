@@ -181,14 +181,14 @@
             <span
               class="inline-flex items-center rounded-full border border-teal-200 bg-teal-100/50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-900/40 dark:text-teal-300"
             >
-              +{diff.added_count} added
+              {diff.added_count} vuln{diff.added_count === 1 ? "" : "s"} added
             </span>
           {/if}
           {#if diff.removed_count > 0}
             <span
               class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground"
             >
-              -{diff.removed_count} removed
+              {diff.removed_count} vuln{diff.removed_count === 1 ? "" : "s"} removed
             </span>
           {/if}
           {#if diff.added_count === 0 && diff.removed_count === 0}

@@ -325,7 +325,7 @@
               <col class="w-[80px]" />
               <col class="w-[64px]" />
               {#if hasAnyVex}<col class="w-[96px]" />{/if}
-              <col class="w-[136px]" />
+              <col class="w-[152px]" />
               <col class="w-auto" />
             </colgroup>
             <Table.Header>
