@@ -19,6 +19,7 @@
   let { data }: { data: PageData } = $props();
 
   let previewScanOpen = $state(false);
+  let expandedContainerName = $state<string | null>(null);
 
   // ── Deep link state ─────────────────────────────────────────────────────
   let activeCve = $derived($page.url.searchParams.get("cve"));
@@ -31,6 +32,10 @@
         replaceState(u, {});
       }
     }
+  }
+
+  function handleToggleContainerExpand(containerName: string | null) {
+    expandedContainerName = containerName;
   }
 
   let hideVexResolved = $state(false);
@@ -206,6 +211,8 @@
                 {container}
                 {hideVexResolved}
                 {activeCve}
+                {expandedContainerName}
+                onToggleExpand={handleToggleContainerExpand}
                 onModalChange={handleModalChange}
               />
             {/each}
