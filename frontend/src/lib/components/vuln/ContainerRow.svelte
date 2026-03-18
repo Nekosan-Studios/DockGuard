@@ -640,7 +640,7 @@
                         </Tooltip.Content>
                       </Tooltip.Root>
                     </Table.Head>
-                    <Table.Head class="text-center px-1">
+                    <Table.Head class="text-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger>
                           {#snippet child({ props })}
@@ -661,7 +661,7 @@
                         </Tooltip.Content>
                       </Tooltip.Root>
                     </Table.Head>
-                    <Table.Head class="text-center px-1">
+                    <Table.Head class="text-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger>
                           {#snippet child({ props })}
@@ -682,7 +682,7 @@
                         >
                       </Tooltip.Root>
                     </Table.Head>
-                    <Table.Head class="text-center px-1">
+                    <Table.Head class="text-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger>
                           {#snippet child({ props })}

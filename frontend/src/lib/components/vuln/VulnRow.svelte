@@ -71,14 +71,12 @@
     vuln,
     showContainers = false,
     hasAnyVex = true,
-    cveAllowWrap = true,
     activeCve = null,
     onModalChange,
   }: {
     vuln: Vulnerability;
     showContainers?: boolean;
     hasAnyVex?: boolean;
-    cveAllowWrap?: boolean;
     activeCve?: string | null;
     onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
@@ -146,7 +144,6 @@
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
     isNew={vuln.is_new ?? false}
-    allowWrap={cveAllowWrap}
     onDetailClick={() => {
       modalOpen = true;
     }}
