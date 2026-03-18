@@ -58,11 +58,13 @@
     container,
     hideVexResolved = false,
     activeCve = null,
+    showHistory = true,
     onModalChange,
   }: {
     container: ContainerRecord;
     hideVexResolved?: boolean;
     activeCve?: string | null;
+    showHistory?: boolean;
     onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
 
@@ -334,7 +336,7 @@
       <div>
         <div class="font-medium flex items-center gap-2">
           {container.container_name}
-          {#if container.has_scan}
+          {#if container.has_scan && showHistory}
             <button
               onclick={(e) => {
                 e.stopPropagation();

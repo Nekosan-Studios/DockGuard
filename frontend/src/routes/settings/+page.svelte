@@ -97,6 +97,25 @@
 
   const textSettings = new Set(["BASE_URL"]);
 
+  // Keys that are durations in seconds and should show a human-readable hint
+  const secondsSettings = new Set([
+    "SCAN_INTERVAL_SECONDS",
+    "DB_CHECK_INTERVAL_SECONDS",
+    "REGISTRY_CHECK_INTERVAL_SECONDS",
+  ]);
+
+  function formatSeconds(seconds: number): string {
+    if (!isFinite(seconds) || seconds < 0) return "";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const parts: string[] = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+    return parts.join(" ");
+  }
+
   const numericConstraints: Record<
     string,
     { min?: number; max?: number; step?: number }
@@ -212,7 +231,7 @@
                   {/if}
                 </div>
 
-                <div class="flex max-w-md">
+                <div class="flex items-center gap-3 max-w-md">
                   {#if !conf.editable}
                     <Input
                       id={key}
@@ -230,7 +249,29 @@
                       {...numericConstraints[key] ?? {}}
                     />
                   {/if}
+                  {#if secondsSettings.has(key)}
+                    {@const secs = parseInt(localValues[key] ?? conf.value, 10)}
+                    {#if secs > 180}
+                      <span
+                        class="text-xs text-muted-foreground whitespace-nowrap"
+                        >= {formatSeconds(secs)}</span
+                      >
+                    {/if}
+                  {/if}
                 </div>
+
+                {#if key === "REGISTRY_CHECK_INTERVAL_SECONDS" && parseInt(localValues[key], 10) < 86400}
+                  <div
+                    class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500 max-w-md"
+                  >
+                    <AlertCircle class="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span
+                      >Intervals below 24 hours increase Docker Hub API usage
+                      and may cause rate limiting, especially when running
+                      without authenticated credentials.</span
+                    >
+                  </div>
+                {/if}
 
                 <p class="text-[0.8rem] text-muted-foreground">
                   <code

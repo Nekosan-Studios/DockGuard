@@ -27,6 +27,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
         select(func.max(Scan.id))
         .where(Scan.image_name.in_(image_names))
         .where(Scan.is_update_check == False)  # noqa: E712
+        .where(Scan.is_preview == False)  # noqa: E712
         .group_by(Scan.image_name)
     )
     scans_by_image = {s.image_name: s for s in session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()}
@@ -41,6 +42,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
             select(func.max(Scan.id))
             .where(Scan.image_digest.in_(unmatched_digests))
             .where(Scan.is_update_check == False)  # noqa: E712
+            .where(Scan.is_preview == False)  # noqa: E712
             .group_by(Scan.image_digest)
         )
         scans_by_digest = {
@@ -220,13 +222,16 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         docker_connected = False
     running_images = {img["image_name"] for img in running}
 
-    images_scanned = session.exec(select(func.count(func.distinct(Scan.image_name)))).one()
+    images_scanned = session.exec(
+        select(func.count(func.distinct(Scan.image_name))).where(Scan.is_preview == False)  # noqa: E712
+    ).one()
 
     if running_images:
         latest_scan_id_subq = (
             select(func.max(Scan.id))
             .where(Scan.image_name.in_(running_images))
             .where(Scan.is_update_check == False)  # noqa: E712
+            .where(Scan.is_preview == False)  # noqa: E712
             .group_by(Scan.image_name)
         )
         row = session.exec(
@@ -248,6 +253,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         select(Scan)
         .where(Scan.scanned_at >= cutoff)
         .where(Scan.is_update_check == False)  # noqa: E712
+        .where(Scan.is_preview == False)  # noqa: E712
         .order_by(Scan.scanned_at.asc())
     ).all()
 
@@ -359,6 +365,7 @@ def get_recent_activity(
     scans = session.exec(
         select(Scan)
         .where(Scan.is_update_check == False)  # noqa: E712
+        .where(Scan.is_preview == False)  # noqa: E712
         .order_by(Scan.scanned_at.desc())
         .limit(limit)
     ).all()
@@ -431,6 +438,7 @@ def get_container_scan_history(
         select(Scan)
         .where(Scan.id.in_(linked_scan_ids))
         .where(Scan.is_update_check == False)  # noqa: E712
+        .where(Scan.is_preview == False)  # noqa: E712
         .order_by(Scan.scanned_at.asc())
     ).all()
 

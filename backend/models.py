@@ -19,6 +19,7 @@ class Scan(SQLModel, table=True):
     vex_checked_at: datetime | None = None
     vex_error: str | None = None
     is_update_check: bool = Field(default=False)
+    is_preview: bool = Field(default=False)
 
     vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
     containers: list["ScanContainer"] = Relationship(back_populates="scan")

@@ -432,7 +432,6 @@ def test_update_job_intervals_reschedules_scan_job(test_db):
     sched = ContainerScheduler(test_db)
     original_interval = sched.scan_interval
 
-    # Change the setting in DB
     with Session(test_db.engine) as session:
         new_value = original_interval + 60
         ConfigManager.set_setting("SCAN_INTERVAL_SECONDS", str(new_value), session)

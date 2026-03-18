@@ -164,7 +164,7 @@
   }
 
   $effect(() => {
-    if (open && !history && !loading) {
+    if (open && !history && !loading && !error) {
       loadHistory(0);
     }
     if (!open) {

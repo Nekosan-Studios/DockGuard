@@ -5,6 +5,7 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import Container from "@lucide/svelte/icons/container";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
+  import ScanLine from "@lucide/svelte/icons/scan-line";
   import SortButton from "./sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
@@ -13,8 +14,11 @@
   import { PRIORITY_ORDER } from "$lib/components/vuln/utils.js";
   import { page } from "$app/stores";
   import { replaceState } from "$app/navigation";
+  import PreviewScannerModal from "$lib/components/preview/PreviewScannerModal.svelte";
 
   let { data }: { data: PageData } = $props();
+
+  let previewScanOpen = $state(false);
 
   // ── Deep link state ─────────────────────────────────────────────────────
   let activeCve = $derived($page.url.searchParams.get("cve"));
@@ -87,15 +91,24 @@
 </script>
 
 <div class="flex flex-col gap-6">
-  <div>
-    <h1 class="text-2xl font-bold tracking-tight">Containers</h1>
-    <p class="text-muted-foreground">
-      Running containers and their vulnerability status.
-    </p>
+  <div class="flex items-center gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Containers</h1>
+      <p class="text-muted-foreground">
+        Running containers and their vulnerability status.
+      </p>
+    </div>
+    <button
+      onclick={() => (previewScanOpen = true)}
+      class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors shrink-0"
+    >
+      <ScanLine class="h-4 w-4" />
+      Preview Scan
+    </button>
   </div>
 
   <Card.Root>
-    <Card.Header class="flex flex-row items-center justify-between">
+    <Card.Header>
       <div class="space-y-1.5 flex flex-row items-center gap-4">
         <div>
           <Card.Title>Running Containers</Card.Title>
@@ -202,3 +215,5 @@
     </Card.Content>
   </Card.Root>
 </div>
+
+<PreviewScannerModal bind:open={previewScanOpen} />

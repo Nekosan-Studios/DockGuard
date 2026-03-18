@@ -10,14 +10,18 @@ import pytest
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Remind the developer to run e2e tests when they are excluded by default."""
+    """Remind the developer to run integration/e2e tests when they are excluded by default."""
     markexpr = getattr(session.config.option, "markexpr", "")
-    if "not e2e" in markexpr:
-        print("\nNote: e2e tests excluded. Run `uv run pytest -v -m e2e` to include them.")
+    if "not e2e" in markexpr or "not integration" in markexpr:
+        print(
+            "\nNote: integration and e2e tests excluded."
+            "\n  Run `uv run pytest -v -m integration` for integration tests."
+            "\n  Run `uv run pytest -v -m e2e` for e2e tests."
+        )
 
 
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
@@ -43,6 +47,18 @@ from backend.models import Scan, ScanContainer, Vulnerability
 
 @pytest.fixture
 def test_db():
+    # Import all models before create_all so every table is registered in metadata
+    from backend.models import (  # noqa: F401
+        ImageUpdateCheck,
+        NotificationChannel,
+        NotificationLog,
+        Scan,
+        ScanContainer,
+        Setting,
+        SystemTask,
+        Vulnerability,
+    )
+
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -78,19 +94,32 @@ def api_client(test_db):
                                 with patch("backend.routers.internal.db", test_db):
                                     with patch("backend.routers.notifications.db", test_db):
                                         with (
+                                            patch("backend.main.ContainerScheduler") as mock_scheduler,
                                             patch("backend.routers.containers.DockerWatcher") as cw,
                                             patch("backend.routers.vulnerabilities.DockerWatcher") as vw,
-                                            patch("backend.jobs.containers.DockerWatcher") as jw,
                                         ):
+                                            mock_inst = mock_scheduler.return_value
+                                            mock_inst.start.return_value = None
+                                            mock_inst.shutdown.return_value = None
+                                            mock_inst.update_job_intervals.return_value = None
+                                            mock_inst.get_jobs.return_value = [
+                                                MagicMock(
+                                                    id="check_running_containers", name="Monitor running containers"
+                                                ),
+                                                MagicMock(id="check_db_update", name="Check for grype DB updates"),
+                                                MagicMock(
+                                                    id="check_registry_updates",
+                                                    name="Check registries for image updates",
+                                                ),
+                                            ]
                                             cw.return_value.list_images.return_value = []
                                             cw.return_value.list_running_containers.return_value = []
                                             vw.return_value.list_images.return_value = []
                                             vw.return_value.list_running_containers.return_value = []
-                                            jw.return_value.list_images.return_value = []
-                                            jw.return_value.list_running_containers.return_value = []
-                                            with TestClient(app, raise_server_exceptions=True) as client:
-                                                # tests expect the mock instance
-                                                yield client, test_db, (cw, vw)
+                                            with patch("backend.scheduler._active_scheduler", mock_inst):
+                                                with TestClient(app, raise_server_exceptions=True) as client:
+                                                    # tests expect the mock instance
+                                                    yield client, test_db, (cw, vw)
 
     app.dependency_overrides.clear()
 

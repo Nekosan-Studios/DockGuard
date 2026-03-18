@@ -1,16 +1,17 @@
-"""Integration tests — always run, no external dependencies required.
+"""Integration tests — require real Alembic migrations and full app lifespan.
 
-These tests exercise the real lifespan pipeline (alembic migrations, logging
-config, scheduler wiring) using a throwaway SQLite file via tmp_path.
+Run with: uv run pytest -v -m integration
 """
 
 import logging
 
+import pytest
 from sqlalchemy import inspect as sa_inspect
 
 import backend.scheduler as sched_module
 
 
+@pytest.mark.integration
 def test_app_loggers_enabled_after_startup(integration_client):
     """Module loggers must not be disabled and must propagate INFO after startup.
 
@@ -26,6 +27,7 @@ def test_app_loggers_enabled_after_startup(integration_client):
         )
 
 
+@pytest.mark.integration
 def test_alembic_upgrade_runs_cleanly(tmp_db, monkeypatch):
     """Alembic migrations create all expected tables and columns.
 
@@ -46,6 +48,7 @@ def test_alembic_upgrade_runs_cleanly(tmp_db, monkeypatch):
     assert "image_name" in scan_columns, "'image_name' column missing from scan"
 
 
+@pytest.mark.integration
 def test_scheduler_job_registered(integration_client):
     """APScheduler must have both scheduled jobs registered after startup."""
     _client, _db = integration_client
