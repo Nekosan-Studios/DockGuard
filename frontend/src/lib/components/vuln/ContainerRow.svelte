@@ -147,6 +147,7 @@
     | "vuln_id"
     | "severity"
     | "package_name"
+    | "vex_status"
     | "cvss_base_score"
     | "epss_score"
     | "is_kev"
@@ -707,7 +708,18 @@
                       <Table.Head class="text-center">
                         <Tooltip.Root>
                           <Tooltip.Trigger>
-                            <span class="text-xs font-medium">VEX</span>
+                            {#snippet child({ props })}
+                              <SortButton
+                                label="VEX"
+                                size="sm"
+                                sortDirection={sortCol === "vex_status"
+                                  ? sortDir
+                                  : false}
+                                {...props}
+                                onclick={(e: MouseEvent) =>
+                                  toggleVulnSort("vex_status", e)}
+                              />
+                            {/snippet}
                           </Tooltip.Trigger>
                           <Tooltip.Content
                             >Vulnerability Exploitability eXchange</Tooltip.Content

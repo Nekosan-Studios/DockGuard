@@ -27,39 +27,15 @@ These rules are important and should be preserved unless the user explicitly ask
 
 ### Backend (Python)
 
+One-liner (run from project root):
 ```bash
-# 1. Format code
-uv run ruff format
-
-# 2. Lint (with auto-fix)
-uv run ruff check --fix
-
-# 3. Validation / Lint Check (strict - used in CI)
-uv run ruff check
-
-# 4. Unit tests
-uv run pytest -v
+uv run ruff format && uv run ruff check --fix && uv run ruff check && uv run pytest -v 2>&1 | tail -20
 ```
 
 ### Frontend (SvelteKit)
-Resides in the frontend subdirectory. You may need to change to that directory first.  e.g. cd frontend && npm run format
 
+One-liner (run from project root):
 ```bash
-# 1. Format code
-npm run format
-
-# 2. Lint (with auto-fix)
-npm run lint:fix
-
-# 3. Type & Svelte Checks
-npm run check
-
-# 4. Validation / Lint Check (strict - used in CI)
-npm run lint
-
-# 5. Format Check (strict - used in CI)
-npm run format:check
-
-# 6. Unit tests (non-watch mode)
-npm run test:unit:run
+cd frontend && npm run format && npm run lint:fix && npm run check && npm run lint && npm run format:check && npm run test:unit:run 2>&1 | tail -30
 ```
+

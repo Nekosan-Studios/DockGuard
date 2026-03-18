@@ -154,13 +154,13 @@
     | "severity"
     | "package_name"
     | "containers"
+    | "vex_status"
     | "cvss_base_score"
     | "epss_score"
     | "is_kev"
     | "first_seen_at";
 
   function toggleSort(col: VulnSortCol) {
-    if (col === "containers") return; // computed client-side, not server-sortable
     const u = new URL($page.url);
     if (sortByValue === col) {
       if (sortDirValue === "asc") {
@@ -178,7 +178,6 @@
   }
 
   function activeSortDir(col: VulnSortCol): "asc" | "desc" | false {
-    if (col === "containers") return false;
     return sortByValue === col ? sortDirValue : false;
   }
 
@@ -339,7 +338,12 @@
                   />
                 </Table.Head>
                 <Table.Head>
-                  <span class="text-xs font-medium">Containers</span>
+                  <SortButton
+                    label="Containers"
+                    size="sm"
+                    sortDirection={activeSortDir("containers")}
+                    onclick={() => toggleSort("containers")}
+                  />
                 </Table.Head>
                 <Table.Head>
                   <SortButton
@@ -426,7 +430,15 @@
                   <Table.Head class="text-center">
                     <Tooltip.Root>
                       <Tooltip.Trigger>
-                        <span class="text-xs font-medium">VEX</span>
+                        {#snippet child({ props })}
+                          <SortButton
+                            label="VEX"
+                            size="sm"
+                            sortDirection={activeSortDir("vex_status")}
+                            {...props}
+                            onclick={() => toggleSort("vex_status")}
+                          />
+                        {/snippet}
                       </Tooltip.Trigger>
                       <Tooltip.Content
                         >Vulnerability Exploitability eXchange — supplier

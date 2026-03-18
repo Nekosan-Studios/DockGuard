@@ -12,6 +12,7 @@ from ..api_helpers import (
     _parse_image_query,
     _serialise_vuln,
     _severity_rank,
+    _vex_sort_rank,
 )
 from ..database import db
 from ..docker_watcher import DockerWatcher
@@ -142,6 +143,10 @@ def get_vulnerabilities(
         if sort_by == "package_name":
             s = vd.get("package_name", "")
             return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
+        if sort_by == "vex_status":
+            rank = _vex_sort_rank(vd.get("vex_status"))
+            null_last = 1 if vd.get("vex_status") is None else 0
+            return (null_last, rank if not desc else -rank)
         return 0
 
     all_vulns = sorted(grouped_vulns.values(), key=_image_sort_key)
@@ -287,17 +292,6 @@ def get_vulnerabilities_across_running(
             "vulnerabilities": [],
         }
 
-    # Find if there are ANY VEX annotations across all matched scans
-    has_any_vex = (
-        session.exec(
-            select(Vulnerability.id)
-            .where(Vulnerability.scan_id.in_(scan_id_to_images.keys()))
-            .where(Vulnerability.vex_status.isnot(None))
-            .limit(1)
-        ).first()
-        is not None
-    )
-
     q = select(Vulnerability).where(Vulnerability.scan_id.in_(scan_id_to_images.keys()))
 
     if hide_vex:
@@ -324,6 +318,9 @@ def get_vulnerabilities_across_running(
             for v in vulns
             if (v.vuln_id, v.package_name, v.installed_version) in new_keys_by_scan.get(v.scan_id, set())
         ]
+
+    # Reflect VEX presence only in the report-filtered result set
+    has_any_vex = any(v.vex_status for v in vulns)
 
     grouped_vulns: dict[str, dict] = {}
     total_instances = 0
@@ -426,6 +423,14 @@ def get_vulnerabilities_across_running(
         if sort_by == "package_name":
             s = vd.get("package_name", "")
             return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
+        if sort_by == "containers":
+            containers = vd.get("containers") or []
+            s = containers[0]["container_name"] if containers else ""
+            return s if not desc else "".join(chr(0xFFFF - min(ord(c), 0xFFFE)) for c in s)
+        if sort_by == "vex_status":
+            rank = _vex_sort_rank(vd.get("vex_status"))
+            null_last = 1 if vd.get("vex_status") is None else 0
+            return (null_last, rank if not desc else -rank)
         return 0
 
     all_vulns = sorted(grouped_vulns.values(), key=_clean_sort_key)
