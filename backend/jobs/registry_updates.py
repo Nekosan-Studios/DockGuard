@@ -78,6 +78,9 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                     checked += 1
                     continue
 
+                # Capture the previously-stored registry digest BEFORE overwriting it,
+                # so the "already scanned" guard below can compare old vs new correctly.
+                previous_registry_digest = check.registry_digest
                 check.registry_digest = registry_digest
                 check.error = None
 
@@ -91,10 +94,14 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                 # Digests differ — update is available
                 updates_found += 1
 
-                # Only scan if we haven't already scanned this exact registry
-                # digest (covers repeated job runs and in-flight scans).
+                # Skip only if this exact registry digest was already *fully scanned*
+                # (scan_complete).  We intentionally do NOT skip scan_pending here:
+                # if the server restarted while a scan was in-flight, the scan task
+                # was lost and must be re-queued.  We also compare against the OLD
+                # stored registry digest (before the update above) so that a newly-
+                # pushed registry image (new digest) is never incorrectly skipped.
                 already_scanned_this_digest = (
-                    check.status in ("scan_pending", "scan_complete") and check.registry_digest == registry_digest
+                    check.status == "scan_complete" and previous_registry_digest == registry_digest
                 )
                 if already_scanned_this_digest:
                     session.add(check)

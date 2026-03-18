@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -123,7 +123,7 @@ class ContainerScheduler:
             IntervalTrigger(seconds=self.registry_check_interval),
             id="check_registry_updates",
             name="Check registries for image updates",
-            next_run_time=datetime.now(),
+            next_run_time=self._compute_registry_check_next_run(),
             replace_existing=True,
         )
         _active_scheduler = self
@@ -202,6 +202,41 @@ class ContainerScheduler:
                     session.add(task)
                 session.commit()
                 logger.info("Scheduler: marked %d stray task(s) as failed", len(stray_tasks))
+
+    def _compute_registry_check_next_run(self) -> datetime:
+        """Compute the next run time for the registry check job.
+
+        Looks up the most recently completed registry check in SystemTask and
+        schedules the next run at last_finished_at + interval.  If no history
+        exists, or the computed next time is already in the past, returns
+        datetime.now() so the job fires immediately on startup.
+
+        This ensures the configured interval is preserved across restarts: a
+        server restarted after 2 hours of a 24-hour window will next check in
+        22 hours, not 24 hours from restart.
+        """
+        with Session(self.db.engine) as session:
+            last_task = session.exec(
+                select(SystemTask)
+                .where(SystemTask.task_type == "scheduled_registry_check")
+                .where(SystemTask.status == "completed")
+                .order_by(SystemTask.finished_at.desc())
+            ).first()
+
+        if last_task and last_task.finished_at:
+            finished_at = last_task.finished_at
+            if finished_at.tzinfo is None:
+                finished_at = finished_at.replace(tzinfo=UTC)
+            next_run = finished_at + timedelta(seconds=self.registry_check_interval)
+            if next_run > datetime.now(UTC):
+                logger.info(
+                    "Scheduler: registry check deferred until %s (last ran at %s)",
+                    next_run.isoformat(),
+                    finished_at.isoformat(),
+                )
+                return next_run
+
+        return datetime.now()
 
     async def _run_check_running_containers(self) -> None:
         await check_running_containers(self.db, self._seen_digests, self._scan_semaphore)
