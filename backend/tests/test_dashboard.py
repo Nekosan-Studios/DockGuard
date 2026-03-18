@@ -236,7 +236,7 @@ def test_get_recent_activity_respects_limit(api_client):
     for i in range(10):
         seed_scan(test_db, f"image{i}:latest", f"sha256:{'a' * 4}{i}", [])
 
-    response = client.get("/activity/recent?limit=3")
+    response = client.get("/activity/recent?page_size=3")
     assert response.status_code == 200
     assert len(response.json()["activities"]) == 3
 

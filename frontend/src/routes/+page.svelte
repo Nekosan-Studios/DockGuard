@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { PageData } from "./$types";
   import * as Card from "$lib/components/ui/card/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
+  import * as Pagination from "$lib/components/ui/pagination";
   import { AreaChart } from "layerchart";
   import { curveMonotoneX } from "d3-shape";
   import Shield from "@lucide/svelte/icons/shield";
@@ -17,6 +19,50 @@
   import { formatDistanceToNow, format } from "date-fns";
 
   let { data }: { data: PageData } = $props();
+
+  let activities = $state<
+    {
+      scan_id: number;
+      scanned_at: string;
+      image_name: string;
+      affected_containers_at_scan: string[];
+      affected_container_count_at_scan: number;
+      vulns_by_priority: Record<string, number>;
+    }[]
+  >([]);
+  let activityTotal = $state(0);
+  let activityPage = $state(1);
+  let activityLoading = $state(true);
+
+  async function fetchActivity(page: number) {
+    activityLoading = true;
+    try {
+      const res = await fetch(`/api/activity/recent?page=${page}&page_size=10`);
+      if (res.ok) {
+        const json = await res.json();
+        activities = json.activities ?? [];
+        activityTotal = json.total ?? 0;
+      }
+    } catch (err) {
+      console.error("Error fetching activity:", err);
+    } finally {
+      activityLoading = false;
+    }
+  }
+
+  onMount(() => {
+    fetchActivity(activityPage);
+  });
+
+  let _activityPageInit = false;
+  $effect(() => {
+    const p = activityPage;
+    if (!_activityPageInit) {
+      _activityPageInit = true;
+      return;
+    }
+    fetchActivity(p);
+  });
 
   import {
     PRIORITY_ORDER,
@@ -376,16 +422,22 @@
     </Card.Content>
   </Card.Root>
 
-  <!-- Recent activity -->
+  <!-- Recent scans -->
   <Card.Root>
     <Card.Header>
-      <Card.Title>Recent Activity</Card.Title>
+      <Card.Title>Recent Scans</Card.Title>
       <Card.Description
         >Latest scan results and detected changes.</Card.Description
       >
     </Card.Header>
     <Card.Content>
-      {#if data.activities.length === 0}
+      {#if activityLoading && activities.length === 0}
+        <div
+          class="flex flex-col items-center justify-center gap-2 py-8 text-center"
+        >
+          <LoaderCircle class="text-muted-foreground h-8 w-8 animate-spin" />
+        </div>
+      {:else if activities.length === 0}
         <div
           class="flex flex-col items-center justify-center gap-2 py-8 text-center"
         >
@@ -397,7 +449,6 @@
         <Table.Root>
           <Table.Header>
             <Table.Row>
-              <Table.Head class="w-[80px]">Type</Table.Head>
               <Table.Head class="w-[130px]">Scanned</Table.Head>
               <Table.Head>Affected Containers</Table.Head>
               <Table.Head>Image</Table.Head>
@@ -405,15 +456,8 @@
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {#each data.activities as activity (activity.scan_id)}
+            {#each activities as activity (activity.scan_id)}
               <Table.Row>
-                <Table.Cell>
-                  <span
-                    class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
-                  >
-                    Scan
-                  </span>
-                </Table.Cell>
                 <Table.Cell class="text-muted-foreground text-xs">
                   {timeAgo(activity.scanned_at)}
                 </Table.Cell>
@@ -465,6 +509,35 @@
             {/each}
           </Table.Body>
         </Table.Root>
+
+        {#if activityTotal > 10}
+          <div class="mt-4">
+            <Pagination.Root
+              count={activityTotal}
+              perPage={10}
+              bind:page={activityPage}
+            >
+              {#snippet children({ pages, currentPage })}
+                <Pagination.Content>
+                  <Pagination.Item><Pagination.Previous /></Pagination.Item>
+                  {#each pages as pageItem (pageItem.key)}
+                    <Pagination.Item>
+                      {#if pageItem.type === "page"}
+                        <Pagination.Link
+                          page={pageItem}
+                          isActive={currentPage === pageItem.value}
+                        />
+                      {:else}
+                        <Pagination.Ellipsis />
+                      {/if}
+                    </Pagination.Item>
+                  {/each}
+                  <Pagination.Item><Pagination.Next /></Pagination.Item>
+                </Pagination.Content>
+              {/snippet}
+            </Pagination.Root>
+          </div>
+        {/if}
       {/if}
     </Card.Content>
   </Card.Root>

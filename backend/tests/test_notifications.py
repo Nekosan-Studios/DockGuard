@@ -130,8 +130,10 @@ class TestNotificationChannelCRUD:
 
         # Check log was created
         resp = client.get("/notifications/log")
-        logs = resp.json()
+        data = resp.json()
+        logs = data["entries"]
         assert len(logs) == 1
+        assert data["total"] == 1
         assert logs[0]["status"] == "failed"
         assert logs[0]["notification_type"] == "test"
 
@@ -141,7 +143,9 @@ class TestNotificationLog:
         client, _, _ = api_client
         resp = client.get("/notifications/log")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["entries"] == []
+        assert data["total"] == 0
 
     def test_get_log_with_entries(self, api_client):
         client, db, _ = api_client
@@ -167,8 +171,10 @@ class TestNotificationLog:
             session.commit()
 
         resp = client.get("/notifications/log")
-        logs = resp.json()
+        data = resp.json()
+        logs = data["entries"]
         assert len(logs) == 1
+        assert data["total"] == 1
         assert logs[0]["channel_name"] == "Ch"
         assert logs[0]["notification_type"] == "test"
 

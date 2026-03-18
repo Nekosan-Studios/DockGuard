@@ -48,7 +48,7 @@ def test_get_tasks_limit_respected(api_client):
             session.add(_make_task(task_name=f"bulk-task-{i}"))
         session.commit()
 
-    response = client.get("/tasks?limit=5")
+    response = client.get("/tasks?page_size=5")
     assert response.status_code == 200
     assert len(response.json()["tasks"]) <= 5
 

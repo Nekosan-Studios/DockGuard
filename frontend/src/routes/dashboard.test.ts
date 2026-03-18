@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/svelte";
+import { render, screen, waitFor } from "@testing-library/svelte";
 import { describe, it, expect } from "vitest";
 import Page from "./+page.svelte";
 
@@ -62,9 +62,11 @@ describe("Dashboard page", () => {
     expect(screen.getByText("Unexpected Error")).toBeInTheDocument();
   });
 
-  it("shows empty activity state when no activities", () => {
+  it("shows empty activity state when no activities", async () => {
     render(Page, { data: makeData() });
-    expect(screen.getByText("No scans have run yet.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("No scans have run yet.")).toBeInTheDocument()
+    );
   });
 
   it("shows no-trend placeholder when trend data is empty", () => {

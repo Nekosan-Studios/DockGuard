@@ -30,10 +30,12 @@ export interface NotificationLogEntry {
 function createNotificationStore() {
   const channels = writable<NotificationChannel[]>([]);
   const log = writable<NotificationLogEntry[]>([]);
+  const logTotal = writable<number>(0);
 
   return {
     channels,
     log,
+    logTotal,
 
     async fetchChannels() {
       try {
@@ -106,7 +108,9 @@ function createNotificationStore() {
           `/api/notifications/log?page=${page}&page_size=${pageSize}`
         );
         if (res.ok) {
-          log.set(await res.json());
+          const data = await res.json();
+          log.set(data.entries);
+          logTotal.set(data.total);
         }
       } catch (err) {
         console.error("Error fetching notification log:", err);

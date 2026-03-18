@@ -1,29 +1,28 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import * as Table from "$lib/components/ui/table/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
+  import * as Pagination from "$lib/components/ui/pagination";
   import ListTodo from "@lucide/svelte/icons/list-todo";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 
   let { data } = $props();
 
-  let sortedTasks = $derived(
-    [...(data.tasks || [])].sort((a, b) => {
-      const order: Record<string, number> = {
-        running: 0,
-        queued: 1,
-        scheduled: 2,
-        failed: 3,
-        completed: 4,
-      };
-      const aRank = order[a.status] ?? 4;
-      const bRank = order[b.status] ?? 4;
-      if (aRank !== bRank) return aRank - bRank;
+  let currentPage = $derived(data.currentPage ?? 1);
+  let totalTasks = $derived(data.total ?? 0);
 
-      const aDate = new Date(a.finished_at || a.created_at).getTime();
-      const bDate = new Date(b.finished_at || b.created_at).getTime();
+  // Sort the current page by created_at DESC so scheduled rows (future dates) float to top
+  let sortedTasks = $derived(
+    [...(data.tasks ?? [])].sort((a, b) => {
+      const aDate = new Date(a.created_at ?? 0).getTime();
+      const bDate = new Date(b.created_at ?? 0).getTime();
       return bDate - aDate;
     })
   );
+
+  function handlePageChange(newPage: number) {
+    goto(`?page=${newPage}`, { keepFocus: true });
+  }
 
   function formatDate(dateStr: string | null | undefined) {
     if (!dateStr) return "-";
@@ -144,5 +143,33 @@
         </Table.Body>
       </Table.Root>
     </div>
+
+    {#if totalTasks > 25}
+      <Pagination.Root
+        count={totalTasks}
+        perPage={25}
+        page={currentPage}
+        onPageChange={handlePageChange}
+      >
+        {#snippet children({ pages, currentPage: cp })}
+          <Pagination.Content>
+            <Pagination.Item><Pagination.Previous /></Pagination.Item>
+            {#each pages as pageItem (pageItem.key)}
+              <Pagination.Item>
+                {#if pageItem.type === "page"}
+                  <Pagination.Link
+                    page={pageItem}
+                    isActive={cp === pageItem.value}
+                  />
+                {:else}
+                  <Pagination.Ellipsis />
+                {/if}
+              </Pagination.Item>
+            {/each}
+            <Pagination.Item><Pagination.Next /></Pagination.Item>
+          </Pagination.Content>
+        {/snippet}
+      </Pagination.Root>
+    {/if}
   {/if}
 </div>

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from ..database import db
 from ..models import NotificationChannel, NotificationLog
@@ -135,6 +135,7 @@ def get_log(
     page_size: int = Query(50, ge=1, le=200),
     session: Session = Depends(db.get_session),
 ):
+    total = session.exec(select(func.count(NotificationLog.id))).one()
     offset = (page - 1) * page_size
     logs = session.exec(
         select(NotificationLog).order_by(col(NotificationLog.created_at).desc()).offset(offset).limit(page_size)
@@ -151,20 +152,23 @@ def get_log(
         else {}
     )  # type: ignore[union-attr]
 
-    return [
-        {
-            "id": log.id,
-            "channel_id": log.channel_id,
-            "channel_name": channels.get(log.channel_id, "Deleted"),
-            "notification_type": log.notification_type,
-            "title": log.title,
-            "body": log.body,
-            "status": log.status,
-            "error_message": log.error_message,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
-        }
-        for log in logs
-    ]
+    return {
+        "entries": [
+            {
+                "id": log.id,
+                "channel_id": log.channel_id,
+                "channel_name": channels.get(log.channel_id, "Deleted"),
+                "notification_type": log.notification_type,
+                "title": log.title,
+                "body": log.body,
+                "status": log.status,
+                "error_message": log.error_message,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ],
+        "total": total,
+    }
 
 
 def _channel_dict(channel: NotificationChannel) -> dict:

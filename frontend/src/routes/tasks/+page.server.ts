@@ -3,13 +3,31 @@ import type { PageServerLoad } from "./$types";
 
 const API_URL = env.API_URL ?? "http://localhost:8765";
 
-export const load: PageServerLoad = async ({ fetch }) => {
+function formatInterval(seconds: number): string {
+  if (seconds % 3600 === 0) {
+    const h = seconds / 3600;
+    return `${h} ${h === 1 ? "hour" : "hours"}`;
+  }
+  if (seconds % 60 === 0) {
+    const m = seconds / 60;
+    return `${m} ${m === 1 ? "minute" : "minutes"}`;
+  }
+  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
+export const load: PageServerLoad = async ({ fetch, url }) => {
+  const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+
   const [tasksRes, scheduledRes] = await Promise.all([
-    fetch(`${API_URL}/tasks?limit=100`).catch(() => null),
-    fetch(`${API_URL}/tasks/scheduled`).catch(() => null),
+    fetch(`${API_URL}/tasks?page=${page}&page_size=25`).catch(() => null),
+    page === 1
+      ? fetch(`${API_URL}/tasks/scheduled`).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
-  const tasksData = tasksRes?.ok ? await tasksRes.json() : { tasks: [] };
+  const tasksData = tasksRes?.ok
+    ? await tasksRes.json()
+    : { tasks: [], total: 0 };
   const scheduledData = scheduledRes?.ok
     ? await scheduledRes.json()
     : { jobs: [] };
@@ -30,13 +48,15 @@ export const load: PageServerLoad = async ({ fetch }) => {
       finished_at: null,
       error_message: null,
       result_details: job.interval_seconds
-        ? `Every ${Math.floor(job.interval_seconds / 60)} minutes`
-        : "Every 24 hours",
+        ? `Every ${formatInterval(job.interval_seconds)}`
+        : null,
     })
   );
 
   return {
-    tasks: [...(tasksData.tasks ?? []), ...scheduledRows],
+    tasks: [...(tasksData.tasks ?? []), ...(page === 1 ? scheduledRows : [])],
+    total: tasksData.total ?? 0,
+    currentPage: page,
     apiError: !tasksRes?.ok,
   };
 };

@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
@@ -366,16 +366,23 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
 
 @router.get("/activity/recent")
 def get_recent_activity(
-    limit: int = 5,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=50),
     session: Session = Depends(db.get_session),
 ):
     """Most recent scans with per-severity and per-priority vulnerability counts."""
+    total = session.exec(
+        select(func.count(Scan.id))
+        .where(Scan.is_update_check == False)  # noqa: E712
+        .where(Scan.is_preview == False)  # noqa: E712
+    ).one()
     scans = session.exec(
         select(Scan)
         .where(Scan.is_update_check == False)  # noqa: E712
         .where(Scan.is_preview == False)  # noqa: E712
         .order_by(Scan.scanned_at.desc())
-        .limit(limit)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
 
     scan_ids = [s.id for s in scans]
@@ -420,7 +427,7 @@ def get_recent_activity(
             }
         )
 
-    return {"activities": result}
+    return {"activities": result, "total": total}
 
 
 @router.get("/containers/{container_name}/scan-history")

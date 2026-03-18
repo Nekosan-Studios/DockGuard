@@ -15,6 +15,7 @@
   import Send from "@lucide/svelte/icons/send";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import ExternalLink from "@lucide/svelte/icons/external-link";
+  import * as Pagination from "$lib/components/ui/pagination";
   import {
     notifications,
     type NotificationChannel,
@@ -23,6 +24,7 @@
 
   let channels: NotificationChannel[] = $state([]);
   let logEntries: NotificationLogEntry[] = $state([]);
+  let logTotalCount = $state(0);
   let loading = $state(true);
   let showAddForm = $state(false);
   let testingId: number | null = $state(null);
@@ -48,6 +50,9 @@
       (v) => (channels = v)
     );
     const unsubLog = notifications.log.subscribe((v) => (logEntries = v));
+    const unsubLogTotal = notifications.logTotal.subscribe(
+      (v) => (logTotalCount = v)
+    );
 
     Promise.all([notifications.fetchChannels(), notifications.fetchLog()]).then(
       () => {
@@ -58,7 +63,18 @@
     return () => {
       unsubChannels();
       unsubLog();
+      unsubLogTotal();
     };
+  });
+
+  let _logPageInit = false;
+  $effect(() => {
+    const p = logPage;
+    if (!_logPageInit) {
+      _logPageInit = true;
+      return; // skip initial effect; onMount handles page 1
+    }
+    notifications.fetchLog(p);
   });
 
   async function handleCreate() {
@@ -137,11 +153,6 @@
       // silently fail; UI will stay consistent
     }
     deleteConfirmId = null;
-  }
-
-  async function handleLogPage(page: number) {
-    logPage = page;
-    await notifications.fetchLog(page);
   }
 
   function formatDate(dateStr: string | null | undefined) {
@@ -545,27 +556,32 @@
           </Table.Root>
         </Card.Root>
 
-        <div class="flex justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={logPage <= 1}
-            onclick={() => handleLogPage(logPage - 1)}
+        {#if logTotalCount > 50}
+          <Pagination.Root
+            count={logTotalCount}
+            perPage={50}
+            bind:page={logPage}
           >
-            Previous
-          </Button>
-          <span class="text-sm text-muted-foreground self-center"
-            >Page {logPage}</span
-          >
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={logEntries.length < 50}
-            onclick={() => handleLogPage(logPage + 1)}
-          >
-            Next
-          </Button>
-        </div>
+            {#snippet children({ pages, currentPage })}
+              <Pagination.Content>
+                <Pagination.Item><Pagination.Previous /></Pagination.Item>
+                {#each pages as pageItem (pageItem.key)}
+                  <Pagination.Item>
+                    {#if pageItem.type === "page"}
+                      <Pagination.Link
+                        page={pageItem}
+                        isActive={currentPage === pageItem.value}
+                      />
+                    {:else}
+                      <Pagination.Ellipsis />
+                    {/if}
+                  </Pagination.Item>
+                {/each}
+                <Pagination.Item><Pagination.Next /></Pagination.Item>
+              </Pagination.Content>
+            {/snippet}
+          </Pagination.Root>
+        {/if}
       {/if}
     </div>
   {/if}
