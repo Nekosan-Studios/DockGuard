@@ -7,7 +7,6 @@
   import Shield from "@lucide/svelte/icons/shield";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
   import Loader2 from "@lucide/svelte/icons/loader-2";
-  import Info from "@lucide/svelte/icons/info";
   import SortButton from "../containers/sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
@@ -315,18 +314,18 @@
           </p>
         </div>
       {:else}
-        <div class="overflow-x-auto rounded-md border">
-          <Table.Root class="w-full min-w-[1200px] text-xs">
+        <div class="rounded-md border">
+          <Table.Root class="w-full min-w-[1370px] table-fixed text-xs">
             <colgroup>
-              <col class="w-[140px]" />
-              <col class="w-[100px]" />
-              <col class="w-[180px]" />
-              <col class="w-[90px]" />
-              <col class="w-[1%]" />
-              <col class="w-[1%]" />
-              <col class="w-[1%]" />
-              {#if hasAnyVex}<col class="w-[80px]" />{/if}
-              <col class="w-[100px]" />
+              <col class="w-[214px]" />
+              <col class="w-[132px]" />
+              <col class="w-[206px]" />
+              <col class="w-[88px]" />
+              <col class="w-[80px]" />
+              <col class="w-[80px]" />
+              <col class="w-[64px]" />
+              {#if hasAnyVex}<col class="w-[96px]" />{/if}
+              <col class="w-[136px]" />
               <col class="w-auto" />
             </colgroup>
             <Table.Header>
@@ -369,7 +368,7 @@
                     </Tooltip.Content>
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="text-center px-1">
+                <Table.Head class="text-center">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
                       {#snippet child({ props })}
@@ -387,7 +386,7 @@
                     >
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="text-center px-1">
+                <Table.Head class="text-center">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
                       {#snippet child({ props })}
@@ -405,7 +404,7 @@
                     >
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="text-center px-1">
+                <Table.Head class="text-center">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
                       {#snippet child({ props })}
@@ -453,19 +452,7 @@
                     <Tooltip.Content>{firstSeenInImageTooltip}</Tooltip.Content>
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="pr-6">
-                  <Tooltip.Root>
-                    <Tooltip.Trigger
-                      class="flex cursor-default items-center gap-1"
-                    >
-                      <span>Description</span>
-                      <Info class="h-3 w-3 text-muted-foreground" />
-                    </Tooltip.Trigger>
-                    <Tooltip.Content
-                      >Click any row to view full vulnerability details</Tooltip.Content
-                    >
-                  </Tooltip.Root>
-                </Table.Head>
+                <Table.Head class="pr-6">Description</Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>

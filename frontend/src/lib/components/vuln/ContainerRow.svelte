@@ -390,9 +390,11 @@
           ? 'rotate-90'
           : ''} {!container.has_scan ? 'opacity-0' : ''}"
       />
-      <div>
-        <div class="font-medium flex items-center gap-2">
-          {container.container_name}
+      <div class="min-w-0">
+        <div class="font-medium flex items-center gap-2 min-w-0">
+          <span class={showHistory ? "" : "truncate"}>
+            {container.container_name}
+          </span>
           {#if container.has_scan && showHistory}
             <button
               onclick={(e) => {
@@ -467,7 +469,12 @@
             </button>
           {/if}
         </div>
-        <div class="text-muted-foreground font-mono text-xs">
+        <div
+          class="text-muted-foreground font-mono text-xs {showHistory
+            ? ''
+            : 'truncate'}"
+          title={showHistory ? undefined : container.image_name}
+        >
           {container.image_name}
         </div>
       </div>
@@ -558,18 +565,35 @@
             </p>
           {:else if visibleVulns.length > 0}
             <div bind:this={tableScroller} class="overflow-x-auto">
-              <Table.Root class="w-full min-w-[1200px] text-xs">
+              <Table.Root
+                class="w-full text-xs {showHistory
+                  ? 'min-w-[1220px]'
+                  : 'min-w-[1160px] table-fixed'}"
+              >
                 <colgroup>
-                  <col class="w-[140px]" />
-                  <col class="w-[180px]" />
-                  <col class="w-[90px]" />
-                  <col class="w-[1%]" />
-                  <col class="w-[1%]" />
-                  <col class="w-[1%]" />
-                  {#if hasVexData}
-                    <col class="w-[80px]" />
+                  {#if showHistory}
+                    <col class="w-[170px]" />
+                    <col class="w-[166px]" />
+                    <col class="w-[90px]" />
+                    <col class="w-[1%]" />
+                    <col class="w-[1%]" />
+                    <col class="w-[1%]" />
+                    {#if hasVexData}
+                      <col class="w-[80px]" />
+                    {/if}
+                    <col class="w-[100px]" />
+                  {:else}
+                    <col class="w-[206px]" />
+                    <col class="w-[204px]" />
+                    <col class="w-[96px]" />
+                    <col class="w-[82px]" />
+                    <col class="w-[82px]" />
+                    <col class="w-[64px]" />
+                    {#if hasVexData}
+                      <col class="w-[104px]" />
+                    {/if}
+                    <col class="w-[160px]" />
                   {/if}
-                  <col class="w-[100px]" />
                   <col class="w-auto" />
                 </colgroup>
                 <Table.Header>

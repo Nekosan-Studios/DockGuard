@@ -7,17 +7,25 @@
     vulnId,
     dataSource,
     isNew = false,
+    allowWrap = true,
     onDetailClick,
   }: {
     vulnId: string;
     dataSource: string | null;
     isNew?: boolean;
+    allowWrap?: boolean;
     onDetailClick?: () => void;
   } = $props();
 </script>
 
-<Table.Cell class="pl-4 font-mono">
-  <div class="flex flex-wrap items-center gap-1">
+<Table.Cell
+  class="pl-4 font-mono {allowWrap ? 'whitespace-normal' : 'whitespace-nowrap'}"
+>
+  <div
+    class="flex {allowWrap
+      ? 'flex-wrap gap-0.5 sm:gap-1'
+      : 'flex-nowrap gap-1 overflow-hidden'} items-center min-w-0"
+  >
     <button
       type="button"
       aria-label="View vulnerability details"
@@ -40,10 +48,12 @@
       href={dataSource ?? `https://nvd.nist.gov/vuln/detail/${vulnId}`}
       target="_blank"
       rel="noopener noreferrer"
-      class="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+      class="inline-flex min-w-0 max-w-full items-center gap-1 {allowWrap
+        ? 'whitespace-normal'
+        : 'whitespace-nowrap'} text-blue-600 hover:underline dark:text-blue-400"
       title={vulnId}
     >
-      {vulnId}
+      <span class={allowWrap ? '' : 'truncate'}>{vulnId}</span>
       <ExternalLink class="h-3 w-3 shrink-0" />
     </a>
   </div>

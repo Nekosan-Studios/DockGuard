@@ -71,12 +71,14 @@
     vuln,
     showContainers = false,
     hasAnyVex = true,
+    cveAllowWrap = true,
     activeCve = null,
     onModalChange,
   }: {
     vuln: Vulnerability;
     showContainers?: boolean;
     hasAnyVex?: boolean;
+    cveAllowWrap?: boolean;
     activeCve?: string | null;
     onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
@@ -144,6 +146,7 @@
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
     isNew={vuln.is_new ?? false}
+    allowWrap={cveAllowWrap}
     onDetailClick={() => {
       modalOpen = true;
     }}
@@ -157,7 +160,7 @@
             <Tooltip.Root>
               <Tooltip.Trigger class="cursor-default">
                 <span
-                  class="inline-flex max-w-[120px] truncate items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  class="inline-flex max-w-[160px] xl:max-w-[220px] truncate items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 >
                   {container.container_name}
                 </span>
@@ -180,51 +183,51 @@
   {/if}
 
   <Table.Cell class="font-mono">
-    <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <Tooltip.Root>
-        <Tooltip.Trigger class="cursor-default text-left">
-          <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <div class="max-w-[120px] truncate">{rep.package_name}</div>
-            {#if rep.package_type}
-              <span
-                class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-              >
-                {rep.package_type}
-              </span>
-            {/if}
-          </div>
-        </Tooltip.Trigger>
-        <Tooltip.Content class="max-w-sm">
-          {@const paths = rep.locations ? rep.locations.split("\n") : []}
-          {#if vuln.upstream_name}
-            <div class="mb-2 pb-2 border-b border-border/60">
-              <p class="mb-1 font-semibold">CVE matched via source package</p>
-              <p class="font-mono text-xs">
-                {rep.package_name}
-                <span class="text-muted-foreground mx-1">←</span>
-                {vuln.upstream_name}
-              </p>
-            </div>
-          {/if}
-          <p class="mb-1 font-semibold">
+    <Tooltip.Root>
+      <Tooltip.Trigger class="cursor-default text-left">
+        <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <div class="max-w-[160px] xl:max-w-[220px] truncate">
             {rep.package_name}
-            {paths.length === 1 ? "Location:" : "Locations:"}
-          </p>
-          {#if paths.length > 0}
-            <ul class="space-y-0.5">
-              {#each paths as path, pi (pi)}
-                <li class="flex items-start gap-1 font-mono text-xs">
-                  <span class="shrink-0">•</span>
-                  <span class="break-all">{path}</span>
-                </li>
-              {/each}
-            </ul>
-          {:else}
-            <p class="text-xs text-muted-foreground">No locations noted.</p>
+          </div>
+          {#if rep.package_type}
+            <span
+              class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+            >
+              {rep.package_type}
+            </span>
           {/if}
-        </Tooltip.Content>
-      </Tooltip.Root>
-    </div>
+        </div>
+      </Tooltip.Trigger>
+      <Tooltip.Content class="max-w-sm">
+        {@const paths = rep.locations ? rep.locations.split("\n") : []}
+        {#if vuln.upstream_name}
+          <div class="mb-2 pb-2 border-b border-border/60">
+            <p class="mb-1 font-semibold">CVE matched via source package</p>
+            <p class="font-mono text-xs">
+              {rep.package_name}
+              <span class="text-muted-foreground mx-1">←</span>
+              {vuln.upstream_name}
+            </p>
+          </div>
+        {/if}
+        <p class="mb-1 font-semibold">
+          {rep.package_name}
+          {paths.length === 1 ? "Location:" : "Locations:"}
+        </p>
+        {#if paths.length > 0}
+          <ul class="space-y-0.5">
+            {#each paths as path, pi (pi)}
+              <li class="flex items-start gap-1 font-mono text-xs">
+                <span class="shrink-0">•</span>
+                <span class="break-all">{path}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="text-xs text-muted-foreground">No locations noted.</p>
+        {/if}
+      </Tooltip.Content>
+    </Tooltip.Root>
     <div
       class="mt-0.5 flex flex-wrap items-center gap-2 text-muted-foreground font-mono text-[11px] leading-tight opacity-90"
     >
@@ -243,11 +246,9 @@
             </span>
           </Popover.Trigger>
           <Popover.Content class="w-80 p-0" align="start">
-            <div class="px-3 py-2 border-b border-border">
-              <p class="text-xs font-semibold">
-                All Affected Packages ({packages.length})
-              </p>
-            </div>
+            <p class="px-3 py-2 border-b border-border text-xs font-semibold">
+              All Affected Packages ({packages.length})
+            </p>
             <div class="max-h-48 overflow-y-auto divide-y divide-border">
               {#each packages as pkg, i (i)}
                 <div class="px-3 py-2 text-xs">
@@ -264,7 +265,7 @@
                         </span>
                       {/if}
                     </div>
-                    <div class="flex items-center gap-1.5 shrink-0">
+                    <div class="shrink-0">
                       <span
                         class="inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0 font-medium min-w-[50px] {PRIORITY_CLASSES[
                           priorityFromRiskScore(vuln.risk_score)
@@ -301,13 +302,9 @@
   </Table.Cell>
 
   <PriorityCell riskScore={vuln.risk_score} cvssVector={vuln.cvss_vector} />
-  <CvssCell class="px-1" score={vuln.cvss_base_score} />
-  <EpssCell
-    class="px-1"
-    score={vuln.epss_score}
-    percentile={vuln.epss_percentile}
-  />
-  <KevCell class="px-1" isKev={vuln.is_kev} />
+  <CvssCell score={vuln.cvss_base_score} />
+  <EpssCell score={vuln.epss_score} percentile={vuln.epss_percentile} />
+  <KevCell isKev={vuln.is_kev} />
 
   {#if hasAnyVex}
     <VexStatusCell
@@ -328,7 +325,7 @@
   </Table.Cell>
 
   <Table.Cell
-    class="pr-6 text-muted-foreground whitespace-normal"
+    class="min-w-[260px] xl:min-w-[320px] pr-6 text-muted-foreground whitespace-normal"
     title={vuln.description ?? undefined}
   >
     {#if vuln.description}

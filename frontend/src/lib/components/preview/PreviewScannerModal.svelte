@@ -244,7 +244,7 @@
 <Dialog.Root bind:open>
   <Dialog.Content
     class="{step === 'scanning'
-      ? 'sm:max-w-7xl'
+      ? 'sm:max-w-[95vw] 2xl:max-w-[1700px]'
       : 'sm:max-w-xl'} flex flex-col transition-[max-width] duration-300"
   >
     <Dialog.Header class="shrink-0">
@@ -503,7 +503,12 @@
           <!-- Completed results table -->
           {#if completedItems.length > 0}
             <div class="preview-results overflow-x-auto">
-              <Table.Root class="w-full">
+              <Table.Root class="w-full table-fixed">
+                <colgroup>
+                  <col class="w-[280px] lg:w-[340px]" />
+                  <col class="w-auto" />
+                  <col class="w-[170px]" />
+                </colgroup>
                 <Table.Header>
                   <Table.Row>
                     <Table.Head>Image</Table.Head>
@@ -541,13 +546,3 @@
     </div>
   </Dialog.Content>
 </Dialog.Root>
-
-<style>
-  /* Reduce the inner vuln table's min-width so it fits the dialog on typical laptop screens.
-     ContainerRow uses min-w-[1200px] globally; this only applies inside .preview-results
-     and does not affect the main containers page. The w-full on the outer Table.Root ensures
-     the table cell is wide enough for the tableScroller to actually scroll. */
-  .preview-results :global(table table) {
-    min-width: 860px;
-  }
-</style>
