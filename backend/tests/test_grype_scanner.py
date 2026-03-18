@@ -40,6 +40,7 @@ def test_scan_images_calls_subprocess_with_correct_args(mock_run, test_db):
         ["grype", "nginx:latest", "-o", "json"],
         capture_output=True,
         text=True,
+        timeout=300,
     )
 
 
@@ -76,6 +77,7 @@ def test_scan_image_targeted(mock_run, test_db):
         ["grype", "nginx:latest", "-o", "json"],
         capture_output=True,
         text=True,
+        timeout=300,
     )
     with Session(test_db.engine) as session:
         scan = session.exec(select(Scan)).first()

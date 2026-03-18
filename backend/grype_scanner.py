@@ -142,11 +142,16 @@ class GrypeScanner:
     ) -> None:
         """Execute the grype CLI specifically and persist results to the database."""
         logger.info("Scanning %s", image_name)
-        result = subprocess.run(
-            ["grype", grype_ref, "-o", "json"],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["grype", grype_ref, "-o", "json"],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            logger.error("Grype timed out after 300s for %s", image_name)
+            raise RuntimeError(f"Scan timed out after 5 minutes for {image_name}")
 
         if result.returncode != 0:
             # Grype writes errors to stderr; strip ANSI colour codes before logging.
