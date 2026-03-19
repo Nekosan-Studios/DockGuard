@@ -260,19 +260,6 @@
                   {/if}
                 </div>
 
-                {#if key === "REGISTRY_CHECK_INTERVAL_SECONDS" && parseInt(localValues[key], 10) < 86400}
-                  <div
-                    class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500 max-w-md"
-                  >
-                    <AlertCircle class="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                    <span
-                      >Intervals below 24 hours increase Docker Hub API usage
-                      and may cause rate limiting, especially when running
-                      without authenticated credentials.</span
-                    >
-                  </div>
-                {/if}
-
                 <p class="text-[0.8rem] text-muted-foreground">
                   <code
                     class="text-[0.7rem] bg-muted px-1 py-0.5 rounded mr-1 font-mono"

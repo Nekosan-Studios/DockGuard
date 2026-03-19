@@ -34,6 +34,12 @@ DockGuard is a free, self-hosted security scanner. It watches your running Docke
 
 - **Prioritise what actually matters** — Vulnerabilities are enriched with [CVSS](https://www.first.org/cvss/) severity scores, [EPSS](https://www.first.org/epss/) exploit probability, and the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (Known Exploited Vulnerabilities) catalog. Sort and filter by any of these to focus on the findings that matter in your context.
 
+- **Detect EOL Base Images** - Alerts you when a container image is running an End-of-Life Base OS image that may no longer be receiving security patches.
+
+- **New version detection** - Checks to see if a new version of your container is available. Pre-scans the new version for vulnerability changes without affecting your Docker installation.
+
+- **Review vulnerabilities before installing new apps** - Preview scan let's you provide a docker compose file or a list of images, and Dockguard will scan those images and report on vulnerabilities without installing the app into your local Docker environment.
+
 - **Cut through false positives** — Some CVEs exist in an image but cannot actually be exploited in your environment. DockGuard supports [VEX (Vulnerability Exploitability eXchange)](https://www.cisa.gov/sites/default/files/2023-01/VEX_Use_Cases_Approved_508c.pdf) attestations: when an image publisher has officially marked a vulnerability as not exploitable in their image, DockGuard can suppresses it so you focus on real risk, not noise.
 
 - **Track history** — See how your exposure changes as you update images and compare results across versions.

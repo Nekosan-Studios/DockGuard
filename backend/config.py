@@ -17,7 +17,7 @@ class ConfigManager:
         "SCAN_RETENTION_DAYS": "90",
         "DAILY_DIGEST_HOUR": "8",
         "BASE_URL": "",
-        "REGISTRY_CHECK_INTERVAL_SECONDS": "86400",
+        "REGISTRY_CHECK_INTERVAL_SECONDS": "3600",
     }
 
     @staticmethod
