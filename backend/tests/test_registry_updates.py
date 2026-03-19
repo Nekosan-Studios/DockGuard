@@ -17,7 +17,6 @@ from backend.models import ImageUpdateCheck
 
 _MANIFEST_RUNNING = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 _MANIFEST_REGISTRY = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-_MANIFEST_SAME = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 
 def _make_container(image_name: str, config_digest: str = "sha256:localcfg") -> dict:
