@@ -26,6 +26,12 @@ DockGuard is a free, self-hosted security scanner. It watches your running Docke
 **Vulnerabilities**
 ![Vulnerabilities](docs/screenshots/vulnerabilities.png)
 
+**Preview Scan**
+![Preview Scan](docs/screenshots/previewscan.png)
+
+**Scan History**
+![Scan History](docs/screenshots/scanhistory.png)
+
 ## Features
 
 - **Simple to install** — Up and running after reviewing a few values in the docker compose file.
