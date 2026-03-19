@@ -18,6 +18,8 @@
 
   let { data }: { data: PageData } = $props();
 
+  let containers = $state([...data.containers]);
+
   let previewScanOpen = $state(false);
   let expandedContainerName = $state<string | null>(null);
 
@@ -40,8 +42,45 @@
 
   let hideVexResolved = $state(false);
   let anyContainerHasVex = $derived(
-    data.containers.some((c: { has_vex?: boolean }) => c.has_vex)
+    containers.some((c: { has_vex?: boolean }) => c.has_vex)
   );
+
+  // ── Polling for in-progress update scans ──────────────────────────────────
+  $effect(() => {
+    const hasPending = containers.some(
+      (c: { update_status?: string | null }) =>
+        c.update_status === "scan_pending"
+    );
+    if (!hasPending) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/update-scans/status");
+        if (!res.ok) return;
+        const updates: Array<{
+          image_name: string;
+          status: string;
+          update_scan_id: number | null;
+          pending_task_id: number | null;
+        }> = await res.json();
+        for (const u of updates) {
+          const idx = containers.findIndex(
+            (c: { image_name: string }) => c.image_name === u.image_name
+          );
+          if (idx !== -1) {
+            containers[idx] = {
+              ...containers[idx],
+              update_status: u.status,
+              update_scan_id: u.update_scan_id,
+              pending_task_id: u.pending_task_id,
+            };
+          }
+        }
+      } catch {
+        // ignore fetch errors — polling will retry
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  });
 
   // ── Parent table sort ──────────────────────────────────────────────────────
   type ParentSortCol = "container_name" | "vulns" | "scanned_at";
@@ -58,7 +97,7 @@
   }
 
   let sortedContainers = $derived.by(() => {
-    const rows = [...data.containers] as ContainerRecord[];
+    const rows = [...containers] as ContainerRecord[];
     const dir = parentSortDir === "asc" ? 1 : -1;
     return rows.sort((a, b) => {
       switch (parentSortCol) {
@@ -162,7 +201,7 @@
             >
           </div>
         </div>
-      {:else if data.containers.length === 0}
+      {:else if containers.length === 0}
         <div
           class="flex flex-col items-center justify-center gap-2 py-8 text-center"
         >

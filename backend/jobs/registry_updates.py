@@ -128,6 +128,20 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                 ).first()
                 check.current_scan_id = current_scan.id if current_scan else None
 
+                # Create a SystemTask so this scan is visible in the task list
+                # and the frontend can poll its progress.
+                now_task = datetime.now(UTC)
+                scan_task = SystemTask(
+                    task_type="update_scan",
+                    task_name=f"Update scan: {image_name}",
+                    status="queued",
+                    created_at=now_task,
+                )
+                session.add(scan_task)
+                session.flush()
+                check.pending_task_id = scan_task.id
+                pending_task_id = scan_task.id
+
                 session.add(check)
                 session.commit()
 
@@ -138,6 +152,7 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                         scanner,
                         image_name,
                         scan_semaphore,
+                        pending_task_id,
                     )
                 )
 
@@ -169,6 +184,7 @@ async def _scan_and_update_check(
     scanner: GrypeScanner,
     image_name: str,
     scan_semaphore: asyncio.Semaphore,
+    pending_task_id: int,
 ) -> None:
     """Scan the registry image and update the ImageUpdateCheck record."""
     grype_ref = f"registry:{image_name}"
@@ -178,7 +194,7 @@ async def _scan_and_update_check(
             grype_ref,
             scan_semaphore,
             container_names=None,
-            task_id=None,
+            task_id=pending_task_id,
             is_update_check=True,
         )
 
@@ -196,6 +212,7 @@ async def _scan_and_update_check(
             if check and new_scan:
                 check.update_scan_id = new_scan.id
                 check.status = "scan_complete"
+                check.pending_task_id = None
                 session.add(check)
                 session.commit()
                 logger.info(
@@ -203,6 +220,10 @@ async def _scan_and_update_check(
                     image_name,
                     new_scan.id,
                 )
+            elif check:
+                check.pending_task_id = None
+                session.add(check)
+                session.commit()
 
     except Exception:
         logger.exception("Error scanning registry update for %s", image_name)
@@ -210,5 +231,6 @@ async def _scan_and_update_check(
             check = session.exec(select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)).first()
             if check and check.status == "scan_pending":
                 check.status = "update_available"
+                check.pending_task_id = None
                 session.add(check)
                 session.commit()

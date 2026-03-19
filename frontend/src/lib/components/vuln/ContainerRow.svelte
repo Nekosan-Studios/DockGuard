@@ -20,6 +20,7 @@
   import type { Vulnerability } from "./VulnRow.svelte";
   import History from "@lucide/svelte/icons/history";
   import ArrowUpCircle from "@lucide/svelte/icons/arrow-up-circle";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import ContainerHistoryDialog from "./ContainerHistoryDialog.svelte";
   import UpdateAvailableDialog from "./UpdateAvailableDialog.svelte";
 
@@ -52,6 +53,7 @@
     has_update?: boolean;
     update_scan_id?: number | null;
     update_status?: string | null;
+    pending_task_id?: number | null;
   }
 
   let {
@@ -458,16 +460,28 @@
             </Tooltip.Root>
           {/if}
           {#if container.has_update}
-            <button
-              onclick={(e) => {
-                e.stopPropagation();
-                updateOpen = true;
-              }}
-              class="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-100/50 px-2 py-0.5 text-xs font-medium text-teal-700 transition-opacity hover:opacity-80 dark:border-teal-800 dark:bg-teal-900/40 dark:text-teal-300"
-            >
-              <ArrowUpCircle class="h-3 w-3" />
-              Update Available{updatePillSuffix}
-            </button>
+            {#if container.update_status === "scan_pending"}
+              <span
+                class="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-100/50 px-2 py-0.5 text-xs font-medium text-teal-700 cursor-default dark:border-teal-800 dark:bg-teal-900/40 dark:text-teal-300"
+              >
+                <ArrowUpCircle class="h-3 w-3" />
+                Update Available
+                <span class="opacity-40">·</span>
+                <LoaderCircle class="h-3 w-3 animate-spin opacity-70" />
+                <span class="opacity-70">Scanning…</span>
+              </span>
+            {:else}
+              <button
+                onclick={(e) => {
+                  e.stopPropagation();
+                  updateOpen = true;
+                }}
+                class="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-100/50 px-2 py-0.5 text-xs font-medium text-teal-700 transition-opacity hover:opacity-80 dark:border-teal-800 dark:bg-teal-900/40 dark:text-teal-300"
+              >
+                <ArrowUpCircle class="h-3 w-3" />
+                Update Available{updatePillSuffix}
+              </button>
+            {/if}
           {/if}
         </div>
         <div

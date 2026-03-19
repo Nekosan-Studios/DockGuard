@@ -24,7 +24,7 @@ class Database:
 
     def startup_cleanup(self):
         """Clean up transient state that should not persist across restarts."""
-        from .models import Scan, ScanContainer, Setting, SystemTask, Vulnerability
+        from .models import ImageUpdateCheck, Scan, ScanContainer, Setting, SystemTask, Vulnerability
 
         with Session(self.engine) as session:
             # Migrate renamed setting key: DATA_RETENTION_DAYS → SCAN_RETENTION_DAYS
@@ -61,6 +61,28 @@ class Database:
                 for task in stuck_tasks:
                     session.delete(task)
                 logger.info("startup_cleanup: removed %d stuck preview task(s)", len(stuck_tasks))
+
+            # Reset update_scan tasks that were in-flight when the server stopped.
+            # Mark them failed and clear the pending_task_id on their ImageUpdateCheck.
+            stuck_update_tasks = session.exec(
+                select(SystemTask)
+                .where(SystemTask.task_type == "update_scan")
+                .where(SystemTask.status.in_(["queued", "running"]))
+            ).all()
+            if stuck_update_tasks:
+                stuck_task_ids = {t.id for t in stuck_update_tasks}
+                # Clear pending_task_id on any ImageUpdateCheck pointing at a stuck task
+                stuck_checks = session.exec(
+                    select(ImageUpdateCheck).where(ImageUpdateCheck.pending_task_id.in_(stuck_task_ids))
+                ).all()
+                for check in stuck_checks:
+                    check.pending_task_id = None
+                    if check.status == "scan_pending":
+                        check.status = "update_available"
+                    session.add(check)
+                for task in stuck_update_tasks:
+                    session.delete(task)
+                logger.info("startup_cleanup: cleaned up %d stuck update_scan task(s)", len(stuck_update_tasks))
 
             session.commit()
 

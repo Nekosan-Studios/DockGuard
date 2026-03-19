@@ -109,6 +109,11 @@ def get_running_containers(session: Session = Depends(db.get_session)):
             if (update_check is not None and update_check.status == "scan_complete")
             else None
         )
+        pending_task_id = (
+            update_check.pending_task_id
+            if (update_check is not None and update_check.status == "scan_pending")
+            else None
+        )
 
         if not scan:
             containers.append(
@@ -130,6 +135,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                     "has_update": has_update,
                     "update_scan_id": update_scan_id,
                     "update_status": update_check.status if update_check else None,
+                    "pending_task_id": pending_task_id,
                 }
             )
             continue
@@ -162,6 +168,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
                 "has_update": has_update,
                 "update_scan_id": update_scan_id,
                 "update_status": update_check.status if update_check else None,
+                "pending_task_id": pending_task_id,
             }
         )
 
@@ -580,6 +587,23 @@ def get_container_scan_history(
         "has_more": has_more,
         "entries": entries,
     }
+
+
+@router.get("/update-scans/status")
+def get_update_scan_statuses(session: Session = Depends(db.get_session)):
+    """Current status of all in-progress or recently completed update scans."""
+    checks = session.exec(
+        select(ImageUpdateCheck).where(ImageUpdateCheck.status.in_(["scan_pending", "scan_complete"]))
+    ).all()
+    return [
+        {
+            "image_name": c.image_name,
+            "status": c.status,
+            "update_scan_id": c.update_scan_id,
+            "pending_task_id": c.pending_task_id,
+        }
+        for c in checks
+    ]
 
 
 @router.get("/update-scans/{scan_id}/diff")

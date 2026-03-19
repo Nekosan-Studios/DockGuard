@@ -136,4 +136,5 @@ class ImageUpdateCheck(SQLModel, table=True):
     status: str
     update_scan_id: int | None = Field(default=None, foreign_key="scan.id", nullable=True)
     current_scan_id: int | None = Field(default=None, foreign_key="scan.id", nullable=True)
+    pending_task_id: int | None = Field(default=None, foreign_key="systemtask.id", nullable=True)
     error: str | None = None
