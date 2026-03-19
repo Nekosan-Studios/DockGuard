@@ -35,7 +35,7 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
         watcher = DockerWatcher()
         running = watcher.list_running_containers()
 
-        # Collect unique tagged image names with their manifest digest.
+        # Collect unique image names (tagged or untagged) with their manifest digest.
         # We use the manifest digest (from Docker's RepoDigests) because the
         # registry returns the manifest digest via Docker-Content-Digest — this
         # is the only value comparable with the registry response.  The config
@@ -43,10 +43,15 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
         # mixed with or used as a fallback for the manifest digest.
         # Images without a manifest digest (locally-built, never pushed/pulled)
         # are skipped entirely — they have no registry to check against.
+        # Digest-pinned references (image@sha256:...) are skipped because there
+        # is no mutable tag to check for updates against.
+        # Untagged refs (e.g. "jgraph/drawio") are stored under the original name
+        # as the ImageUpdateCheck key; ":latest" is only appended at the registry
+        # call site below, matching Docker's implied-latest convention.
         images: dict[str, str] = {}  # image_name -> running manifest digest
         for item in running:
             name = item["image_name"]
-            if "@" not in name and ":" in name:
+            if "@" not in name:
                 running_manifest_digest = watcher.get_manifest_digest(name)
                 if running_manifest_digest is None:
                     logger.debug("Skipping %s: no manifest digest (locally-built image?)", name)
@@ -57,7 +62,12 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
         updates_found = 0
 
         for image_name, running_manifest_digest in images.items():
-            registry_manifest_digest = get_registry_digest(image_name)
+            # Untagged refs (e.g. "jgraph/drawio") are normalized to ":latest"
+            # for the registry lookup only.  The DB key (image_name) stays as
+            # the original untagged string so all downstream lookups continue
+            # to match Docker's Config.Image value without further normalization.
+            registry_ref = f"{image_name}:latest" if ":" not in image_name else image_name
+            registry_manifest_digest = get_registry_digest(registry_ref)
 
             with Session(db.engine) as session:
                 check = session.exec(select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)).first()
