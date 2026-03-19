@@ -24,18 +24,24 @@
       (t: { status: string }) => t.status === "running" || t.status === "queued"
     );
     if (!hasActive) return;
+    const controller = new AbortController();
     const interval = setInterval(async () => {
       try {
-        const res = await fetch("/api/tasks?page=1&page_size=25");
+        const res = await fetch("/api/tasks?page=1&page_size=25", {
+          signal: controller.signal,
+        });
         if (res.ok) {
           const json = await res.json();
           liveRows = json.tasks ?? [];
         }
-      } catch {
-        /* ignore */
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
       }
     }, 3000);
-    return () => clearInterval(interval);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   });
 
   // Sort the current page by created_at DESC so scheduled rows (future dates) float to top

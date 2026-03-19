@@ -52,9 +52,12 @@
         c.update_status === "scan_pending"
     );
     if (!hasPending) return;
+    const controller = new AbortController();
     const interval = setInterval(async () => {
       try {
-        const res = await fetch("/api/update-scans/status");
+        const res = await fetch("/api/update-scans/status", {
+          signal: controller.signal,
+        });
         if (!res.ok) return;
         const updates: Array<{
           image_name: string;
@@ -75,11 +78,15 @@
             };
           }
         }
-      } catch {
-        // ignore fetch errors — polling will retry
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        // ignore other fetch errors — polling will retry
       }
     }, 3000);
-    return () => clearInterval(interval);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   });
 
   // ── Parent table sort ──────────────────────────────────────────────────────

@@ -28,15 +28,21 @@
       summary.queued_tasks > 0 ||
       summary.db_updating;
     if (!isActive) return;
+    const controller = new AbortController();
     const interval = setInterval(async () => {
       try {
-        const res = await fetch("/api/dashboard/summary");
+        const res = await fetch("/api/dashboard/summary", {
+          signal: controller.signal,
+        });
         if (res.ok) summary = { ...summary, ...(await res.json()) };
-      } catch {
-        /* ignore */
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
       }
     }, 3000);
-    return () => clearInterval(interval);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   });
 
   let activities = $state<
