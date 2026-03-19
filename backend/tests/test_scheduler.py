@@ -451,7 +451,7 @@ def test_cleanup_stray_tasks_sets_error_message(test_db):
 
 
 def test_update_job_intervals_reschedules_scan_job(test_db):
-    """Changing SCAN_INTERVAL_SECONDS reschedules the check_running_containers job."""
+    """Changing SCAN_INTERVAL_SECONDS reschedules the scan_for_container_changes job."""
     from backend.config import ConfigManager
 
     sched = ContainerScheduler(test_db)

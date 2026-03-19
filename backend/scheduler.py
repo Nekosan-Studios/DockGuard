@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -77,9 +77,6 @@ class ContainerScheduler:
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
             self.scan_retention_days = int(ConfigManager.get_setting("SCAN_RETENTION_DAYS", session)["value"])
             self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR", session)["value"])
-            self.registry_check_interval = int(
-                ConfigManager.get_setting("REGISTRY_CHECK_INTERVAL_SECONDS", session)["value"]
-            )
         self.task_retention_days = int(os.environ.get("TASK_RETENTION_DAYS", "7"))
 
         self.digest_timezone = _get_digest_timezone()
@@ -89,10 +86,12 @@ class ContainerScheduler:
         self._cleanup_stray_tasks()
 
         self._scheduler.add_job(
-            self._run_check_running_containers,
+            self._run_scan_for_container_changes,
             IntervalTrigger(seconds=self.scan_interval),
-            id="check_running_containers",
-            name="Monitor running containers for new/updated images",
+            id="scan_for_container_changes",
+            name="Scan for Container Changes",
+            max_instances=1,
+            coalesce=True,
             next_run_time=datetime.now(),
             replace_existing=True,
         )
@@ -119,14 +118,6 @@ class ContainerScheduler:
             name="Send daily vulnerability digest",
             replace_existing=True,
         )
-        self._scheduler.add_job(
-            self._run_check_registry_updates,
-            IntervalTrigger(seconds=self.registry_check_interval),
-            id="check_registry_updates",
-            name="Check registries for image updates",
-            next_run_time=self._compute_registry_check_next_run(),
-            replace_existing=True,
-        )
         _active_scheduler = self
         logger.info("Scheduler: max concurrent Grype scans = %d", self.max_concurrent_scans)
 
@@ -146,9 +137,9 @@ class ContainerScheduler:
             if scan_interval != self.scan_interval:
                 self.scan_interval = scan_interval
                 self._scheduler.reschedule_job(
-                    "check_running_containers", trigger=IntervalTrigger(seconds=self.scan_interval)
+                    "scan_for_container_changes", trigger=IntervalTrigger(seconds=self.scan_interval)
                 )
-                logger.info("Scheduler updated check_running_containers interval to %ds", self.scan_interval)
+                logger.info("Scheduler updated scan_for_container_changes interval to %ds", self.scan_interval)
 
             if db_check_interval != self.db_check_interval:
                 self.db_check_interval = db_check_interval
@@ -170,16 +161,6 @@ class ContainerScheduler:
                 logger.info(
                     "Scheduler updated daily_digest hour to %d (%s)", self.digest_hour, self.digest_timezone.key
                 )
-
-            registry_check_interval = int(
-                ConfigManager.get_setting("REGISTRY_CHECK_INTERVAL_SECONDS", session)["value"]
-            )
-            if registry_check_interval != self.registry_check_interval:
-                self.registry_check_interval = registry_check_interval
-                self._scheduler.reschedule_job(
-                    "check_registry_updates", trigger=IntervalTrigger(seconds=self.registry_check_interval)
-                )
-                logger.info("Scheduler updated check_registry_updates interval to %ds", self.registry_check_interval)
 
     def get_jobs(self):
         return self._scheduler.get_jobs()
@@ -204,43 +185,11 @@ class ContainerScheduler:
                 session.commit()
                 logger.info("Scheduler: marked %d stray task(s) as failed", len(stray_tasks))
 
-    def _compute_registry_check_next_run(self) -> datetime:
-        """Compute the next run time for the registry check job.
-
-        Looks up the most recently completed registry check in SystemTask and
-        schedules the next run at last_finished_at + interval.  If no history
-        exists, or the computed next time is already in the past, returns
-        datetime.now() so the job fires immediately on startup.
-
-        This ensures the configured interval is preserved across restarts: a
-        server restarted after 2 hours of a 24-hour window will next check in
-        22 hours, not 24 hours from restart.
-        """
-        with Session(self.db.engine) as session:
-            last_task = session.exec(
-                select(SystemTask)
-                .where(SystemTask.task_type == "scheduled_registry_check")
-                .where(SystemTask.status == "completed")
-                .order_by(SystemTask.finished_at.desc())
-            ).first()
-
-        if last_task and last_task.finished_at:
-            finished_at = last_task.finished_at
-            if finished_at.tzinfo is None:
-                finished_at = finished_at.replace(tzinfo=UTC)
-            next_run = finished_at + timedelta(seconds=self.registry_check_interval)
-            if next_run > datetime.now(UTC):
-                logger.info(
-                    "Scheduler: registry check deferred until %s (last ran at %s)",
-                    next_run.isoformat(),
-                    finished_at.isoformat(),
-                )
-                return next_run
-
-        return datetime.now()
-
-    async def _run_check_running_containers(self) -> None:
-        await check_running_containers(self.db, self._seen_digests, self._scan_semaphore)
+    async def _run_scan_for_container_changes(self) -> None:
+        await asyncio.gather(
+            check_running_containers(self.db, self._seen_digests, self._scan_semaphore),
+            check_registry_updates(self.db, self._scan_semaphore),
+        )
 
     async def _run_check_db_update(self) -> None:
         await check_db_update(self.db, self._seen_digests)
@@ -250,6 +199,3 @@ class ContainerScheduler:
 
     async def _run_daily_digest(self) -> None:
         await send_daily_digest(self.db)
-
-    async def _run_check_registry_updates(self) -> None:
-        await check_registry_updates(self.db, self._scan_semaphore)

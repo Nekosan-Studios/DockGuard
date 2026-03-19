@@ -111,14 +111,19 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                 # Digests differ — update is available
                 updates_found += 1
 
-                # Skip only if this exact registry manifest digest was already *fully
-                # scanned* (scan_complete).  We intentionally do NOT skip scan_pending
-                # here: if the server restarted while a scan was in-flight, the scan
-                # task was lost and must be re-queued.  We also compare against the OLD
-                # stored registry digest (before the update above) so that a newly-
-                # pushed registry image (new digest) is never incorrectly skipped.
+                # Skip if this exact registry manifest digest is already being scanned
+                # (scan_pending) or was fully scanned (scan_complete).  We compare
+                # against the OLD stored registry digest (before the update above) so
+                # that a newly-pushed registry image (new digest) is never incorrectly
+                # skipped.
+                # Note: scan_pending is included to prevent a second scan being queued
+                # if the check interval fires again before the in-flight scan completes.
+                # This differs from the post-restart case: _cleanup_stray_tasks() resets
+                # any orphaned scan_pending records to failed on startup, so a restarted
+                # server will correctly re-queue here.
                 already_scanned_this_digest = (
-                    check.status == "scan_complete" and previous_registry_manifest_digest == registry_manifest_digest
+                    check.status in ("scan_pending", "scan_complete")
+                    and previous_registry_manifest_digest == registry_manifest_digest
                 )
                 if already_scanned_this_digest:
                     session.add(check)

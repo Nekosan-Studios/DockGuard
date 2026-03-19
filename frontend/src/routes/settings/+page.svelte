@@ -101,7 +101,6 @@
   const secondsSettings = new Set([
     "SCAN_INTERVAL_SECONDS",
     "DB_CHECK_INTERVAL_SECONDS",
-    "REGISTRY_CHECK_INTERVAL_SECONDS",
   ]);
 
   function formatSeconds(seconds: number): string {
@@ -128,8 +127,8 @@
     { label: string; desc: string; group: string }
   > = {
     SCAN_INTERVAL_SECONDS: {
-      label: "Docker Poll Interval",
-      desc: "How often (in seconds) to check the Docker daemon for new or updated running containers.",
+      label: "Container Check Interval",
+      desc: "How often (in seconds) to check for new or updated running containers and for newer versions available on their registries.",
       group: "Scanning",
     },
     MAX_CONCURRENT_SCANS: {
@@ -139,15 +138,6 @@
     },
     DB_CHECK_INTERVAL_SECONDS: {
       label: "Grype DB Check Interval",
-      desc: "How often (in seconds) to check for a new Grype vulnerability database update.",
-      group: "Updates",
-    },
-    REGISTRY_CHECK_INTERVAL_SECONDS: {
-      label: "Container Update Check Interval",
-      desc: "How often (in seconds) to check for updates to your containers.",
-      group: "Updates",
-    },
-    SCAN_RETENTION_DAYS: {
       label: "Scan Data Retention",
       desc: "Scan history older than this many days will be automatically purged each day. The most recent scan for each image is always kept regardless of age.",
       group: "Maintenance",

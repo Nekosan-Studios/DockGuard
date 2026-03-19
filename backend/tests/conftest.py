@@ -104,13 +104,9 @@ def api_client(test_db):
                                             mock_inst.update_job_intervals.return_value = None
                                             mock_inst.get_jobs.return_value = [
                                                 MagicMock(
-                                                    id="check_running_containers", name="Monitor running containers"
+                                                    id="scan_for_container_changes", name="Scan for Container Changes"
                                                 ),
                                                 MagicMock(id="check_db_update", name="Check for grype DB updates"),
-                                                MagicMock(
-                                                    id="check_registry_updates",
-                                                    name="Check registries for image updates",
-                                                ),
                                             ]
                                             cw.return_value.list_images.return_value = []
                                             cw.return_value.list_running_containers.return_value = []
