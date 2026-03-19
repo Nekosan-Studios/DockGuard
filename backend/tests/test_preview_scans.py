@@ -293,7 +293,8 @@ def test_streaming_async_cancelled_marks_task_failed(test_db):
             task_obj.cancel()
             try:
                 await task_obj
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                # Expected: cancellation of the streaming task under test.
                 pass
 
         with Session(test_db.engine) as session:
