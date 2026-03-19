@@ -29,7 +29,7 @@ def test_dashboard_summary_empty_db(api_client):
     assert response.status_code == 200
     data = response.json()
     assert data["running_containers"] == 0
-    assert data["images_scanned"] == 0
+    assert data["unique_running_images"] == 0
     assert data["critical_count"] == 0
     assert data["kev_count"] == 0
     assert data["trend"] == []
@@ -46,8 +46,22 @@ def test_dashboard_summary_with_running_containers_and_scan(api_client):
     assert response.status_code == 200
     data = response.json()
     assert data["running_containers"] == 1
-    assert data["images_scanned"] == 1
+    assert data["unique_running_images"] == 1
     assert data["critical_count"] == 1
+
+
+def test_dashboard_summary_unique_running_images_deduplicates_by_digest(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [])
+    # Two containers running the same image digest — should count as 1 unique image
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("web-1", "nginx:latest", "sha256:aaaa"),
+        _make_running_container("web-2", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    data = client.get("/dashboard/summary").json()
+    assert data["running_containers"] == 2
+    assert data["unique_running_images"] == 1
 
 
 def test_dashboard_summary_kev_count(api_client):

@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ fetch }) => {
     ? await summaryRes!.json()
     : {
         running_containers: null,
-        images_scanned: null,
+        unique_running_images: null,
         critical_count: null,
         kev_count: null,
         urgent_count: null,

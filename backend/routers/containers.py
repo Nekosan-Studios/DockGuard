@@ -229,10 +229,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         running = []
         docker_connected = False
     running_images = {img["image_name"] for img in running}
-
-    images_scanned = session.exec(
-        select(func.count(func.distinct(Scan.image_name))).where(Scan.is_preview == False)  # noqa: E712
-    ).one()
+    unique_running_images = len({img["config_digest"] for img in running})
 
     if running_images:
         latest_scan_id_subq = (
@@ -346,7 +343,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
 
     return {
         "running_containers": len(running),
-        "images_scanned": images_scanned,
+        "unique_running_images": unique_running_images,
         "critical_count": urgent_count,
         "urgent_count": urgent_count,
         "kev_count": kev_count,

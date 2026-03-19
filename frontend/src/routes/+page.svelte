@@ -214,10 +214,10 @@
               running container{data.summary.running_containers === 1
                 ? ""
                 : "s"} &middot;
-              {data.summary.images_scanned} image{data.summary
-                .images_scanned === 1
+              {data.summary.unique_running_images} unique image{data.summary
+                .unique_running_images === 1
                 ? ""
-                : "s"} scanned
+                : "s"}
             </p>
             {#if data.summary.active_tasks > 0 || data.summary.queued_tasks > 0 || data.summary.eol_count > 0}
               <div class="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
