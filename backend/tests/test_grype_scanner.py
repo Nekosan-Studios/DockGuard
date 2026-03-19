@@ -37,9 +37,10 @@ def test_scan_images_calls_subprocess_with_correct_args(mock_run, test_db):
     scanner = _make_scanner(test_db, images=[MOCK_DOCKER_IMAGES[0]])  # nginx only
     scanner.scan_images()
     mock_run.assert_called_once_with(
-        ["grype", "nginx:latest", "-o", "json", "-q"],
+        ["grype", "nginx:latest", "-o", "json"],
         capture_output=True,
         text=True,
+        timeout=300,
     )
 
 
@@ -73,9 +74,10 @@ def test_scan_image_targeted(mock_run, test_db):
     scanner.scan_image("nginx:latest", "nginx:latest")
 
     mock_run.assert_called_once_with(
-        ["grype", "nginx:latest", "-o", "json", "-q"],
+        ["grype", "nginx:latest", "-o", "json"],
         capture_output=True,
         text=True,
+        timeout=300,
     )
     with Session(test_db.engine) as session:
         scan = session.exec(select(Scan)).first()

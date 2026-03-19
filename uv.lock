@@ -207,6 +207,7 @@ dependencies = [
     { name = "docker" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "pyyaml" },
     { name = "sqlmodel" },
     { name = "uvicorn" },
 ]
@@ -228,6 +229,7 @@ requires-dist = [
     { name = "docker" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "pyyaml" },
     { name = "sqlmodel" },
     { name = "uvicorn" },
 ]

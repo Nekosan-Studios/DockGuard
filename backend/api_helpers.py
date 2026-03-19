@@ -18,8 +18,16 @@ _VALID_SORT_COLS = {
     "first_seen_at",
     "vuln_id",
     "package_name",
+    "containers",
+    "vex_status",
 }
 _SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Negligible", "Unknown"]
+_VEX_STATUS_RANK = {
+    "not_affected": 0,
+    "fixed": 1,
+    "under_investigation": 2,
+    "affected": 3,
+}
 
 
 def _severity_rank(s: str) -> int:
@@ -27,6 +35,13 @@ def _severity_rank(s: str) -> int:
         return _SEVERITY_ORDER.index(s)
     except ValueError:
         return 99
+
+
+def _vex_sort_rank(status: str | None) -> int:
+    """Numeric rank for VEX status sorting. Nulls sort last (rank 99)."""
+    if status is None:
+        return 99
+    return _VEX_STATUS_RANK.get(status, 50)
 
 
 def _priority_bucket(risk_score: float | None) -> str:

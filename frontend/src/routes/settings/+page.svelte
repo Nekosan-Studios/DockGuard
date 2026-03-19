@@ -74,7 +74,7 @@
       await settings.updateSettings(updates);
       saveMessage = {
         type: "success",
-        text: "Settings saved successfully.",
+        text: "Settings saved. Changes to Max Concurrent Scans requires a restart to take effect.",
       };
       hasChanges = false;
       setTimeout(() => {
@@ -97,11 +97,29 @@
 
   const textSettings = new Set(["BASE_URL"]);
 
+  // Keys that are durations in seconds and should show a human-readable hint
+  const secondsSettings = new Set([
+    "SCAN_INTERVAL_SECONDS",
+    "DB_CHECK_INTERVAL_SECONDS",
+  ]);
+
+  function formatSeconds(seconds: number): string {
+    if (!isFinite(seconds) || seconds < 0) return "";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const parts: string[] = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+    return parts.join(" ");
+  }
+
   const numericConstraints: Record<
     string,
     { min?: number; max?: number; step?: number }
   > = {
-    DAILY_DIGEST_HOUR_UTC: { min: 0, max: 23, step: 1 },
+    DAILY_DIGEST_HOUR: { min: 0, max: 23, step: 1 },
   };
 
   const settingMeta: Record<
@@ -109,8 +127,8 @@
     { label: string; desc: string; group: string }
   > = {
     SCAN_INTERVAL_SECONDS: {
-      label: "Docker Poll Interval",
-      desc: "How often (in seconds) to check the Docker daemon for new or updated running containers.",
+      label: "Container Check Interval",
+      desc: "How often (in seconds) to check for new or updated running containers and for newer versions available on their registries.",
       group: "Scanning",
     },
     MAX_CONCURRENT_SCANS: {
@@ -120,15 +138,15 @@
     },
     DB_CHECK_INTERVAL_SECONDS: {
       label: "Grype DB Check Interval",
-      desc: "How often (in seconds) to check for a new Grype vulnerability database update.",
-      group: "Updates",
-    },
-    DATA_RETENTION_DAYS: {
-      label: "Data Retention",
-      desc: "Scans and task history older than this many days will be automatically purged each day. The most recent scan for each image is always kept.",
+      desc: "How often (in seconds) to check for Grype vulnerability database updates.",
       group: "Maintenance",
     },
-    DAILY_DIGEST_HOUR_UTC: {
+    SCAN_RETENTION_DAYS: {
+      label: "Scan Data Retention",
+      desc: "Scan history older than this many days will be automatically purged each day. The most recent scan for each image is always kept regardless of age.",
+      group: "Maintenance",
+    },
+    DAILY_DIGEST_HOUR: {
       label: "Daily Digest Hour",
       desc: "Hour of day (0-23) when the daily vulnerability digest notification is sent. Interpreted in the timezone set by the TZ environment variable, or UTC if TZ is not set.",
       group: "Notifications",
@@ -151,7 +169,7 @@
   });
 </script>
 
-<div class="space-y-6">
+<div class="container mx-auto py-6 max-w-5xl">
   <div>
     <h3 class="text-lg font-medium">Application Configuration</h3>
     <p class="text-sm text-muted-foreground">
@@ -207,7 +225,7 @@
                   {/if}
                 </div>
 
-                <div class="flex max-w-md">
+                <div class="flex items-center gap-3 max-w-md">
                   {#if !conf.editable}
                     <Input
                       id={key}
@@ -224,6 +242,15 @@
                       oninput={handleInputChange}
                       {...numericConstraints[key] ?? {}}
                     />
+                  {/if}
+                  {#if secondsSettings.has(key)}
+                    {@const secs = parseInt(localValues[key] ?? conf.value, 10)}
+                    {#if secs > 180}
+                      <span
+                        class="text-xs text-muted-foreground whitespace-nowrap"
+                        >= {formatSeconds(secs)}</span
+                      >
+                    {/if}
                   {/if}
                 </div>
 

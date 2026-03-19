@@ -23,7 +23,7 @@ def _make_running_container(image_name: str, image_id: str, container_name: str 
         "image_name": image_name,
         "grype_ref": image_name,
         "hash": image_id.replace("sha256:", "")[:12],
-        "image_id": image_id,
+        "config_digest": image_id,
     }
 
 
@@ -247,7 +247,7 @@ def test_purge_deletes_old_scans_and_vulns(test_db):
     old_scan = seed_scan(test_db, "nginx:latest", "sha256:old", [VULN_CRITICAL], scanned_at=_days_ago(60))
     new_scan = seed_scan(test_db, "nginx:latest", "sha256:new", [VULN_HIGH], scanned_at=_days_ago(1))
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         assert session.get(Scan, old_scan.id) is None, "Old scan should have been purged"
@@ -260,7 +260,7 @@ def test_purge_keeps_newest_scan_when_all_old(test_db):
     """Even when the only scan for an image is past the retention cutoff it must not be deleted."""
     only_scan = seed_scan(test_db, "redis:7", "sha256:old", [VULN_CRITICAL], scanned_at=_days_ago(90))
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         assert session.get(Scan, only_scan.id) is not None, (
@@ -295,18 +295,43 @@ def test_purge_deletes_old_system_tasks(test_db):
         old_id = old_task.id
         recent_id = recent_task.id
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         assert session.get(ST, old_id) is None, "Old system task should be purged"
         assert session.get(ST, recent_id) is not None, "Recent system task must survive"
 
 
+def test_purge_task_retention_independent_of_scan_retention(test_db):
+    """A task older than task_retention_days is purged even when scan_retention_days is much longer."""
+    from backend.models import SystemTask as ST
+
+    old_task = ST(
+        task_type="scheduled_check_containers",
+        task_name="Monitor Running Containers",
+        status="completed",
+        created_at=_days_ago(10),
+        started_at=_days_ago(10),
+        finished_at=_days_ago(10),
+    )
+    with Session(test_db.engine) as session:
+        session.add(old_task)
+        session.commit()
+        old_id = old_task.id
+
+    # task_retention_days=7 should purge the 10-day-old task;
+    # scan_retention_days=90 should not affect task retention.
+    asyncio.run(purge_old_data(test_db, scan_retention_days=90, task_retention_days=7))
+
+    with Session(test_db.engine) as session:
+        assert session.get(ST, old_id) is None, "Task older than task_retention_days must be purged"
+
+
 def test_purge_creates_completed_system_task_record(test_db):
     """purge_old_data must write a 'scheduled_purge' SystemTask with status 'completed'."""
     from backend.models import SystemTask as ST
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         purge_tasks = session.exec(select(ST).where(ST.task_type == "scheduled_purge")).all()
@@ -426,13 +451,12 @@ def test_cleanup_stray_tasks_sets_error_message(test_db):
 
 
 def test_update_job_intervals_reschedules_scan_job(test_db):
-    """Changing SCAN_INTERVAL_SECONDS reschedules the check_running_containers job."""
+    """Changing SCAN_INTERVAL_SECONDS reschedules the scan_for_container_changes job."""
     from backend.config import ConfigManager
 
     sched = ContainerScheduler(test_db)
     original_interval = sched.scan_interval
 
-    # Change the setting in DB
     with Session(test_db.engine) as session:
         new_value = original_interval + 60
         ConfigManager.set_setting("SCAN_INTERVAL_SECONDS", str(new_value), session)
@@ -467,7 +491,7 @@ def test_update_job_intervals_reschedules_digest_job(test_db):
     new_hour = (original + 1) % 24
 
     with Session(test_db.engine) as session:
-        ConfigManager.set_setting("DAILY_DIGEST_HOUR_UTC", str(new_hour), session)
+        ConfigManager.set_setting("DAILY_DIGEST_HOUR", str(new_hour), session)
         session.commit()
 
     sched.update_job_intervals()

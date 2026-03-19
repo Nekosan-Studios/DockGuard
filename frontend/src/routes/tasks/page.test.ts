@@ -5,6 +5,8 @@ import Page from "./+page.svelte";
 function makeData(overrides = {}) {
   return {
     tasks: [],
+    total: 0,
+    currentPage: 1,
     apiError: false,
     ...overrides,
   };

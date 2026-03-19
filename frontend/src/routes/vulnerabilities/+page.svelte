@@ -7,11 +7,10 @@
   import Shield from "@lucide/svelte/icons/shield";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
   import Loader2 from "@lucide/svelte/icons/loader-2";
-  import Info from "@lucide/svelte/icons/info";
   import SortButton from "../containers/sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import { goto, replaceState } from "$app/navigation";
+  import { goto, replaceState, invalidateAll } from "$app/navigation";
   import VulnRow from "$lib/components/vuln/VulnRow.svelte";
   import type { Vulnerability } from "$lib/components/vuln/VulnRow.svelte";
   import { page } from "$app/stores";
@@ -110,6 +109,19 @@
 
   onDestroy(() => observer?.disconnect());
 
+  // 30s background refresh — skip if user has scrolled past page 1 to avoid snap-back
+  $effect(() => {
+    const refresh = () => {
+      if (!document.hidden && currentOffset === 0) invalidateAll();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  });
+
   // ── Reports & sort URL params ─────────────────────────────────────────────
   const reports = [
     { value: "all", label: "All Vulnerabilities" },
@@ -155,13 +167,13 @@
     | "severity"
     | "package_name"
     | "containers"
+    | "vex_status"
     | "cvss_base_score"
     | "epss_score"
     | "is_kev"
     | "first_seen_at";
 
   function toggleSort(col: VulnSortCol) {
-    if (col === "containers") return; // computed client-side, not server-sortable
     const u = new URL($page.url);
     if (sortByValue === col) {
       if (sortDirValue === "asc") {
@@ -179,7 +191,6 @@
   }
 
   function activeSortDir(col: VulnSortCol): "asc" | "desc" | false {
-    if (col === "containers") return false;
     return sortByValue === col ? sortDirValue : false;
   }
 
@@ -315,20 +326,18 @@
           </p>
         </div>
       {:else}
-        <div class="overflow-x-auto rounded-md border">
-          <Table.Root class="w-full min-w-[1200px] text-xs">
+        <div class="rounded-md border">
+          <Table.Root class="w-full min-w-[1370px] table-fixed text-xs">
             <colgroup>
-              <col class="w-[140px]" />
-              <col class="w-[100px]" />
-              <col class="w-[140px]" />
-              <col class="w-[100px]" />
-              <col class="w-[100px]" />
-              <col class="w-[90px]" />
+              <col class="w-[214px]" />
+              <col class="w-[132px]" />
+              <col class="w-[206px]" />
+              <col class="w-[88px]" />
               <col class="w-[80px]" />
               <col class="w-[80px]" />
-              <col class="w-[80px]" />
-              {#if hasAnyVex}<col class="w-[80px]" />{/if}
-              <col class="w-[100px]" />
+              <col class="w-[64px]" />
+              {#if hasAnyVex}<col class="w-[96px]" />{/if}
+              <col class="w-[152px]" />
               <col class="w-auto" />
             </colgroup>
             <Table.Header>
@@ -342,7 +351,12 @@
                   />
                 </Table.Head>
                 <Table.Head>
-                  <span class="text-xs font-medium">Containers</span>
+                  <SortButton
+                    label="Containers"
+                    size="sm"
+                    sortDirection={activeSortDir("containers")}
+                    onclick={() => toggleSort("containers")}
+                  />
                 </Table.Head>
                 <Table.Head>
                   <SortButton
@@ -352,8 +366,7 @@
                     onclick={() => toggleSort("package_name")}
                   />
                 </Table.Head>
-                <Table.Head class="text-center">Version</Table.Head>
-                <Table.Head class="text-center">Fixed In</Table.Head>
+
                 <Table.Head class="text-center">
                   <Tooltip.Root>
                     <Tooltip.Trigger>
@@ -430,7 +443,15 @@
                   <Table.Head class="text-center">
                     <Tooltip.Root>
                       <Tooltip.Trigger>
-                        <span class="text-xs font-medium">VEX</span>
+                        {#snippet child({ props })}
+                          <SortButton
+                            label="VEX"
+                            size="sm"
+                            sortDirection={activeSortDir("vex_status")}
+                            {...props}
+                            onclick={() => toggleSort("vex_status")}
+                          />
+                        {/snippet}
                       </Tooltip.Trigger>
                       <Tooltip.Content
                         >Vulnerability Exploitability eXchange — supplier
@@ -456,19 +477,7 @@
                     <Tooltip.Content>{firstSeenInImageTooltip}</Tooltip.Content>
                   </Tooltip.Root>
                 </Table.Head>
-                <Table.Head class="pr-6">
-                  <Tooltip.Root>
-                    <Tooltip.Trigger
-                      class="flex cursor-default items-center gap-1"
-                    >
-                      <span>Description</span>
-                      <Info class="h-3 w-3 text-muted-foreground" />
-                    </Tooltip.Trigger>
-                    <Tooltip.Content
-                      >Click any row to view full vulnerability details</Tooltip.Content
-                    >
-                  </Tooltip.Root>
-                </Table.Head>
+                <Table.Head class="pr-6">Description</Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>

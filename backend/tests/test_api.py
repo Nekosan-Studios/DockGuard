@@ -15,7 +15,7 @@ def _make_running_container(container_name: str, image_name: str, image_id: str)
         "image_name": image_name,
         "grype_ref": image_name,
         "hash": image_id.replace("sha256:", "")[:12],
-        "image_id": image_id,
+        "config_digest": image_id,
     }
 
 
@@ -325,6 +325,27 @@ def test_get_running_containers_uses_latest_scan(api_client):
     c = data["containers"][0]
     assert c["total"] == 1
     assert c["image_digest"] == "sha256:bbbb"
+
+
+def test_get_running_containers_digest_fallback(api_client):
+    """Container whose image_name changed (e.g. tag added) still shows its existing scan."""
+    client, test_db, (mock_cw, mock_vw) = api_client
+    # Scan was stored under the untagged short name
+    seed_scan(test_db, "tecnativa/docker-socket-proxy", "sha256:16bbd1", [VULN_HIGH])
+    # Docker now reports the same image under an explicit :latest tag
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("socket-proxy-1", "tecnativa/docker-socket-proxy:latest", "sha256:16bbd1"),
+    ]
+
+    response = client.get("/containers/running")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["containers"]) == 1
+    c = data["containers"][0]
+    assert c["container_name"] == "socket-proxy-1"
+    assert c["has_scan"] is True
+    assert c["total"] == 1
+    assert c["image_digest"] == "sha256:16bbd1"
 
 
 # ---------------------------------------------------------------------------

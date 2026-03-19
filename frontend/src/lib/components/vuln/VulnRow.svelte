@@ -113,20 +113,6 @@
     }
   });
 
-  function handleRowClick(e: MouseEvent) {
-    // Don't open modal when clicking interactive elements
-    const target = e.target as HTMLElement;
-    if (target.closest("a, [data-popover-trigger]")) return;
-    modalOpen = true;
-  }
-
-  function handleRowKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      modalOpen = true;
-    }
-  }
-
   // If the backend didn't supply a `.packages` array but did supply top-level package fields, we wrap it in a mock array to keep the template logic identical.
   let packages = $derived(
     vuln.packages && vuln.packages.length > 0
@@ -153,17 +139,14 @@
   }
 </script>
 
-<Table.Row
-  class="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-  tabindex={0}
-  onclick={handleRowClick}
-  onkeydown={handleRowKeydown}
->
+<Table.Row>
   <CveLinkCell
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
     isNew={vuln.is_new ?? false}
-    class="group-hover:shadow-[inset_4px_0_0_var(--color-primary)]"
+    onDetailClick={() => {
+      modalOpen = true;
+    }}
   />
 
   {#if showContainers}
@@ -174,7 +157,7 @@
             <Tooltip.Root>
               <Tooltip.Trigger class="cursor-default">
                 <span
-                  class="inline-flex max-w-[120px] truncate items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  class="inline-flex max-w-[160px] xl:max-w-[220px] truncate items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 >
                   {container.container_name}
                 </span>
@@ -197,50 +180,59 @@
   {/if}
 
   <Table.Cell class="font-mono">
-    <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <Tooltip.Root>
-        <Tooltip.Trigger class="cursor-default text-left">
-          <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <div class="max-w-[120px] truncate">{rep.package_name}</div>
-            {#if rep.package_type}
-              <span
-                class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-              >
-                {rep.package_type}
-              </span>
-            {/if}
-          </div>
-        </Tooltip.Trigger>
-        <Tooltip.Content class="max-w-sm">
-          {@const paths = rep.locations ? rep.locations.split("\n") : []}
-          {#if vuln.upstream_name}
-            <div class="mb-2 pb-2 border-b border-border/60">
-              <p class="mb-1 font-semibold">CVE matched via source package</p>
-              <p class="font-mono text-xs">
-                {rep.package_name}
-                <span class="text-muted-foreground mx-1">←</span>
-                {vuln.upstream_name}
-              </p>
-            </div>
-          {/if}
-          <p class="mb-1 font-semibold">
+    <Tooltip.Root>
+      <Tooltip.Trigger class="cursor-default text-left">
+        <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <div class="max-w-[160px] xl:max-w-[220px] truncate">
             {rep.package_name}
-            {paths.length === 1 ? "Location:" : "Locations:"}
-          </p>
-          {#if paths.length > 0}
-            <ul class="space-y-0.5">
-              {#each paths as path, pi (pi)}
-                <li class="flex items-start gap-1 font-mono text-xs">
-                  <span class="shrink-0">•</span>
-                  <span class="break-all">{path}</span>
-                </li>
-              {/each}
-            </ul>
-          {:else}
-            <p class="text-xs text-muted-foreground">No locations noted.</p>
+          </div>
+          {#if rep.package_type}
+            <span
+              class="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1 py-0 font-sans text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+            >
+              {rep.package_type}
+            </span>
           {/if}
-        </Tooltip.Content>
-      </Tooltip.Root>
+        </div>
+      </Tooltip.Trigger>
+      <Tooltip.Content class="max-w-sm">
+        {@const paths = rep.locations ? rep.locations.split("\n") : []}
+        {#if vuln.upstream_name}
+          <div class="mb-2 pb-2 border-b border-border/60">
+            <p class="mb-1 font-semibold">CVE matched via source package</p>
+            <p class="font-mono text-xs">
+              {rep.package_name}
+              <span class="text-muted-foreground mx-1">←</span>
+              {vuln.upstream_name}
+            </p>
+          </div>
+        {/if}
+        <p class="mb-1 font-semibold">
+          {rep.package_name}
+          {paths.length === 1 ? "Location:" : "Locations:"}
+        </p>
+        {#if paths.length > 0}
+          <ul class="space-y-0.5">
+            {#each paths as path, pi (pi)}
+              <li class="flex items-start gap-1 font-mono text-xs">
+                <span class="shrink-0">•</span>
+                <span class="break-all">{path}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="text-xs text-muted-foreground">No locations noted.</p>
+        {/if}
+      </Tooltip.Content>
+    </Tooltip.Root>
+    <div
+      class="mt-0.5 flex flex-wrap items-center gap-2 text-muted-foreground font-mono text-[11px] leading-tight opacity-90"
+    >
+      <span>{rep.installed_version}</span>
+      <span class="opacity-60">→</span>
+      <span class={rep.fixed_version ? "text-foreground" : "italic"}>
+        {rep.fixed_version ?? "No fix"}
+      </span>
       {#if extraPkgs > 0}
         <Popover.Root>
           <Popover.Trigger>
@@ -251,11 +243,9 @@
             </span>
           </Popover.Trigger>
           <Popover.Content class="w-80 p-0" align="start">
-            <div class="px-3 py-2 border-b border-border">
-              <p class="text-xs font-semibold">
-                All Affected Packages ({packages.length})
-              </p>
-            </div>
+            <p class="px-3 py-2 border-b border-border text-xs font-semibold">
+              All Affected Packages ({packages.length})
+            </p>
             <div class="max-h-48 overflow-y-auto divide-y divide-border">
               {#each packages as pkg, i (i)}
                 <div class="px-3 py-2 text-xs">
@@ -272,7 +262,7 @@
                         </span>
                       {/if}
                     </div>
-                    <div class="flex items-center gap-1.5 shrink-0">
+                    <div class="shrink-0">
                       <span
                         class="inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0 font-medium min-w-[50px] {PRIORITY_CLASSES[
                           priorityFromRiskScore(vuln.risk_score)
@@ -308,24 +298,6 @@
     </div>
   </Table.Cell>
 
-  <Table.Cell class="text-center font-mono" title={rep.installed_version}>
-    <div class="mx-auto max-w-[100px] truncate">
-      {rep.installed_version}
-    </div>
-  </Table.Cell>
-  <Table.Cell
-    class="text-center font-mono"
-    title={rep.fixed_version ?? undefined}
-  >
-    <div class="mx-auto max-w-[100px] truncate">
-      {#if rep.fixed_version}
-        {rep.fixed_version}
-      {:else}
-        <span class="text-muted-foreground">No fix</span>
-      {/if}
-    </div>
-  </Table.Cell>
-
   <PriorityCell riskScore={vuln.risk_score} cvssVector={vuln.cvss_vector} />
   <CvssCell score={vuln.cvss_base_score} />
   <EpssCell score={vuln.epss_score} percentile={vuln.epss_percentile} />
@@ -350,7 +322,7 @@
   </Table.Cell>
 
   <Table.Cell
-    class="pr-6 text-muted-foreground whitespace-normal"
+    class="min-w-[260px] xl:min-w-[320px] pr-6 text-muted-foreground whitespace-normal"
     title={vuln.description ?? undefined}
   >
     {#if vuln.description}

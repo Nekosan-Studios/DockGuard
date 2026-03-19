@@ -29,7 +29,7 @@
   <Tooltip.Root>
     <Tooltip.Trigger class="cursor-default">
       <span
-        class="inline-flex items-center justify-center gap-1 rounded-full border px-2 py-0.5 font-medium min-w-[60px] {PRIORITY_CLASSES[
+        class="inline-flex items-center justify-center gap-1 rounded-full border px-2 py-0.5 font-medium min-w-[56px] {PRIORITY_CLASSES[
           priority
         ]}"
       >
