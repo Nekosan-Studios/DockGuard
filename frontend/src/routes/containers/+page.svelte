@@ -13,12 +13,31 @@
   import type { ContainerRecord } from "$lib/components/vuln/ContainerRow.svelte";
   import { PRIORITY_ORDER } from "$lib/components/vuln/utils.js";
   import { page } from "$app/stores";
-  import { replaceState } from "$app/navigation";
+  import { replaceState, invalidateAll } from "$app/navigation";
   import PreviewScannerModal from "$lib/components/preview/PreviewScannerModal.svelte";
 
   let { data }: { data: PageData } = $props();
 
+  // eslint-disable-next-line svelte/prefer-writable-derived
   let containers = $state([...data.containers]);
+
+  // Sync detached state copy when server data changes (e.g. after invalidateAll)
+  $effect(() => {
+    containers = [...data.containers];
+  });
+
+  // 30s background refresh with tab-visibility guard
+  $effect(() => {
+    const refresh = () => {
+      if (!document.hidden) invalidateAll();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  });
 
   let previewScanOpen = $state(false);
   let expandedContainerName = $state<string | null>(null);

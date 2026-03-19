@@ -138,6 +138,10 @@
     },
     DB_CHECK_INTERVAL_SECONDS: {
       label: "Grype DB Check Interval",
+      desc: "How often (in seconds) to check for Grype vulnerability database updates.",
+      group: "Maintenance",
+    },
+    SCAN_RETENTION_DAYS: {
       label: "Scan Data Retention",
       desc: "Scan history older than this many days will be automatically purged each day. The most recent scan for each image is always kept regardless of age.",
       group: "Maintenance",

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import * as Table from "$lib/components/ui/table/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Pagination from "$lib/components/ui/pagination";
@@ -11,12 +11,33 @@
   let currentPage = $derived(data.currentPage ?? 1);
   let totalTasks = $derived(data.total ?? 0);
 
-  const scheduledRows = data.tasks.filter(
-    (t: { task_type: string }) => t.task_type === "scheduled"
+  let scheduledRows = $derived(
+    data.tasks.filter((t: { task_type: string }) => t.task_type === "scheduled")
   );
+  // eslint-disable-next-line svelte/prefer-writable-derived
   let liveRows = $state(
     data.tasks.filter((t: { task_type: string }) => t.task_type !== "scheduled")
   );
+
+  // Sync detached state copy when server data changes (e.g. after invalidateAll)
+  $effect(() => {
+    liveRows = data.tasks.filter(
+      (t: { task_type: string }) => t.task_type !== "scheduled"
+    );
+  });
+
+  // 30s background refresh with tab-visibility guard
+  $effect(() => {
+    const refresh = () => {
+      if (!document.hidden) invalidateAll();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  });
 
   $effect(() => {
     if (currentPage !== 1) return;

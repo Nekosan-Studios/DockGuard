@@ -60,10 +60,22 @@
       }
     );
 
+    // 30s background refresh with tab-visibility guard
+    const refresh = () => {
+      if (!document.hidden) {
+        notifications.fetchLog(logPage);
+        notifications.fetchChannels();
+      }
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+
     return () => {
       unsubChannels();
       unsubLog();
       unsubLogTotal();
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
     };
   });
 

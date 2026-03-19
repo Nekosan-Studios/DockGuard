@@ -16,11 +16,31 @@
   import CircleX from "@lucide/svelte/icons/circle-x";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
+  import { invalidateAll } from "$app/navigation";
   import { formatDistanceToNow, format } from "date-fns";
 
   let { data }: { data: PageData } = $props();
 
+  // eslint-disable-next-line svelte/prefer-writable-derived
   let summary = $state({ ...data.summary });
+
+  // Sync detached state copy when server data changes (e.g. after invalidateAll)
+  $effect(() => {
+    summary = { ...data.summary };
+  });
+
+  // 30s background refresh with tab-visibility guard
+  $effect(() => {
+    const refresh = () => {
+      if (!document.hidden) invalidateAll();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  });
 
   $effect(() => {
     const isActive =

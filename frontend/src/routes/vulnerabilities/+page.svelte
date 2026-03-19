@@ -10,7 +10,7 @@
   import SortButton from "../containers/sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import { goto, replaceState } from "$app/navigation";
+  import { goto, replaceState, invalidateAll } from "$app/navigation";
   import VulnRow from "$lib/components/vuln/VulnRow.svelte";
   import type { Vulnerability } from "$lib/components/vuln/VulnRow.svelte";
   import { page } from "$app/stores";
@@ -108,6 +108,19 @@
   });
 
   onDestroy(() => observer?.disconnect());
+
+  // 30s background refresh — skip if user has scrolled past page 1 to avoid snap-back
+  $effect(() => {
+    const refresh = () => {
+      if (!document.hidden && currentOffset === 0) invalidateAll();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  });
 
   // ── Reports & sort URL params ─────────────────────────────────────────────
   const reports = [
