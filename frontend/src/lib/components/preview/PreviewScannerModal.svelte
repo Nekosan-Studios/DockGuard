@@ -35,6 +35,7 @@
   let pollingInterval: ReturnType<typeof setInterval> | null = null;
   let skipEnrichments = $state(false);
   let maxConcurrent = $state(1);
+  let submitting = $state(false);
 
   function resetState() {
     step = "input";
@@ -148,7 +149,20 @@
   }
 
   async function startScans() {
-    if (parsedImages.length === 0) return;
+    if (parsedImages.length === 0 || submitting) return;
+
+    submitting = true;
+
+    // Transition immediately — user sees "Queued..." badges at once
+    previewItems = parsedImages.map((img) => ({
+      task_id: 0,
+      image_name: img,
+      status: "pending" as const,
+      error_message: null,
+      scan_data: null,
+      progress_lines: [] as string[],
+    }));
+    step = "scanning";
 
     try {
       const res = await fetch("/api/preview-scans", {
@@ -173,10 +187,12 @@
           progress_lines: [] as string[],
         })
       );
-      step = "scanning";
       startPolling();
     } catch (e) {
+      step = "review";
       parseError = `Failed to start scans: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      submitting = false;
     }
   }
 
@@ -195,7 +211,7 @@
   }
 
   async function pollStatus() {
-    const taskIds = previewItems.map((i) => i.task_id);
+    const taskIds = previewItems.map((i) => i.task_id).filter((id) => id > 0);
     if (taskIds.length === 0) return;
 
     const params = new SvelteURLSearchParams();
@@ -402,7 +418,7 @@
             </button>
             <button
               onclick={startScans}
-              disabled={parsedImages.length === 0}
+              disabled={parsedImages.length === 0 || submitting}
               class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ScanLine class="h-4 w-4" />
