@@ -3,16 +3,17 @@
 
   # DockGuard
 
-  **Automatic vulnerability scanning for your self-hosted Docker containers.**
+  **Automatic vulnerability monitoring for your self-hosted Docker containers.**
 </div>
 
 ---
 
-DockGuard is a free, self-hosted security scanner built for home labbers and self-hosters. It watches your running Docker containers, automatically scans every image for known vulnerabilities, and gives you a clean web dashboard to understand your exposure.
+DockGuard is a free, self-hosted security scanner. It watches your running Docker containers, automatically scans every image for known vulnerabilities, and gives you a clean web dashboard to understand your exposure.
 
-> **Note:** DockGuard is currently limited to single-host setups. Features like multi-user support and connecting to remote Docker installations are on the roadmap but not yet available.
-
-> **Security:** DockGuard does not currently have authentication or user login. Do not expose it directly to the internet or untrusted networks. Run it behind a VPN, reverse proxy with authentication, or bind it only to `localhost` / your local network. If you need remote access, place it behind a solution like Authelia, Authentik, or your reverse proxy's built-in auth.
+> **Notes on Security:** 
+- The recommended setup uses a proxy to ensure that DockGuard has minimal access to your Docker installation. 
+- DockerGuard is currently limited to single-host setups. Features like multi-user support and connecting to multiple Docker installations are on the roadmap, but not yet available.  
+- Because DockGuard does not currently have authentication or user login, do not expose it directly to the internet or untrusted networks. Run it behind a VPN, reverse proxy with authentication, or bind it only to `localhost` / your local network. If you need remote access, place it behind a solution like Authelia, Authentik, or your reverse proxy's built-in auth.
 
 ## Screenshots
 
@@ -29,15 +30,13 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 
 - **Simple to install** — Up and running after reviewing a few values in the docker compose file.
 
-- **Always watching** — DockGuard monitors your running containers continuously. Pull a new image or update an existing one, and it's scanned automatically. No manual triggers, no cron jobs to configure.
+- **Always watching** — DockGuard monitors your running containers continuously. Pull a new image or update an existing one, and it's scanned automatically. No manual triggers, no cron jobs to configure.  Dockguard also automatically updates its vulnerability database whenever it is updated upstream.
 
-- **Keeps itself current** — DockGuard periodically checks whether a newer vulnerability database is available. When it finds one, it re-scans all your images automatically.
-
-- **Prioritise what actually matters** — Vulnerabilities are enriched with [CVSS](https://www.first.org/cvss/) severity scores, [EPSS](https://www.first.org/epss/) exploit probability, and the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (Known Exploited Vulnerabilities) catalog. Sort and filter by any of these to focus on the findings most likely to matter to you.
+- **Prioritise what actually matters** — Vulnerabilities are enriched with [CVSS](https://www.first.org/cvss/) severity scores, [EPSS](https://www.first.org/epss/) exploit probability, and the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (Known Exploited Vulnerabilities) catalog. Sort and filter by any of these to focus on the findings that matter in your context.
 
 - **Cut through false positives** — Some CVEs exist in an image but cannot actually be exploited in your environment. DockGuard supports [VEX (Vulnerability Exploitability eXchange)](https://www.cisa.gov/sites/default/files/2023-01/VEX_Use_Cases_Approved_508c.pdf) attestations: when an image publisher has officially marked a vulnerability as not exploitable in their image, DockGuard can suppresses it so you focus on real risk, not noise.
 
-- **Track history over time** — See how your exposure changes as you update images and compare results across versions.
+- **Track history** — See how your exposure changes as you update images and compare results across versions.
 
 - **Notifications** — Get alerted when new vulnerabilities are found. DockGuard supports Apprise-compatible notification channels (Slack, Discord, email, and many more).
 
@@ -46,59 +45,36 @@ DockGuard is a free, self-hosted security scanner built for home labbers and sel
 
 ## Requirements
 
-- Docker
-- Docker Compose
+- Docker w/Compose
 
 That's it. Dockguard only supports local docker instances, so run it where your existing Docker stack lives. Everything else needed is bundled inside the DockGuard container.
 
 ## Quick Start
 
-1. Save the following as `docker-compose.yml`:
+1. Download the compose file:
 
-```yaml
-services:
-  dockguard:
-    image: ghcr.io/nekosan-studios/dockguard:latest
-    ports:
-      - "8764:8764"
-    volumes:
-      - ./data:/app/data                           # Persistent scan database
-      - /var/run/docker.sock:/var/run/docker.sock  # Access host Docker daemon
-    environment:
-      TZ: UTC  # Set your local timezone
-      BASE_URL: http://your-server-ip:8764  # Public URL for deep links in notifications
-
-    restart: unless-stopped
+```bash
+curl -O https://raw.githubusercontent.com/Nekosan-Studios/DockGuard/master/docker-compose.yml
 ```
 
-2. Review the compose file and adjust as needed:
-   - Change `./data` to your preferred location for the scan database
-   - Update the Docker socket path if it is not at the default `/var/run/docker.sock`
-   - Update the BASE_URL to enable clickable links in notifications
-   - Set the `TZ` environment variable to your local timezone
+2. Open `docker-compose.yml` and set at minimum:
+   - `TZ` — your local timezone (e.g. `America/New_York`)
+
+   The compose file uses [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) by default, which limits DockGuard's Docker access to read-only container and image inspection. If you prefer a simpler single-container setup, follow the comments in the file to switch to a direct socket mount instead.
+
+   The `docker-compose.yml` file contains the full list of available environment variables with descriptions and defaults.
+
 
 3. Start it:
 
 ```bash
-docker compose pull
 docker compose up -d
 ```
 
-3. Open [http://localhost:8764](http://localhost:8764).
+4. Open [http://localhost:8764](http://localhost:8764).
 
-DockGuard will check to make sure the vulnerability database is up to date and begin scanning your containers within a few mintues.
+DockGuard will check to make sure the vulnerability database is up to date and begin scanning your containers within a few minutes.
 
-## Configuration
-
-Most settings can be changed directly in the **Settings** page of the dashboard. The environment variables below are also available if you prefer to set them at the infrastructure level.
-
-| Variable | Default | Description |
-|---|---|---|
-| `TZ` | `UTC` | Your local timezone. |
-| `SCAN_INTERVAL_SECONDS` | `60` | How often (in seconds) to check for new or updated containers. |
-| `MAX_CONCURRENT_SCANS` | `1` | How many images to scan in parallel. Increase with caution on low-memory systems. |
-| `DB_CHECK_INTERVAL_SECONDS` | `3600` | How often (in seconds) to check for an updated Grype vulnerability database. |
-| `BASE_URL` | _(empty)_ | Base URL of your DockGuard instance (e.g. `http://192.168.1.50:8764`). When set, notification messages include links to individual vulnerabilities. |
 
 ## License
 
@@ -112,3 +88,6 @@ For Developers & Companies: You can use, modify, and run this project for all in
 For the Community: If you make public improvements or forks, the license ensures those stay available to everyone under these same terms.
 
 For Competitors: You cannot take this project and sell it as a standalone "managed service" or competing commercial product.
+
+## Was AI used to create Dockguard
+Yes. The primary developer of Dockguard has over 45 years of development experience, 30+ professionally. Code generated by AI is reviewed and understood. This is not a vibe-coded app created as a black box.

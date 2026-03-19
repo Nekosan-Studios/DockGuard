@@ -36,22 +36,28 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
         running = watcher.list_running_containers()
 
         # Collect unique tagged image names with their manifest digest.
-        # We use the manifest digest (from Docker's RepoDigests) rather than the
-        # local image ID (config digest) because the registry returns the manifest
-        # digest via Docker-Content-Digest — the two hashes are never equal, which
-        # would cause every image to appear as having an update available.
-        images: dict[str, str] = {}  # image_name -> manifest digest (sha256:...)
+        # We use the manifest digest (from Docker's RepoDigests) because the
+        # registry returns the manifest digest via Docker-Content-Digest — this
+        # is the only value comparable with the registry response.  The config
+        # digest (image.id) is a hash of a different document and must never be
+        # mixed with or used as a fallback for the manifest digest.
+        # Images without a manifest digest (locally-built, never pushed/pulled)
+        # are skipped entirely — they have no registry to check against.
+        images: dict[str, str] = {}  # image_name -> running manifest digest
         for item in running:
             name = item["image_name"]
             if "@" not in name and ":" in name:
-                manifest_digest = watcher.get_manifest_digest(name)
-                images[name] = manifest_digest if manifest_digest else item["image_id"]
+                running_manifest_digest = watcher.get_manifest_digest(name)
+                if running_manifest_digest is None:
+                    logger.debug("Skipping %s: no manifest digest (locally-built image?)", name)
+                    continue
+                images[name] = running_manifest_digest
 
         checked = 0
         updates_found = 0
 
-        for image_name, running_digest in images.items():
-            registry_digest = get_registry_digest(image_name)
+        for image_name, running_manifest_digest in images.items():
+            registry_manifest_digest = get_registry_digest(image_name)
 
             with Session(db.engine) as session:
                 check = session.exec(select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)).first()
@@ -59,17 +65,17 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                 if check is None:
                     check = ImageUpdateCheck(
                         image_name=image_name,
-                        running_digest=running_digest,
+                        running_digest=running_manifest_digest,
                         last_checked_at=datetime.now(UTC),
-                        status="check_failed" if registry_digest is None else "up_to_date",
+                        status="check_failed" if registry_manifest_digest is None else "up_to_date",
                     )
                     session.add(check)
                     session.flush()
 
-                check.running_digest = running_digest
+                check.running_digest = running_manifest_digest
                 check.last_checked_at = datetime.now(UTC)
 
-                if registry_digest is None:
+                if registry_manifest_digest is None:
                     check.status = "check_failed"
                     check.registry_digest = None
                     check.error = "Could not retrieve registry digest"
@@ -78,13 +84,14 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                     checked += 1
                     continue
 
-                # Capture the previously-stored registry digest BEFORE overwriting it,
-                # so the "already scanned" guard below can compare old vs new correctly.
-                previous_registry_digest = check.registry_digest
-                check.registry_digest = registry_digest
+                # Capture the previously-stored registry manifest digest BEFORE
+                # overwriting it, so the "already scanned" guard below can compare
+                # old vs new correctly.
+                previous_registry_manifest_digest = check.registry_digest
+                check.registry_digest = registry_manifest_digest
                 check.error = None
 
-                if registry_digest == running_digest:
+                if registry_manifest_digest == running_manifest_digest:
                     check.status = "up_to_date"
                     session.add(check)
                     session.commit()
@@ -94,14 +101,14 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                 # Digests differ — update is available
                 updates_found += 1
 
-                # Skip only if this exact registry digest was already *fully scanned*
-                # (scan_complete).  We intentionally do NOT skip scan_pending here:
-                # if the server restarted while a scan was in-flight, the scan task
-                # was lost and must be re-queued.  We also compare against the OLD
+                # Skip only if this exact registry manifest digest was already *fully
+                # scanned* (scan_complete).  We intentionally do NOT skip scan_pending
+                # here: if the server restarted while a scan was in-flight, the scan
+                # task was lost and must be re-queued.  We also compare against the OLD
                 # stored registry digest (before the update above) so that a newly-
                 # pushed registry image (new digest) is never incorrectly skipped.
                 already_scanned_this_digest = (
-                    check.status == "scan_complete" and previous_registry_digest == registry_digest
+                    check.status == "scan_complete" and previous_registry_manifest_digest == registry_manifest_digest
                 )
                 if already_scanned_this_digest:
                     session.add(check)

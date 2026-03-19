@@ -35,7 +35,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
     # Fallback: for containers whose image_name doesn't match any scan (e.g. the
     # same image was previously scanned under a different tag or registry prefix),
     # look up by image digest so they don't appear as "not yet scanned".
-    unmatched_digests = [img["image_id"] for img in running if img["image_name"] not in scans_by_image]
+    unmatched_digests = [img["config_digest"] for img in running if img["image_name"] not in scans_by_image]
     scans_by_digest: dict[str, Scan] = {}
     if unmatched_digests:
         digest_scan_id_subq = (
@@ -100,7 +100,7 @@ def get_running_containers(session: Session = Depends(db.get_session)):
 
     containers = []
     for img in running:
-        scan = scans_by_image.get(img["image_name"]) or scans_by_digest.get(img["image_id"])
+        scan = scans_by_image.get(img["image_name"]) or scans_by_digest.get(img["config_digest"])
         update_check = update_checks_by_image.get(img["image_name"])
         _UPDATE_STATUSES = {"scan_pending", "scan_complete", "update_available"}
         has_update = update_check is not None and update_check.status in _UPDATE_STATUSES

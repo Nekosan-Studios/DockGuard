@@ -129,7 +129,7 @@ class SystemTask(SQLModel, table=True):
 class ImageUpdateCheck(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     image_name: str = Field(unique=True, index=True)  # e.g. "nginx:latest"
-    running_digest: str  # manifest digest from RepoDigests (sha256:...), falls back to image_id
+    running_digest: str  # manifest digest from Docker's RepoDigests (sha256:...)
     registry_digest: str | None = None  # Docker-Content-Digest from registry
     last_checked_at: datetime
     # "up_to_date"|"update_available"|"scan_pending"|"scan_complete"|"check_failed"

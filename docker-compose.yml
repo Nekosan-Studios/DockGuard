@@ -1,30 +1,108 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DockGuard
+# DockGuard — docker-compose.yml
 #
 # Quick start:
 #   docker compose up -d
 #
 # Dashboard: http://localhost:8764
-# API:       http://localhost:8765
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+
+  # ── Docker Socket Proxy (recommended) ──────────────────────────────────────
+  # Limits DockGuard's Docker access to read-only container and image inspection,
+  # so a compromised DockGuard container cannot control your Docker daemon.
+  # Remove this service and uncomment the direct socket mount in dockguard.volumes
+  # below if you prefer a simpler setup without the extra container.
+  socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - CONTAINERS=1  # Allow listing/inspecting containers
+      - IMAGES=1      # Allow listing images
+      - LOG_LEVEL=notice
+    restart: unless-stopped
+
+  # ── DockGuard ───────────────────────────────────────────────────────────────
   dockguard:
     image: ghcr.io/nekosan-studios/dockguard:latest
+    depends_on:
+      - socket-proxy
     ports:
-      - "8764:8764"   # Web dashboard
-      - "8765:8765"   # Backend API
+      - "8764:8764"   # Web UI
+      # - "8765:8765" # Backend API — expose only if you need direct API access for scripting/debugging
     volumes:
-      - ./data:/app/data                             # Where to store SQLite database
-      - /var/run/docker.sock:/var/run/docker.sock    # Access host Docker daemon
+      - ./data:/app/data  # Persistent scan database
+      # Direct socket mount — use this (and remove the socket-proxy service above) if you
+      # prefer a simpler single-container setup without the security isolation layer:
+      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      TZ=UTC
-      ORIGIN=http://your-server-ip:8764                                       # Put your timezone here
-    # These are all optional, app uses these defaults if not specified 
-    # and can be changed in the settings section of the app. Setting here override settings section:
-      # SCAN_INTERVAL_SECONDS=60         # How often to poll Docker for new/updated containers
-      # MAX_CONCURRENT_SCANS=1           # Max Grype scans to run in parallel
-      # DB_CHECK_INTERVAL_SECONDS=3600   # How often to check for Grype vulnerability DB updates
-      # BASE_URL=http://your-server-ip:8764  # Public URL for deep links in notifications
-      # API_URL=http://localhost:8765     # URL the frontend uses to reach the backend (internal)
+
+      # ── Required ─────────────────────────────────────────────────────────
+
+      # Your local timezone. Controls scheduled job timing and how timestamps display.
+      # See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones for valid values.
+      - TZ=UTC
+
+      # Docker connection via socket-proxy. Remove this (and uncomment the direct
+      # socket mount above) if you are not using the socket-proxy service.
+      - DOCKER_HOST=tcp://socket-proxy:2375
+
+      # ── Reverse proxy ────────────────────────────────────────────────────
+
+      # Set ORIGIN if DockGuard is behind a reverse proxy. It tells the web server
+      # what public URL the browser uses to reach the app, which is required for CSRF
+      # protection to work correctly when a proxy changes the protocol or hostname
+      # (e.g. an nginx that terminates TLS — without this, SvelteKit would infer
+      # "http" but the browser sent "https", causing form submissions to be rejected).
+      # Not needed for direct access with no proxy in front.
+      # - ORIGIN=https://dockguard.example.com
+
+      # ── Notifications ──────────────────────────────────────────────────────
+
+      # Public URL used to generate deep links in notification messages.
+      # Leave unset to omit links from notifications.
+      #
+      # Often the same as ORIGIN, but can differ. For example: if you access the
+      # dashboard over your LAN (ORIGIN=http://192.168.1.50:8764) but want
+      # notification links to work when you're away from home, set BASE_URL to
+      # a hostname reachable from outside — such as a Tailscale address or domain name.
+      # - BASE_URL=http://your-server-ip:8764
+
+      # ── Scan behavior (also editable in the Settings UI) ──────────────────
+
+      # How often (seconds) to poll Docker for new or updated containers.
+      # - SCAN_INTERVAL_SECONDS=60
+
+      # Maximum number of Grype scans to run in parallel. Increase with caution
+      # on low-memory systems.
+      # - MAX_CONCURRENT_SCANS=1
+
+      # How often (seconds) to check for an updated Grype vulnerability database.
+      # - DB_CHECK_INTERVAL_SECONDS=3600
+
+      # How often (seconds) to check container registries for updated image versions.
+      # - REGISTRY_CHECK_INTERVAL_SECONDS=86400
+
+      # ── Data & notifications (also editable in the Settings UI) ───────────
+
+      # Number of days of scan history to retain. Older records are pruned automatically.
+      # - DATA_RETENTION_DAYS=30
+
+      # Hour of the day (0–23, server local time) to send the daily digest notification.
+      # - DAILY_DIGEST_HOUR=8
+
+      # ── Advanced ───────────────────────────────────────────────────────────
+
+      # Internal URL the frontend uses to reach the backend API. Change only if you've
+      # remapped the backend port away from the default 8765.
+      # - API_URL=http://localhost:8765
+
+      # Log verbosity: DEBUG, INFO, WARNING, ERROR.
+      # - LOG_LEVEL=INFO
+
+      # Path inside the container to the SQLite database.
+      # - DATABASE_PATH=data/dockguard.db
+
     restart: unless-stopped

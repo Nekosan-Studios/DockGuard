@@ -77,7 +77,7 @@ async def check_running_containers(
         # containers sharing the same underlying image.
         running_by_digest: dict[str, list[dict]] = {}
         for item in running:
-            running_by_digest.setdefault(item["image_id"], []).append(item)
+            running_by_digest.setdefault(item["config_digest"], []).append(item)
 
         new_scans_queued = 0
         scanner = GrypeScanner(watcher=watcher, database=db)
@@ -88,8 +88,8 @@ async def check_running_containers(
             last_scan = session.exec(select(Scan).order_by(col(Scan.id).desc()).limit(1)).first()
             batch_min_scan_id = (last_scan.id or 0) if last_scan else 0
 
-        for image_id, image_group in running_by_digest.items():
-            if image_id in seen_digests:
+        for config_digest, image_group in running_by_digest.items():
+            if config_digest in seen_digests:
                 continue
 
             representative = image_group[0]
@@ -97,25 +97,34 @@ async def check_running_containers(
             grype_ref = representative["grype_ref"]
             container_names = [c["container_name"] for c in image_group]
 
-            seen_digests.add(image_id)
+            seen_digests.add(config_digest)
             logger.info(
                 "New running image detected: %s (%s) — scheduling Grype scan",
                 image_name,
                 representative["hash"],
             )
 
-            # Invalidate any stale update check only if the running digest actually
-            # changed (i.e. the user pulled a new image).  Do NOT delete when the
-            # digest is the same — that happens when seen_digests was cleared for an
-            # unrelated reason such as a Grype DB update or a server restart.
+            # Invalidate any stale update check only if the locally-running image
+            # has actually changed (i.e. the user pulled a new version).  We compare
+            # manifest digests on both sides — manifest digest is what
+            # check_registry_updates stores in ImageUpdateCheck.running_digest, and
+            # it is what get_manifest_digest returns from Docker's RepoDigests.
+            #
+            # We never fall back to the config digest here: config digest and manifest
+            # digest are hashes of different documents and must never be compared with
+            # each other.  If we cannot resolve a manifest digest (locally-built image
+            # with no RepoDigests), we skip the deletion and preserve any existing
+            # record rather than risk a false positive.
             with Session(db.engine) as session:
                 stale_check = session.exec(
                     select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)
                 ).first()
-                if stale_check and stale_check.running_digest != image_id:
-                    session.delete(stale_check)
-                    session.commit()
-                    logger.info("Cleared stale ImageUpdateCheck for %s (digest changed)", image_name)
+                if stale_check:
+                    current_manifest_digest = watcher.get_manifest_digest(image_name)
+                    if current_manifest_digest is not None and stale_check.running_digest != current_manifest_digest:
+                        session.delete(stale_check)
+                        session.commit()
+                        logger.info("Cleared stale ImageUpdateCheck for %s (manifest digest changed)", image_name)
 
             # Create a queued task for the scan
             with Session(db.engine) as session:

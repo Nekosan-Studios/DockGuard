@@ -23,7 +23,7 @@ def _make_running_container(image_name: str, image_id: str, container_name: str 
         "image_name": image_name,
         "grype_ref": image_name,
         "hash": image_id.replace("sha256:", "")[:12],
-        "image_id": image_id,
+        "config_digest": image_id,
     }
 
 

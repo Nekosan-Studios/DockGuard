@@ -120,7 +120,7 @@ def test_list_running_containers_tagged(mock_from_env):
     assert containers[0]["image_name"] == "nginx:latest"
     assert containers[0]["grype_ref"] == "nginx:latest"
     assert containers[0]["hash"] == "abcdef123456"
-    assert containers[0]["image_id"] == image_id
+    assert containers[0]["config_digest"] == image_id
 
 
 @patch("docker.from_env")

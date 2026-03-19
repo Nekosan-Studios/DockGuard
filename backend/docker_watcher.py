@@ -55,7 +55,7 @@ class DockerWatcher:
                     "name": tag if tag else "<untagged>",
                     "grype_ref": tag if tag else f"docker:{image.id}",
                     "hash": image.id.replace("sha256:", "")[:12],
-                    "image_id": image.id,  # full sha256:... for change detection
+                    "config_digest": image.id,  # config digest (sha256:...) for local dedup
                     "running": image.id in running_image_ids,
                 }
             )
@@ -93,9 +93,9 @@ class DockerWatcher:
         Keys:
             container_name  — Docker container name, leading slash stripped
             image_name      — first tag, or '<untagged>'
-            grype_ref       — tag or docker:<image_id> for untagged images
-            hash            — first 12 chars of image id (no 'sha256:' prefix)
-            image_id        — full sha256:... for change detection / dedup
+            grype_ref       — tag or docker:<config_digest> for untagged images
+            hash            — first 12 chars of config digest (no 'sha256:' prefix)
+            config_digest   — full sha256:... config digest for local scan dedup
         """
         if not self.client:
             return []
@@ -114,7 +114,7 @@ class DockerWatcher:
                     "image_name": tag if tag else "<untagged>",
                     "grype_ref": tag if tag else f"docker:{image.id}",
                     "hash": image.id.replace("sha256:", "")[:12],
-                    "image_id": image.id,
+                    "config_digest": image.id,  # config digest (sha256:...) for local scan dedup
                 }
             )
 
