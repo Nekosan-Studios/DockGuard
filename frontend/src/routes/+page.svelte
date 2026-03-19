@@ -20,6 +20,25 @@
 
   let { data }: { data: PageData } = $props();
 
+  let summary = $state({ ...data.summary });
+
+  $effect(() => {
+    const isActive =
+      summary.active_tasks > 0 ||
+      summary.queued_tasks > 0 ||
+      summary.db_updating;
+    if (!isActive) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/dashboard/summary");
+        if (res.ok) summary = { ...summary, ...(await res.json()) };
+      } catch {
+        /* ignore */
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  });
+
   let activities = $state<
     {
       scan_id: number;
@@ -91,7 +110,7 @@
 
   // Parse trend dates for display
   const trendData = $derived(
-    (data.summary.trend ?? []).map(
+    (summary.trend ?? []).map(
       (d: { date: string; urgent: number; kev: number }) => ({
         ...d,
         label: format(new Date(d.date + "T12:00:00"), "MMM d"),
@@ -139,7 +158,7 @@
   >
     <!-- Docker connectivity -->
     <span class="flex items-center gap-1.5">
-      {#if data.summary.docker_connected}
+      {#if summary.docker_connected}
         <CircleCheck class="h-3.5 w-3.5 text-green-500" />
         <span class="text-foreground font-medium">Docker</span>
         <span class="text-muted-foreground">Connected</span>
@@ -156,7 +175,7 @@
     <span class="flex items-center gap-1.5">
       <span class="text-muted-foreground">Grype</span>
       <span class="text-foreground font-medium"
-        >{data.summary.grype_version ?? "—"}</span
+        >{summary.grype_version ?? "—"}</span
       >
     </span>
 
@@ -166,9 +185,9 @@
     <span class="flex items-center gap-1.5">
       <span class="text-muted-foreground">Vuln DB</span>
       <span class="text-foreground font-medium"
-        >{formatVulnDb(data.summary.db_schema, data.summary.db_built)}</span
+        >{formatVulnDb(summary.db_schema, summary.db_built)}</span
       >
-      {#if data.summary.db_updating}
+      {#if summary.db_updating}
         <Badge
           class="gap-1 bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 pointer-events-none"
         >
@@ -184,9 +203,7 @@
     <span class="flex items-center gap-1.5">
       <span class="text-muted-foreground">Last checked</span>
       <span class="text-foreground font-medium">
-        {data.summary.last_db_checked_at
-          ? timeAgo(data.summary.last_db_checked_at)
-          : "—"}
+        {summary.last_db_checked_at ? timeAgo(summary.last_db_checked_at) : "—"}
       </span>
     </span>
   </div>
@@ -203,47 +220,44 @@
           <Container class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.running_containers === null}
+          {#if summary.running_containers === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div class="text-2xl font-bold">
-              {data.summary.running_containers}
+              {summary.running_containers}
             </div>
             <p class="text-muted-foreground text-xs mb-2">
-              running container{data.summary.running_containers === 1
-                ? ""
-                : "s"} &middot;
-              {data.summary.unique_running_images} unique image{data.summary
-                .unique_running_images === 1
+              running container{summary.running_containers === 1 ? "" : "s"} &middot;
+              {summary.unique_running_images} unique image{summary.unique_running_images ===
+              1
                 ? ""
                 : "s"}
             </p>
-            {#if data.summary.active_tasks > 0 || data.summary.queued_tasks > 0 || data.summary.eol_count > 0}
+            {#if summary.active_tasks > 0 || summary.queued_tasks > 0 || summary.eol_count > 0}
               <div class="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
-                {#if data.summary.eol_count > 0}
+                {#if summary.eol_count > 0}
                   <Badge
                     class="bg-orange-100/50 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800 hover:bg-orange-100/80 pointer-events-none"
                   >
-                    {data.summary.eol_count} EOL system{data.summary
-                      .eol_count === 1
+                    {summary.eol_count} EOL system{summary.eol_count === 1
                       ? ""
                       : "s"}
                   </Badge>
                 {/if}
-                {#if data.summary.active_tasks > 0}
+                {#if summary.active_tasks > 0}
                   <Badge
                     class="bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 hover:bg-blue-100/80 pointer-events-none"
                   >
-                    {data.summary.active_tasks} scanning
+                    {summary.active_tasks} scanning
                     <LoaderCircle class="animate-spin" />
                   </Badge>
                 {/if}
-                {#if data.summary.queued_tasks > 0}
+                {#if summary.queued_tasks > 0}
                   <Badge
                     class="bg-indigo-100/50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-800 hover:bg-indigo-100/80 pointer-events-none"
                   >
-                    {data.summary.queued_tasks} queued
+                    {summary.queued_tasks} queued
                   </Badge>
                 {/if}
               </div>
@@ -263,12 +277,12 @@
           <TriangleAlert class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.urgent_count === null}
+          {#if summary.urgent_count === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div class="text-2xl font-bold">
-              {data.summary.urgent_count}
+              {summary.urgent_count}
             </div>
             <p class="text-muted-foreground text-xs">
               with the highest risk scores across running containers
@@ -289,16 +303,16 @@
           <Zap class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.kev_count === null}
+          {#if summary.kev_count === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div
-              class="text-2xl font-bold {data.summary.kev_count > 0
+              class="text-2xl font-bold {summary.kev_count > 0
                 ? 'text-red-600 dark:text-red-400'
                 : ''}"
             >
-              {data.summary.kev_count}
+              {summary.kev_count}
             </div>
             <p class="text-muted-foreground text-xs">
               known exploited vulnerabilities (KEV)
@@ -320,8 +334,8 @@
           <Shield class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {@const newFindingCount = data.summary.new_findings ?? 0}
-          {#if data.summary.new_findings === null}
+          {@const newFindingCount = summary.new_findings ?? 0}
+          {#if summary.new_findings === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}

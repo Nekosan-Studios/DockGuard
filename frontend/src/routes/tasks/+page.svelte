@@ -11,9 +11,36 @@
   let currentPage = $derived(data.currentPage ?? 1);
   let totalTasks = $derived(data.total ?? 0);
 
+  const scheduledRows = data.tasks.filter(
+    (t: { task_type: string }) => t.task_type === "scheduled"
+  );
+  let liveRows = $state(
+    data.tasks.filter((t: { task_type: string }) => t.task_type !== "scheduled")
+  );
+
+  $effect(() => {
+    if (currentPage !== 1) return;
+    const hasActive = liveRows.some(
+      (t: { status: string }) => t.status === "running" || t.status === "queued"
+    );
+    if (!hasActive) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/tasks?page=1&page_size=25");
+        if (res.ok) {
+          const json = await res.json();
+          liveRows = json.tasks ?? [];
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  });
+
   // Sort the current page by created_at DESC so scheduled rows (future dates) float to top
   let sortedTasks = $derived(
-    [...(data.tasks ?? [])].sort((a, b) => {
+    [...liveRows, ...scheduledRows].sort((a, b) => {
       const aDate = new Date(a.created_at ?? 0).getTime();
       const bDate = new Date(b.created_at ?? 0).getTime();
       return bDate - aDate;
