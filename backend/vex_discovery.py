@@ -139,7 +139,7 @@ def _get_token(client: httpx.Client, registry: str, repo: str, auth_header: str 
             if resp.status_code == 200:
                 return resp.json().get("token")
         except Exception as exc:
-            logger.debug("Failed to fetch Docker Hub token: %s", exc)
+            logger.warning("Failed to fetch Docker Hub token: %s", exc)
         return None
 
     # For other registries, try the WWW-Authenticate challenge
@@ -161,7 +161,7 @@ def _get_token(client: httpx.Client, registry: str, repo: str, auth_header: str 
                 if token_resp.status_code == 200:
                     return token_resp.json().get("token")
     except Exception as exc:
-        logger.debug("Failed to fetch registry token for %s/%s: %s", registry, repo, exc)
+        logger.warning("Failed to fetch registry token for %s/%s: %s", registry, repo, exc)
     return None
 
 

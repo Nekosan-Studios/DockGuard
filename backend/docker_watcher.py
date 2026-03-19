@@ -25,7 +25,7 @@ def _connect_to_docker() -> docker.DockerClient:
             try:
                 client = docker.DockerClient(base_url=f"unix://{sock_path}")
                 client.ping()
-                logger.debug("Connected to Docker via %s", sock_path)
+                logger.info("Connected to Docker via %s", sock_path)
                 return client
             except Exception:
                 continue
