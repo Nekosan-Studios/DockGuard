@@ -14,7 +14,7 @@ class ConfigManager:
         "SCAN_INTERVAL_SECONDS": "60",
         "MAX_CONCURRENT_SCANS": "1",
         "DB_CHECK_INTERVAL_SECONDS": "3600",
-        "DATA_RETENTION_DAYS": "30",
+        "SCAN_RETENTION_DAYS": "90",
         "DAILY_DIGEST_HOUR": "8",
         "BASE_URL": "",
         "REGISTRY_CHECK_INTERVAL_SECONDS": "86400",

@@ -17,7 +17,7 @@ def test_get_settings_returns_all_known_keys(api_client):
     assert "SCAN_INTERVAL_SECONDS" in data
     assert "MAX_CONCURRENT_SCANS" in data
     assert "DB_CHECK_INTERVAL_SECONDS" in data
-    assert "DATA_RETENTION_DAYS" in data
+    assert "SCAN_RETENTION_DAYS" in data
 
 
 def test_get_settings_default_source(api_client):

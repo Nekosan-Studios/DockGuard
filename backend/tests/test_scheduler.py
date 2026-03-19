@@ -247,7 +247,7 @@ def test_purge_deletes_old_scans_and_vulns(test_db):
     old_scan = seed_scan(test_db, "nginx:latest", "sha256:old", [VULN_CRITICAL], scanned_at=_days_ago(60))
     new_scan = seed_scan(test_db, "nginx:latest", "sha256:new", [VULN_HIGH], scanned_at=_days_ago(1))
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         assert session.get(Scan, old_scan.id) is None, "Old scan should have been purged"
@@ -260,7 +260,7 @@ def test_purge_keeps_newest_scan_when_all_old(test_db):
     """Even when the only scan for an image is past the retention cutoff it must not be deleted."""
     only_scan = seed_scan(test_db, "redis:7", "sha256:old", [VULN_CRITICAL], scanned_at=_days_ago(90))
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         assert session.get(Scan, only_scan.id) is not None, (
@@ -295,18 +295,43 @@ def test_purge_deletes_old_system_tasks(test_db):
         old_id = old_task.id
         recent_id = recent_task.id
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         assert session.get(ST, old_id) is None, "Old system task should be purged"
         assert session.get(ST, recent_id) is not None, "Recent system task must survive"
 
 
+def test_purge_task_retention_independent_of_scan_retention(test_db):
+    """A task older than task_retention_days is purged even when scan_retention_days is much longer."""
+    from backend.models import SystemTask as ST
+
+    old_task = ST(
+        task_type="scheduled_check_containers",
+        task_name="Monitor Running Containers",
+        status="completed",
+        created_at=_days_ago(10),
+        started_at=_days_ago(10),
+        finished_at=_days_ago(10),
+    )
+    with Session(test_db.engine) as session:
+        session.add(old_task)
+        session.commit()
+        old_id = old_task.id
+
+    # task_retention_days=7 should purge the 10-day-old task;
+    # scan_retention_days=90 should not affect task retention.
+    asyncio.run(purge_old_data(test_db, scan_retention_days=90, task_retention_days=7))
+
+    with Session(test_db.engine) as session:
+        assert session.get(ST, old_id) is None, "Task older than task_retention_days must be purged"
+
+
 def test_purge_creates_completed_system_task_record(test_db):
     """purge_old_data must write a 'scheduled_purge' SystemTask with status 'completed'."""
     from backend.models import SystemTask as ST
 
-    asyncio.run(purge_old_data(test_db, data_retention_days=30))
+    asyncio.run(purge_old_data(test_db, scan_retention_days=30, task_retention_days=7))
 
     with Session(test_db.engine) as session:
         purge_tasks = session.exec(select(ST).where(ST.task_type == "scheduled_purge")).all()

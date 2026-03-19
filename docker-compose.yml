@@ -88,7 +88,7 @@ services:
       # ── Data & notifications (also editable in the Settings UI) ───────────
 
       # Number of days of scan history to retain. Older records are pruned automatically.
-      # - DATA_RETENTION_DAYS=30
+      # - SCAN_RETENTION_DAYS=90
 
       # Hour of the day (0–23, server local time) to send the daily digest notification.
       # - DAILY_DIGEST_HOUR=8

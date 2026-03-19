@@ -147,9 +147,9 @@
       desc: "How often (in seconds) to check for updates to your containers.",
       group: "Updates",
     },
-    DATA_RETENTION_DAYS: {
-      label: "Data Retention",
-      desc: "Scans and task history older than this many days will be automatically purged each day. The most recent scan for each image is always kept.",
+    SCAN_RETENTION_DAYS: {
+      label: "Scan Data Retention",
+      desc: "Scan history older than this many days will be automatically purged each day. The most recent scan for each image is always kept regardless of age.",
       group: "Maintenance",
     },
     DAILY_DIGEST_HOUR: {

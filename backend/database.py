@@ -24,9 +24,20 @@ class Database:
 
     def startup_cleanup(self):
         """Clean up transient state that should not persist across restarts."""
-        from .models import Scan, ScanContainer, SystemTask, Vulnerability
+        from .models import Scan, ScanContainer, Setting, SystemTask, Vulnerability
 
         with Session(self.engine) as session:
+            # Migrate renamed setting key: DATA_RETENTION_DAYS → SCAN_RETENTION_DAYS
+            old_setting = session.get(Setting, "DATA_RETENTION_DAYS")
+            if old_setting and not session.get(Setting, "SCAN_RETENTION_DAYS"):
+                session.add(Setting(key="SCAN_RETENTION_DAYS", value=old_setting.value))
+                session.delete(old_setting)
+                session.commit()
+                logger.info("startup_cleanup: migrated DATA_RETENTION_DAYS → SCAN_RETENTION_DAYS")
+            elif old_setting:
+                session.delete(old_setting)
+                session.commit()
+
             # Remove orphaned preview scans (created by PreviewScannerModal but never cleaned
             # up if the user closed the browser or the app was stopped mid-scan).
             preview_scans = session.exec(select(Scan).where(Scan.is_preview == True)).all()  # noqa: E712

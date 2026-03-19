@@ -75,11 +75,12 @@ class ContainerScheduler:
             self.scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
             self.max_concurrent_scans = int(ConfigManager.get_setting("MAX_CONCURRENT_SCANS", session)["value"])
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
-            self.data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
+            self.scan_retention_days = int(ConfigManager.get_setting("SCAN_RETENTION_DAYS", session)["value"])
             self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR", session)["value"])
             self.registry_check_interval = int(
                 ConfigManager.get_setting("REGISTRY_CHECK_INTERVAL_SECONDS", session)["value"]
             )
+        self.task_retention_days = int(os.environ.get("TASK_RETENTION_DAYS", "7"))
 
         self.digest_timezone = _get_digest_timezone()
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
@@ -140,7 +141,7 @@ class ContainerScheduler:
         with Session(self.db.engine) as session:
             scan_interval = int(ConfigManager.get_setting("SCAN_INTERVAL_SECONDS", session)["value"])
             db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
-            data_retention_days = int(ConfigManager.get_setting("DATA_RETENTION_DAYS", session)["value"])
+            scan_retention_days = int(ConfigManager.get_setting("SCAN_RETENTION_DAYS", session)["value"])
 
             if scan_interval != self.scan_interval:
                 self.scan_interval = scan_interval
@@ -156,9 +157,9 @@ class ContainerScheduler:
                 )
                 logger.info("Scheduler updated check_db_update interval to %ds", self.db_check_interval)
 
-            if data_retention_days != self.data_retention_days:
-                self.data_retention_days = data_retention_days
-                logger.info("Scheduler updated data_retention_days to %d", self.data_retention_days)
+            if scan_retention_days != self.scan_retention_days:
+                self.scan_retention_days = scan_retention_days
+                logger.info("Scheduler updated scan_retention_days to %d", self.scan_retention_days)
 
             digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR", session)["value"])
             if digest_hour != self.digest_hour:
@@ -245,7 +246,7 @@ class ContainerScheduler:
         await check_db_update(self.db, self._seen_digests)
 
     async def _run_purge_old_data(self) -> None:
-        await purge_old_data(self.db, self.data_retention_days)
+        await purge_old_data(self.db, self.scan_retention_days, self.task_retention_days)
 
     async def _run_daily_digest(self) -> None:
         await send_daily_digest(self.db)
