@@ -77,7 +77,13 @@ class DockerWatcher:
         try:
             image = self.client.images.get(image_name)
             repo_digests = image.attrs.get("RepoDigests", [])
-            repo_prefix = image_name.split(":")[0]
+            # Strip only the tag portion using the same rule as _parse_image_ref:
+            # find the last colon where nothing after it contains a "/".
+            last_colon = image_name.rfind(":")
+            if last_colon != -1 and "/" not in image_name[last_colon + 1 :]:
+                repo_prefix = image_name[:last_colon]
+            else:
+                repo_prefix = image_name
             for rd in repo_digests:
                 if rd.startswith(repo_prefix):
                     return rd.split("@", 1)[1]

@@ -437,8 +437,8 @@ def get_recent_activity(
 @router.get("/containers/{container_name}/scan-history")
 def get_container_scan_history(
     container_name: str,
-    offset: int = 0,
-    limit: int = 10,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
     session: Session = Depends(db.get_session),
 ):
     """Paginated scan history for a container, with per-entry diffs vs predecessor."""

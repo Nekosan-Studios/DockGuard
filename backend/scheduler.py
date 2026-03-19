@@ -167,7 +167,11 @@ class ContainerScheduler:
 
     def _bootstrap_seen_digests(self) -> None:
         with Session(self.db.engine) as session:
-            rows = session.exec(select(Scan.image_digest).where(Scan.is_update_check == False)).all()  # noqa: E712
+            rows = session.exec(
+                select(Scan.image_digest).where(
+                    (Scan.is_update_check == False) & (Scan.is_preview == False)  # noqa: E712
+                )
+            ).all()
             self._seen_digests = set(rows)
         logger.info("Scheduler: loaded %d known digest(s) from DB", len(self._seen_digests))
 

@@ -16,7 +16,8 @@ function formatInterval(seconds: number): string {
 }
 
 export const load: PageServerLoad = async ({ fetch, url }) => {
-  const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+  const rawPage = parseInt(url.searchParams.get("page") ?? "1", 10);
+  const page = Number.isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
 
   const [tasksRes, scheduledRes] = await Promise.all([
     fetch(`${API_URL}/tasks?page=${page}&page_size=25`).catch(() => null),

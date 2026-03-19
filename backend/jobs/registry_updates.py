@@ -66,8 +66,13 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
             # for the registry lookup only.  The DB key (image_name) stays as
             # the original untagged string so all downstream lookups continue
             # to match Docker's Config.Image value without further normalization.
-            registry_ref = f"{image_name}:latest" if ":" not in image_name else image_name
-            registry_manifest_digest = get_registry_digest(registry_ref)
+            # Append :latest only for untagged refs. Use the same logic as
+            # _parse_image_ref: find the last colon and check that nothing
+            # after it looks like a port (i.e. no "/" follows it).
+            last_colon = image_name.rfind(":")
+            has_tag = last_colon != -1 and "/" not in image_name[last_colon + 1 :]
+            registry_ref = image_name if has_tag else f"{image_name}:latest"
+            registry_manifest_digest = await asyncio.to_thread(get_registry_digest, registry_ref)
 
             with Session(db.engine) as session:
                 check = session.exec(select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)).first()

@@ -42,11 +42,11 @@
     };
   });
 
+  const isActive = $derived(
+    summary.active_tasks > 0 || summary.queued_tasks > 0 || summary.db_updating
+  );
+
   $effect(() => {
-    const isActive =
-      summary.active_tasks > 0 ||
-      summary.queued_tasks > 0 ||
-      summary.db_updating;
     if (!isActive) return;
     const controller = new AbortController();
     const interval = setInterval(async () => {
@@ -54,7 +54,10 @@
         const res = await fetch("/api/dashboard/summary", {
           signal: controller.signal,
         });
-        if (res.ok) summary = { ...summary, ...(await res.json()) };
+        if (res.ok) {
+          const data = await res.json();
+          summary = { ...summary, ...data };
+        }
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") return;
       }
