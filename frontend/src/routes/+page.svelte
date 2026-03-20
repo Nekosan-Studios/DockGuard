@@ -16,6 +16,7 @@
   import CircleX from "@lucide/svelte/icons/circle-x";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
+  import { on } from "svelte/events";
   import { invalidateAll } from "$app/navigation";
   import { formatDistanceToNow, format } from "date-fns";
 
@@ -35,10 +36,10 @@
       if (!document.hidden) invalidateAll();
     };
     const interval = setInterval(refresh, 30_000);
-    document.addEventListener("visibilitychange", refresh);
+    const cleanup = on(document, "visibilitychange", refresh);
     return () => {
       clearInterval(interval);
-      document.removeEventListener("visibilitychange", refresh);
+      cleanup();
     };
   });
 
@@ -68,7 +69,7 @@
     };
   });
 
-  let activities = $state<
+  let activities = $state.raw<
     {
       scan_id: number;
       scanned_at: string;

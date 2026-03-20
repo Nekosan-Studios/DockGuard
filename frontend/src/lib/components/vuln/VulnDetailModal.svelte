@@ -130,7 +130,7 @@
   // ─── Advisory enrichment ─────────────────────────────────────────────────
 
   let enrichLoading = $state(false);
-  let enriched = $state<EnrichedData | null>(null);
+  let enriched = $state.raw<EnrichedData | null>(null);
   let enrichError = $state(false);
 
   $effect(() => {

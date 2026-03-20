@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { on } from "svelte/events";
   import * as Card from "$lib/components/ui/card";
   import * as Table from "$lib/components/ui/table/index.js";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
@@ -19,12 +20,8 @@
   import {
     notifications,
     type NotificationChannel,
-    type NotificationLogEntry,
-  } from "$lib/stores/notifications";
+  } from "$lib/stores/notifications.svelte";
 
-  let channels: NotificationChannel[] = $state([]);
-  let logEntries: NotificationLogEntry[] = $state([]);
-  let logTotalCount = $state(0);
   let loading = $state(true);
   let showAddForm = $state(false);
   let testingId: number | null = $state(null);
@@ -46,21 +43,6 @@
   let logPage = $state(1);
 
   onMount(() => {
-    const unsubChannels = notifications.channels.subscribe(
-      (v) => (channels = v)
-    );
-    const unsubLog = notifications.log.subscribe((v) => (logEntries = v));
-    const unsubLogTotal = notifications.logTotal.subscribe(
-      (v) => (logTotalCount = v)
-    );
-
-    Promise.all([notifications.fetchChannels(), notifications.fetchLog()]).then(
-      () => {
-        loading = false;
-      }
-    );
-
-    // 30s background refresh with tab-visibility guard
     const refresh = () => {
       if (!document.hidden) {
         notifications.fetchLog(logPage);
@@ -68,14 +50,17 @@
       }
     };
     const interval = setInterval(refresh, 30_000);
-    document.addEventListener("visibilitychange", refresh);
+    const cleanup = on(document, "visibilitychange", refresh);
+
+    Promise.all([notifications.fetchChannels(), notifications.fetchLog()]).then(
+      () => {
+        loading = false;
+      }
+    );
 
     return () => {
-      unsubChannels();
-      unsubLog();
-      unsubLogTotal();
       clearInterval(interval);
-      document.removeEventListener("visibilitychange", refresh);
+      cleanup();
     };
   });
 
@@ -377,7 +362,7 @@
         </Card.Root>
       {/if}
 
-      {#if channels.length === 0}
+      {#if notifications.channels.length === 0}
         <Card.Root>
           <Card.Content class="py-8 text-center text-muted-foreground">
             No notification channels configured. Add one to start receiving
@@ -386,7 +371,7 @@
         </Card.Root>
       {/if}
 
-      {#each channels as channel (channel.id)}
+      {#each notifications.channels as channel (channel.id)}
         <Card.Root class={channel.enabled ? "" : "opacity-60"}>
           <Card.Header>
             <div class="flex items-center justify-between">
@@ -515,7 +500,7 @@
     <div class="space-y-4">
       <h4 class="text-md font-medium">Notification Log</h4>
 
-      {#if logEntries.length === 0}
+      {#if notifications.log.length === 0}
         <Card.Root>
           <Card.Content class="py-8 text-center text-muted-foreground">
             No notifications sent yet.
@@ -534,7 +519,7 @@
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {#each logEntries as entry (entry.id)}
+              {#each notifications.log as entry (entry.id)}
                 <Table.Row>
                   <Table.Cell
                     class="text-xs text-muted-foreground whitespace-nowrap"
@@ -568,9 +553,9 @@
           </Table.Root>
         </Card.Root>
 
-        {#if logTotalCount > 50}
+        {#if notifications.logTotal > 50}
           <Pagination.Root
-            count={logTotalCount}
+            count={notifications.logTotal}
             perPage={50}
             bind:page={logPage}
           >

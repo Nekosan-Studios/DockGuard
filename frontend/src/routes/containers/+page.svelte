@@ -13,6 +13,7 @@
   import type { ContainerRecord } from "$lib/components/vuln/ContainerRow.svelte";
   import { PRIORITY_ORDER } from "$lib/components/vuln/utils.js";
   import { page } from "$app/stores";
+  import { on } from "svelte/events";
   import { replaceState, invalidateAll } from "$app/navigation";
   import PreviewScannerModal from "$lib/components/preview/PreviewScannerModal.svelte";
 
@@ -32,10 +33,10 @@
       if (!document.hidden) invalidateAll();
     };
     const interval = setInterval(refresh, 30_000);
-    document.addEventListener("visibilitychange", refresh);
+    const cleanup = on(document, "visibilitychange", refresh);
     return () => {
       clearInterval(interval);
-      document.removeEventListener("visibilitychange", refresh);
+      cleanup();
     };
   });
 
