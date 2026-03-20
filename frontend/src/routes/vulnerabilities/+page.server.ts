@@ -48,9 +48,15 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
     offset: "0",
   });
 
+  const t0 = performance.now();
   const res = await fetch(`${API_URL}/vulnerabilities?${params}`).catch(
     () => null
   );
+  if (res) {
+    console.info(
+      `[VulnLoad page.server] initial fetch: ${(performance.now() - t0).toFixed(1)}ms report=${report}`
+    );
+  }
 
   if (!res?.ok) {
     return {

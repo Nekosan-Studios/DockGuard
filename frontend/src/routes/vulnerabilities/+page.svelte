@@ -15,7 +15,7 @@
   import type { Vulnerability } from "$lib/components/vuln/VulnRow.svelte";
   import { page } from "$app/stores";
   import { on } from "svelte/events";
-  import { onDestroy } from "svelte";
+  import { onDestroy, tick } from "svelte";
 
   let { data }: { data: PageData } = $props();
 
@@ -68,12 +68,22 @@
         limit: "100", // PAGE_SIZE
         offset: String(currentOffset),
       });
+      const fetchStart = performance.now();
       const res = await fetch(`/api/vulnerabilities-paged?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
       const newRows: Vulnerability[] = payload.vulnerabilities ?? [];
+      const fetchMs = performance.now() - fetchStart;
+      console.info(
+        `[VulnLoad page] infinite-scroll fetch: ${fetchMs.toFixed(1)}ms offset=${currentOffset} returned=${newRows.length}`
+      );
+      const renderStart = performance.now();
       rows = [...rows, ...newRows];
       currentOffset += newRows.length;
+      await tick();
+      console.info(
+        `[VulnLoad page] DOM render: ${(performance.now() - renderStart).toFixed(1)}ms total_rows=${rows.length}`
+      );
       hasMore = (payload.has_more ?? false) && currentOffset < MAX_ROWS;
       totalCount = payload.total_count ?? totalCount;
       totalInstances = payload.total_instances ?? totalInstances;

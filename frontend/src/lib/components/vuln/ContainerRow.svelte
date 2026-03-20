@@ -266,13 +266,19 @@
       if (priorityFilter) params.set("priority", priorityFilter);
       if (hideVexResolved) params.set("hide_vex", "true");
 
+      const fetchStart = performance.now();
       const res = await fetch(`/api/vulnerabilities?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const payload = await res.json();
 
       const newRows: Vulnerability[] = payload.vulnerabilities ?? [];
+      const fetchMs = performance.now() - fetchStart;
+      console.info(
+        `[VulnLoad ContainerRow] fetch: ${fetchMs.toFixed(1)}ms image=${container.image_name} priority=${priorityFilter ?? "none"} returned=${newRows.length}`
+      );
       const existing = offset === 0 ? [] : [...vulns];
+      const renderStart = performance.now();
       vulns = [...existing, ...newRows];
 
       currentOffset = vulns.length;
@@ -283,6 +289,11 @@
       sortCol = sCol;
       sortDir = sDir;
       partiallyLoadedPriority = priorityFilter;
+
+      await tick();
+      console.info(
+        `[VulnLoad ContainerRow] DOM render: ${(performance.now() - renderStart).toFixed(1)}ms image=${container.image_name} total_rows=${vulns.length}`
+      );
     } catch (err) {
       console.error("Failed to fetch vulns for", container.image_name, err);
       if (offset === 0) vulns = [];

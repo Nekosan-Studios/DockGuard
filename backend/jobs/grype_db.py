@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import subprocess
+import time
 from datetime import UTC, datetime
 
 from sqlmodel import Session
 
+from backend.api_helpers import _fmt_duration
 from backend.database import Database
 from backend.models import AppState, SystemTask
 
@@ -86,6 +88,7 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
     result_msg = ""
     error_msg = None
     has_error = False
+    t0 = time.perf_counter()
 
     try:
         result = await asyncio.to_thread(
@@ -156,11 +159,14 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
             session.add(state)
 
         # Update the task
+        elapsed = time.perf_counter() - t0
         task = session.get(SystemTask, task_id)
         if task:
             task.status = "failed" if has_error else "completed"
             task.finished_at = datetime.now(UTC)
             task.error_message = error_msg
+            if result_msg and not has_error:
+                result_msg += f" ({_fmt_duration(elapsed)})"
             task.result_details = result_msg
             session.add(task)
 

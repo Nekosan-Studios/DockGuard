@@ -3,10 +3,12 @@ import json
 import logging
 import re
 import subprocess
+import time
 from datetime import UTC, datetime
 
 from sqlmodel import Session, func, select
 
+from .api_helpers import _fmt_duration
 from .database import Database, db
 from .docker_watcher import DockerWatcher
 from .models import Scan, ScanContainer, SystemTask, Vulnerability
@@ -231,12 +233,16 @@ class GrypeScanner:
         is_preview: bool = False,
     ) -> None:
         """Scan a single image, check VEX, and update the task status."""
+        t0 = time.perf_counter()
         try:
             self.scan_image(
                 image_name, grype_ref, container_names, is_update_check=is_update_check, is_preview=is_preview
             )
             if not is_update_check and not is_preview:
                 self._check_vex_for_latest_scan(image_name)
+
+            elapsed = time.perf_counter() - t0
+            logger.info("Scan completed: %s in %s", image_name, _fmt_duration(elapsed))
 
             if task_id:
                 with Session(self.db.engine) as session:
@@ -248,9 +254,10 @@ class GrypeScanner:
                         if affected:
                             task.result_details = (
                                 f"Scanned image {image_name}; captured {affected} affected container(s)."
+                                f" ({_fmt_duration(elapsed)})"
                             )
                         else:
-                            task.result_details = f"Scanned image {image_name} successfully."
+                            task.result_details = f"Scanned image {image_name} successfully. ({_fmt_duration(elapsed)})"
                         session.add(task)
                         session.commit()
         except Exception as e:

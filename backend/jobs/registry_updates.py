@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import time
 from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
+from backend.api_helpers import _fmt_duration
 from backend.database import Database
 from backend.docker_watcher import DockerWatcher
 from backend.grype_scanner import GrypeScanner
@@ -28,6 +30,7 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
         session.commit()
         task_id = task.id
 
+    t0 = time.perf_counter()
     try:
         # Import here to avoid circular imports at module level
         from backend.registry_checker import get_registry_digest
@@ -178,12 +181,15 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
 
                 checked += 1
 
+        elapsed = time.perf_counter() - t0
         with Session(db.engine) as session:
             task = session.get(SystemTask, task_id)
             if task:
                 task.status = "completed"
                 task.finished_at = datetime.now(UTC)
-                task.result_details = f"Checked {checked} image(s); {updates_found} update(s) available."
+                task.result_details = (
+                    f"Checked {checked} image(s); {updates_found} update(s) available. ({_fmt_duration(elapsed)})"
+                )
                 session.add(task)
                 session.commit()
 
