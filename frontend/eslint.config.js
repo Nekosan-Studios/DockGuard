@@ -8,6 +8,10 @@ export default [
   ...ts.configs.recommended,
   ...svelte.configs["flat/recommended"],
   {
+    linterOptions: {
+      // Treat stale/unused eslint-disable comments as errors
+      reportUnusedDisableDirectives: "error",
+    },
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },
@@ -25,19 +29,42 @@ export default [
       parser: ts.parser,
     },
   },
-  // Shadcn UI components — do not modify these files
+  {
+    rules: {
+      // Too many valid uses of relative/external hrefs in existing code
+      "svelte/no-navigation-without-resolve": "off",
+    },
+  },
+  // Svelte 5 enforcement — prevent regressions to Svelte 4 patterns
+  {
+    rules: {
+      // Ban svelte/store imports: use $state in .svelte.ts files instead
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "svelte/store",
+              message:
+                "Use $state in a .svelte.ts file instead of Svelte stores (Svelte 5).",
+            },
+          ],
+        },
+      ],
+      // Prefer addEventListener-free, declarative event handling
+      "svelte/no-add-event-listener": "error",
+      // Enforce const for variables that are never reassigned
+      "svelte/prefer-const": "error",
+    },
+  },
+  // Shadcn UI components — do not modify these files (must come last to override above)
   {
     files: ["src/lib/components/ui/**"],
     rules: {
       "no-useless-assignment": "off",
       "@typescript-eslint/no-unused-vars": "off",
       "svelte/no-navigation-without-resolve": "off",
-    },
-  },
-  {
-    rules: {
-      // Too many valid uses of relative/external hrefs in existing code
-      "svelte/no-navigation-without-resolve": "off",
+      "svelte/prefer-const": "off",
     },
   },
   {

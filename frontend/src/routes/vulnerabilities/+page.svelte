@@ -14,6 +14,7 @@
   import VulnRow from "$lib/components/vuln/VulnRow.svelte";
   import type { Vulnerability } from "$lib/components/vuln/VulnRow.svelte";
   import { page } from "$app/stores";
+  import { on } from "svelte/events";
   import { onDestroy } from "svelte";
 
   let { data }: { data: PageData } = $props();
@@ -115,10 +116,10 @@
       if (!document.hidden && currentOffset === 0) invalidateAll();
     };
     const interval = setInterval(refresh, 30_000);
-    document.addEventListener("visibilitychange", refresh);
+    const cleanup = on(document, "visibilitychange", refresh);
     return () => {
       clearInterval(interval);
-      document.removeEventListener("visibilitychange", refresh);
+      cleanup();
     };
   });
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { on } from "svelte/events";
   import { goto, invalidateAll } from "$app/navigation";
   import * as Table from "$lib/components/ui/table/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -14,8 +15,7 @@
   let scheduledRows = $derived(
     data.tasks.filter((t: { task_type: string }) => t.task_type === "scheduled")
   );
-  // eslint-disable-next-line svelte/prefer-writable-derived
-  let liveRows = $state(
+  let liveRows = $state.raw(
     data.tasks.filter((t: { task_type: string }) => t.task_type !== "scheduled")
   );
 
@@ -32,10 +32,10 @@
       if (!document.hidden) invalidateAll();
     };
     const interval = setInterval(refresh, 30_000);
-    document.addEventListener("visibilitychange", refresh);
+    const cleanup = on(document, "visibilitychange", refresh);
     return () => {
       clearInterval(interval);
-      document.removeEventListener("visibilitychange", refresh);
+      cleanup();
     };
   });
 

@@ -53,7 +53,7 @@
 
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let diff = $state<DiffResponse | null>(null);
+  let diff = $state.raw<DiffResponse | null>(null);
   let addedExpanded = $state(true);
   let removedExpanded = $state(true);
 

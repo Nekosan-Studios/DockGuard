@@ -12,12 +12,11 @@
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
 
-  import { settings } from "$lib/stores/settings";
+  import { settings } from "$lib/stores/settings.svelte";
 
   let isSaving = $state(false);
   let saveMessage: { type: "success" | "error"; text: string } | null =
     $state(null);
-  let hasChanges = $state(false);
   let localValues: Record<string, string> = $state({});
   let initialized = $state(false);
 
@@ -27,7 +26,7 @@
 
   // Initialize localValues when settings first load
   $effect(() => {
-    const s = $settings;
+    const s = settings.data;
     if (s && Object.keys(s).length > 0 && !initialized) {
       const vals: Record<string, string> = {};
       for (const [key, conf] of Object.entries(s)) {
@@ -38,17 +37,12 @@
     }
   });
 
-  // Track changes
-  $effect(() => {
-    const s = $settings;
-    if (!initialized || !s) return;
-    let changed = false;
-    for (const [key, conf] of Object.entries(s)) {
-      if (localValues[key] !== conf.value) {
-        changed = true;
-      }
-    }
-    hasChanges = changed;
+  // Track changes as derived — settings.data and localValues are the only inputs
+  let hasChanges = $derived.by(() => {
+    if (!initialized || !settings.data) return false;
+    return Object.entries(settings.data).some(
+      ([key, conf]) => localValues[key] !== conf.value
+    );
   });
 
   async function handleSave() {
@@ -58,7 +52,7 @@
     saveMessage = null;
 
     const updates: Record<string, string> = {};
-    for (const [key, conf] of Object.entries($settings)) {
+    for (const [key, conf] of Object.entries(settings.data)) {
       if (conf.editable && String(localValues[key]) !== String(conf.value)) {
         updates[key] = String(localValues[key]);
       }
@@ -66,7 +60,6 @@
 
     if (Object.keys(updates).length === 0) {
       isSaving = false;
-      hasChanges = false;
       return;
     }
 
@@ -76,7 +69,6 @@
         type: "success",
         text: "Settings saved. Changes to Max Concurrent Scans requires a restart to take effect.",
       };
-      hasChanges = false;
       setTimeout(() => {
         saveMessage = null;
       }, 3000);
@@ -91,7 +83,6 @@
   }
 
   function handleInputChange() {
-    hasChanges = true;
     saveMessage = null;
   }
 
@@ -160,7 +151,7 @@
 
   let groups = $derived.by(() => {
     const result: Record<string, string[]> = {};
-    for (const key of Object.keys($settings)) {
+    for (const key of Object.keys(settings.data)) {
       const group = settingMeta[key]?.group || "Other";
       if (!result[group]) result[group] = [];
       result[group].push(key);
@@ -178,7 +169,7 @@
     </p>
   </div>
 
-  {#if Object.keys($settings).length === 0}
+  {#if Object.keys(settings.data).length === 0}
     <div class="flex items-center justify-center p-12 text-muted-foreground">
       <Loader2 class="h-6 w-6 animate-spin mr-2" />
       Loading settings...
@@ -198,7 +189,7 @@
           </Card.Header>
           <Card.Content class="space-y-6">
             {#each keys as key (key)}
-              {@const conf = $settings[key]}
+              {@const conf = settings.data[key]}
               {@const meta = settingMeta[key] || {
                 label: key,
                 desc: "",

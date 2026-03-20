@@ -61,9 +61,9 @@
 
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let history = $state<HistoryResponse | null>(null);
+  let history = $state.raw<HistoryResponse | null>(null);
   let loadingMore = $state(false);
-  let expandedEntries = new SvelteSet<number>();
+  const expandedEntries = new SvelteSet<number>();
 
   function shortDate(iso: string): string {
     return toUtcDate(iso).toLocaleDateString(undefined, {

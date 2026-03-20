@@ -89,7 +89,7 @@
   let vexError = $state(container.vex_error);
   let vexChecking = $state(false);
 
-  let diffSummary = $state<{ added: number; removed: number } | null>(null);
+  let diffSummary = $state.raw<{ added: number; removed: number } | null>(null);
 
   $effect(() => {
     const scanId = container.update_scan_id;
@@ -157,7 +157,7 @@
   let sortCol = $state<VulnSortCol | null>("severity");
   let sortDir = $state<"asc" | "desc">("asc");
 
-  let activeFilters = new SvelteSet<string>();
+  const activeFilters = new SvelteSet<string>();
   // The specific filter fetched if not fetching 'all'
   let partiallyLoadedPriority = $state<string | undefined>(undefined);
 
