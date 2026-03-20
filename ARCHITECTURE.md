@@ -134,5 +134,26 @@ Grype is invoked as a subprocess rather than via a library. This keeps the Pytho
 ### Digest-based deduplication
 Images are tracked by their content digest (`sha256:...`), not by name or tag. This correctly handles the common home lab pattern of pinning to `:latest` while still detecting when the image has been re-pulled to a new version.
 
+### Two distinct digest types — never mix them
+Docker images have two different digests that are hashes of different documents and are never equal for the same image: the **config digest** (`image.id` from the Docker SDK, stored in `Scan.image_digest`) identifies an image locally and is used for scan deduplication; the **manifest digest** (from Docker's `RepoDigests`, returned as `Docker-Content-Digest` by the registry) identifies an image in the registry and is the only value comparable with a remote HEAD response. `ImageUpdateCheck.running_digest` and `registry_digest` are always manifest digests. Never use one type as a fallback for the other.
+
 ### Environment variables override settings
 Runtime settings (scan interval, concurrency, etc.) can be configured either through the dashboard UI (persisted in the `Setting` table) or via environment variables. Environment variables take precedence, which allows infrastructure-level overrides without touching the application.
+
+### Vulnerability table layout guardrails
+
+These rules are important and should be preserved unless the user explicitly asks to change them:
+
+- The vulnerability table is used in 3 contexts:
+	- Main Vulnerabilities page (`frontend/src/routes/vulnerabilities/+page.svelte`)
+	- Container expanded sub-view (`frontend/src/lib/components/vuln/ContainerRow.svelte`)
+	- Preview Scan dialog (`frontend/src/lib/components/preview/PreviewScannerModal.svelte` + nested `ContainerRow`)
+- Prefer column rebalancing before adding new wrappers or per-view special-case hacks.
+- Preserve this sizing intent:
+	- Non-description columns keep readable minimums.
+	- Description column absorbs remaining/free space first.
+	- Horizontal scrolling is acceptable only after those minimums are reached.
+- In Preview Scan dialog specifically:
+	- First try fitting by allocating more dialog width and explicit outer table columns.
+- Avoid brittle nested selector hacks (for example, deep `table table` CSS overrides) when a scoped structural sizing fix is possible.
+- When adjusting one table context, check the other two for regressions before finalizing.

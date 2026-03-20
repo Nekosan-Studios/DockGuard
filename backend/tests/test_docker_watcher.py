@@ -120,7 +120,7 @@ def test_list_running_containers_tagged(mock_from_env):
     assert containers[0]["image_name"] == "nginx:latest"
     assert containers[0]["grype_ref"] == "nginx:latest"
     assert containers[0]["hash"] == "abcdef123456"
-    assert containers[0]["image_id"] == image_id
+    assert containers[0]["config_digest"] == image_id
 
 
 @patch("docker.from_env")
@@ -200,3 +200,68 @@ def test_list_running_containers_prefers_config_image(mock_from_env):
 def test_list_running_containers_docker_unavailable(mock_from_env, mock_client):
     watcher = DockerWatcher()
     assert watcher.list_running_containers() == []
+
+
+# ---------------------------------------------------------------------------
+# get_manifest_digest
+# ---------------------------------------------------------------------------
+
+
+@patch("docker.from_env")
+def test_get_manifest_digest_returns_matching_repo_digest(mock_from_env):
+    """Should return sha256 of the manifest from RepoDigests matching the image prefix."""
+    manifest = "sha256:bbbb000000000000000000000000000000000000000000000000000000000000"
+    mock_image = MagicMock()
+    mock_image.attrs = {"RepoDigests": [f"nginx@{manifest}"]}
+    mock_client = MagicMock()
+    mock_client.images.get.return_value = mock_image
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    assert watcher.get_manifest_digest("nginx:latest") == manifest
+
+
+@patch("docker.from_env")
+def test_get_manifest_digest_falls_back_to_first_repo_digest(mock_from_env):
+    """When no RepoDigest prefix matches, return the first one."""
+    manifest = "sha256:cccc000000000000000000000000000000000000000000000000000000000000"
+    mock_image = MagicMock()
+    mock_image.attrs = {"RepoDigests": [f"other-repo@{manifest}"]}
+    mock_client = MagicMock()
+    mock_client.images.get.return_value = mock_image
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    assert watcher.get_manifest_digest("nginx:latest") == manifest
+
+
+@patch("docker.from_env")
+def test_get_manifest_digest_returns_none_when_no_repo_digests(mock_from_env):
+    """Locally-built images with empty RepoDigests should return None."""
+    mock_image = MagicMock()
+    mock_image.attrs = {"RepoDigests": []}
+    mock_client = MagicMock()
+    mock_client.images.get.return_value = mock_image
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    assert watcher.get_manifest_digest("myapp:latest") is None
+
+
+@patch("docker.from_env")
+def test_get_manifest_digest_returns_none_on_exception(mock_from_env):
+    """If Docker raises (image not found etc.), return None gracefully."""
+    mock_client = MagicMock()
+    mock_client.images.get.side_effect = Exception("not found")
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    assert watcher.get_manifest_digest("ghost:latest") is None
+
+
+@patch("docker.from_env")
+def test_get_manifest_digest_returns_none_when_no_client(mock_from_env):
+    """Return None immediately when Docker is unavailable."""
+    watcher = DockerWatcher()
+    watcher.client = None
+    assert watcher.get_manifest_digest("nginx:latest") is None

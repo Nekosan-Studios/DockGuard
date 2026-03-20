@@ -5,19 +5,108 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import Container from "@lucide/svelte/icons/container";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
+  import ScanLine from "@lucide/svelte/icons/scan-line";
   import SortButton from "./sort-button.svelte";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import ContainerRow from "$lib/components/vuln/ContainerRow.svelte";
   import type { ContainerRecord } from "$lib/components/vuln/ContainerRow.svelte";
   import { PRIORITY_ORDER } from "$lib/components/vuln/utils.js";
+  import { page } from "$app/stores";
+  import { replaceState, invalidateAll } from "$app/navigation";
+  import PreviewScannerModal from "$lib/components/preview/PreviewScannerModal.svelte";
 
   let { data }: { data: PageData } = $props();
 
+  // eslint-disable-next-line svelte/prefer-writable-derived
+  let containers = $state([...data.containers]);
+
+  // Sync detached state copy when server data changes (e.g. after invalidateAll)
+  $effect(() => {
+    containers = [...data.containers];
+  });
+
+  // 30s background refresh with tab-visibility guard
+  $effect(() => {
+    const refresh = () => {
+      if (!document.hidden) invalidateAll();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  });
+
+  let previewScanOpen = $state(false);
+  let expandedContainerName = $state<string | null>(null);
+
+  // ── Deep link state ─────────────────────────────────────────────────────
+  let activeCve = $derived($page.url.searchParams.get("cve"));
+
+  function handleModalChange(vulnId: string, open: boolean) {
+    if (!open) {
+      const u = new URL($page.url);
+      if (u.searchParams.get("cve") === vulnId) {
+        u.searchParams.delete("cve");
+        replaceState(u, {});
+      }
+    }
+  }
+
+  function handleToggleContainerExpand(containerName: string | null) {
+    expandedContainerName = containerName;
+  }
+
   let hideVexResolved = $state(false);
   let anyContainerHasVex = $derived(
-    data.containers.some((c: { has_vex?: boolean }) => c.has_vex)
+    containers.some((c: { has_vex?: boolean }) => c.has_vex)
   );
+
+  // ── Polling for in-progress update scans ──────────────────────────────────
+  $effect(() => {
+    const hasPending = containers.some(
+      (c: { update_status?: string | null }) =>
+        c.update_status === "scan_pending"
+    );
+    if (!hasPending) return;
+    const controller = new AbortController();
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/update-scans/status", {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const updates: Array<{
+          image_name: string;
+          status: string;
+          update_scan_id: number | null;
+          pending_task_id: number | null;
+        }> = await res.json();
+        for (const u of updates) {
+          const idx = containers.findIndex(
+            (c: { image_name: string }) => c.image_name === u.image_name
+          );
+          if (idx !== -1) {
+            containers[idx] = {
+              ...containers[idx],
+              update_status: u.status,
+              update_scan_id: u.update_scan_id,
+              pending_task_id: u.pending_task_id,
+            };
+          }
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        // ignore other fetch errors — polling will retry
+      }
+    }, 3000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  });
 
   // ── Parent table sort ──────────────────────────────────────────────────────
   type ParentSortCol = "container_name" | "vulns" | "scanned_at";
@@ -34,7 +123,7 @@
   }
 
   let sortedContainers = $derived.by(() => {
-    const rows = [...data.containers] as ContainerRecord[];
+    const rows = [...containers] as ContainerRecord[];
     const dir = parentSortDir === "asc" ? 1 : -1;
     return rows.sort((a, b) => {
       switch (parentSortCol) {
@@ -71,16 +160,25 @@
   });
 </script>
 
-<div class="flex flex-col gap-6">
-  <div>
-    <h1 class="text-2xl font-bold tracking-tight">Containers</h1>
-    <p class="text-muted-foreground">
-      Running containers and their vulnerability status.
-    </p>
+<div class="container mx-auto py-6 space-y-6">
+  <div class="flex items-center gap-4">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Containers</h1>
+      <p class="text-muted-foreground">
+        Running containers and their vulnerability status.
+      </p>
+    </div>
+    <button
+      onclick={() => (previewScanOpen = true)}
+      class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors shrink-0"
+    >
+      <ScanLine class="h-4 w-4" />
+      Preview Scan
+    </button>
   </div>
 
   <Card.Root>
-    <Card.Header class="flex flex-row items-center justify-between">
+    <Card.Header>
       <div class="space-y-1.5 flex flex-row items-center gap-4">
         <div>
           <Card.Title>Running Containers</Card.Title>
@@ -129,7 +227,7 @@
             >
           </div>
         </div>
-      {:else if data.containers.length === 0}
+      {:else if containers.length === 0}
         <div
           class="flex flex-col items-center justify-center gap-2 py-8 text-center"
         >
@@ -140,45 +238,56 @@
           <Badge variant="outline">Waiting for data</Badge>
         </div>
       {:else}
-        <Table.Root>
-          <Table.Header>
-            <Table.Row>
-              <Table.Head>
-                <SortButton
-                  label="Container"
-                  sortDirection={parentSortCol === "container_name"
-                    ? parentSortDir
-                    : false}
-                  onclick={() => toggleParentSort("container_name")}
+        <div class="rounded-md border mt-4">
+          <Table.Root>
+            <Table.Header>
+              <Table.Row>
+                <Table.Head>
+                  <SortButton
+                    label="Container"
+                    sortDirection={parentSortCol === "container_name"
+                      ? parentSortDir
+                      : false}
+                    onclick={() => toggleParentSort("container_name")}
+                  />
+                </Table.Head>
+                <Table.Head>
+                  <SortButton
+                    label="Vulnerabilities"
+                    sortDirection={parentSortCol === "vulns"
+                      ? parentSortDir
+                      : false}
+                    onclick={() => toggleParentSort("vulns")}
+                  />
+                </Table.Head>
+                <Table.Head class="w-[180px] text-center">
+                  <SortButton
+                    label="Last Scanned"
+                    sortDirection={parentSortCol === "scanned_at"
+                      ? parentSortDir
+                      : false}
+                    onclick={() => toggleParentSort("scanned_at")}
+                  />
+                </Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {#each sortedContainers as container (container.container_name)}
+                <ContainerRow
+                  {container}
+                  {hideVexResolved}
+                  {activeCve}
+                  {expandedContainerName}
+                  onToggleExpand={handleToggleContainerExpand}
+                  onModalChange={handleModalChange}
                 />
-              </Table.Head>
-              <Table.Head>
-                <SortButton
-                  label="Vulnerabilities"
-                  sortDirection={parentSortCol === "vulns"
-                    ? parentSortDir
-                    : false}
-                  onclick={() => toggleParentSort("vulns")}
-                />
-              </Table.Head>
-              <Table.Head class="w-[180px] text-center">
-                <SortButton
-                  label="Last Scanned"
-                  sortDirection={parentSortCol === "scanned_at"
-                    ? parentSortDir
-                    : false}
-                  onclick={() => toggleParentSort("scanned_at")}
-                />
-              </Table.Head>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {#each sortedContainers as container (container.container_name)}
-              <ContainerRow {container} {hideVexResolved} />
-            {/each}
-          </Table.Body>
-        </Table.Root>
+              {/each}
+            </Table.Body>
+          </Table.Root>
+        </div>
       {/if}
     </Card.Content>
   </Card.Root>
 </div>
+
+<PreviewScannerModal bind:open={previewScanOpen} />

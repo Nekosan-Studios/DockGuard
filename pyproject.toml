@@ -11,6 +11,8 @@ dependencies = [
     "alembic",
     "colorlog>=6.10.1",
     "httpx",
+    "apprise",
+    "pyyaml",
 ]
 
 [dependency-groups]
@@ -18,9 +20,10 @@ dev = ["pytest", "httpx", "pytest-cov", "ruff>=0.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
-addopts = "-m 'not e2e'"
+addopts = "-m 'not e2e and not integration'"
 markers = [
     "e2e: end-to-end tests requiring a live Docker daemon and grype on PATH",
+    "integration: tests requiring real Alembic migrations and full app lifespan",
 ]
 
 [tool.coverage.run]
@@ -31,11 +34,14 @@ omit = ["backend/tests/*", "backend/migrations/*"]
 show_missing = true
 
 [tool.ruff]
-target-version = "py314"
+# Pinned to py313: py314 caused Ruff to strip parentheses from multi-exception
+# handlers (e.g. `except (A, B):` → `except A, B:`), producing invalid Python 3
+# syntax. Revisit when the upstream Ruff issue is resolved.
+target-version = "py313"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["A", "E", "F", "I", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "backend/tests/conftest.py" = ["E402"]

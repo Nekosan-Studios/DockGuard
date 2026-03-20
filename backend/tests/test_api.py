@@ -15,7 +15,7 @@ def _make_running_container(container_name: str, image_name: str, image_id: str)
         "image_name": image_name,
         "grype_ref": image_name,
         "hash": image_id.replace("sha256:", "")[:12],
-        "image_id": image_id,
+        "config_digest": image_id,
     }
 
 
@@ -327,6 +327,27 @@ def test_get_running_containers_uses_latest_scan(api_client):
     assert c["image_digest"] == "sha256:bbbb"
 
 
+def test_get_running_containers_digest_fallback(api_client):
+    """Container whose image_name changed (e.g. tag added) still shows its existing scan."""
+    client, test_db, (mock_cw, mock_vw) = api_client
+    # Scan was stored under the untagged short name
+    seed_scan(test_db, "tecnativa/docker-socket-proxy", "sha256:16bbd1", [VULN_HIGH])
+    # Docker now reports the same image under an explicit :latest tag
+    mock_cw.return_value.list_running_containers.return_value = [
+        _make_running_container("socket-proxy-1", "tecnativa/docker-socket-proxy:latest", "sha256:16bbd1"),
+    ]
+
+    response = client.get("/containers/running")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["containers"]) == 1
+    c = data["containers"][0]
+    assert c["container_name"] == "socket-proxy-1"
+    assert c["has_scan"] is True
+    assert c["total"] == 1
+    assert c["image_digest"] == "sha256:16bbd1"
+
+
 # ---------------------------------------------------------------------------
 # GET /vulnerabilities
 # ---------------------------------------------------------------------------
@@ -511,28 +532,30 @@ def test_get_vulnerabilities_across_running_report_kev(api_client):
 
 
 def test_get_vulnerabilities_across_running_report_new(api_client):
-    from datetime import datetime
-
-    from sqlmodel import Session, select
-
-    from backend.models import Vulnerability as V
-
     client, test_db, (_, mock_vw) = api_client
-    scan = seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL, VULN_HIGH])
-
-    # Set first_seen_at on our seeded vulns so they appear in the "new" filter
-    with Session(test_db.engine) as session:
-        vulns = session.exec(select(V).where(V.scan_id == scan.id)).all()
-        for v in vulns:
-            v.first_seen_at = datetime.now(UTC)
-        session.commit()
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        scanned_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:bbbb",
+        [VULN_CRITICAL, VULN_HIGH],
+        scanned_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
 
     mock_vw.return_value.list_running_containers.return_value = [
-        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+        _make_running_container("my-nginx", "nginx:latest", "sha256:bbbb"),
     ]
 
-    data = client.get("/vulnerabilities?report=new&new_hours=24").json()
-    assert data["total_count"] >= 1
+    data = client.get("/vulnerabilities?report=new").json()
+    assert data["total_count"] == 1
+    assert data["vulnerabilities"][0]["vuln_id"] == VULN_HIGH["vuln_id"]
+    assert data["vulnerabilities"][0]["is_new"] is True
 
 
 def test_get_vulnerabilities_across_running_report_vex_annotated(api_client):

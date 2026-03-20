@@ -4,25 +4,27 @@ from datetime import UTC, datetime, timedelta
 from sqlmodel import Session, delete, select
 
 from backend.database import Database
-from backend.models import Scan, SystemTask, Vulnerability
+from backend.models import NotificationLog, Scan, SystemTask, Vulnerability
 
 logger = logging.getLogger(__name__)
 
 
-async def purge_old_data(db: Database, data_retention_days: int) -> None:
-    """Scheduled job (daily): delete stale Scan/Vulnerability and SystemTask rows.
+async def purge_old_data(db: Database, scan_retention_days: int, task_retention_days: int) -> None:
+    """Scheduled job (daily): delete stale data according to per-type retention windows.
 
     Retention policy:
-    - All ``Scan`` rows (and their child ``Vulnerability`` rows) older than
-      ``DATA_RETENTION_DAYS`` are deleted, **except** the single most-recent
+    - ``Scan`` rows (and their child ``Vulnerability`` rows) older than
+      ``scan_retention_days`` are deleted, **except** the single most-recent
       scan for each ``image_name``.  This guard ensures the dashboard always
       has data for every actively-running container, even on stable images
       that haven't been rescanned within the window.
-    - ``SystemTask`` rows older than ``DATA_RETENTION_DAYS`` are deleted
-      (excluding the currently-running purge task itself).
+    - ``SystemTask`` and ``NotificationLog`` rows older than
+      ``task_retention_days`` are deleted (excluding the currently-running
+      purge task itself).
     """
     now = datetime.now(UTC)
-    cutoff = now - timedelta(days=data_retention_days)
+    scan_cutoff = now - timedelta(days=scan_retention_days)
+    task_cutoff = now - timedelta(days=task_retention_days)
 
     with Session(db.engine) as session:
         task = SystemTask(
@@ -36,7 +38,7 @@ async def purge_old_data(db: Database, data_retention_days: int) -> None:
         session.commit()
         task_id = task.id
 
-    scans_deleted = vulns_deleted = tasks_deleted = 0
+    scans_deleted = vulns_deleted = tasks_deleted = notifications_deleted = 0
     error_msg = None
 
     try:
@@ -45,7 +47,7 @@ async def purge_old_data(db: Database, data_retention_days: int) -> None:
             old_scan_ids: list[int] = [
                 row[0]
                 for row in session.execute(
-                    select(Scan.id).where(Scan.scanned_at < cutoff)  # type: ignore[arg-type]
+                    select(Scan.id).where(Scan.scanned_at < scan_cutoff)  # type: ignore[arg-type]
                 ).all()
             ]
 
@@ -70,20 +72,27 @@ async def purge_old_data(db: Database, data_retention_days: int) -> None:
             # -- Purge old SystemTask rows (skip the currently-running purge task).
             task_result = session.execute(
                 delete(SystemTask)
-                .where(SystemTask.created_at < cutoff)  # type: ignore[arg-type]
+                .where(SystemTask.created_at < task_cutoff)  # type: ignore[arg-type]
                 .where(SystemTask.id != task_id)
             )
             tasks_deleted = task_result.rowcount
 
+            # -- Purge old NotificationLog rows.
+            notif_result = session.execute(
+                delete(NotificationLog).where(NotificationLog.created_at < task_cutoff)  # type: ignore[arg-type]
+            )
+            notifications_deleted = notif_result.rowcount
+
             session.commit()
 
         logger.info(
-            "Purge complete — retention=%dd cutoff=%s scans=%d vulns=%d tasks=%d",
-            data_retention_days,
-            cutoff.date(),
+            "Purge complete — scan_retention=%dd task_retention=%dd scans=%d vulns=%d tasks=%d notifications=%d",
+            scan_retention_days,
+            task_retention_days,
             scans_deleted,
             vulns_deleted,
             tasks_deleted,
+            notifications_deleted,
         )
 
     except Exception as exc:
@@ -98,7 +107,8 @@ async def purge_old_data(db: Database, data_retention_days: int) -> None:
             task.error_message = error_msg
             task.result_details = (
                 f"Deleted {scans_deleted} scan(s), {vulns_deleted} vulnerability row(s), "
-                f"{tasks_deleted} task history row(s) older than {data_retention_days} days."
+                f"{tasks_deleted} task history row(s), {notifications_deleted} notification log row(s). "
+                f"Scan retention: {scan_retention_days}d, task retention: {task_retention_days}d."
             )
             session.add(task)
             session.commit()

@@ -25,7 +25,7 @@ def _connect_to_docker() -> docker.DockerClient:
             try:
                 client = docker.DockerClient(base_url=f"unix://{sock_path}")
                 client.ping()
-                logger.debug("Connected to Docker via %s", sock_path)
+                logger.info("Connected to Docker via %s", sock_path)
                 return client
             except Exception:
                 continue
@@ -55,12 +55,43 @@ class DockerWatcher:
                     "name": tag if tag else "<untagged>",
                     "grype_ref": tag if tag else f"docker:{image.id}",
                     "hash": image.id.replace("sha256:", "")[:12],
-                    "image_id": image.id,  # full sha256:... for change detection
+                    "config_digest": image.id,  # config digest (sha256:...) for local dedup
                     "running": image.id in running_image_ids,
                 }
             )
 
         return images
+
+    def get_manifest_digest(self, image_name: str) -> str | None:
+        """Return the manifest (repo) digest for *image_name* from Docker's RepoDigests.
+
+        This is the sha256 of the manifest — the same value that the registry
+        returns as ``Docker-Content-Digest`` — and is therefore comparable with
+        the result of ``registry_checker.get_registry_digest()``.
+
+        Returns None if the image is not found or has no recorded RepoDigests
+        (e.g. locally-built images that have never been pulled from a registry).
+        """
+        if not self.client:
+            return None
+        try:
+            image = self.client.images.get(image_name)
+            repo_digests = image.attrs.get("RepoDigests", [])
+            # Strip only the tag portion using the same rule as _parse_image_ref:
+            # find the last colon where nothing after it contains a "/".
+            last_colon = image_name.rfind(":")
+            if last_colon != -1 and "/" not in image_name[last_colon + 1 :]:
+                repo_prefix = image_name[:last_colon]
+            else:
+                repo_prefix = image_name
+            for rd in repo_digests:
+                if rd.startswith(repo_prefix):
+                    return rd.split("@", 1)[1]
+            if repo_digests:
+                return repo_digests[0].split("@", 1)[1]
+        except Exception as exc:
+            logger.debug("Could not resolve manifest digest for %s: %s", image_name, exc)
+        return None
 
     def list_running_containers(self) -> list[dict]:
         """Return one entry per running container (not per image).
@@ -68,9 +99,9 @@ class DockerWatcher:
         Keys:
             container_name  — Docker container name, leading slash stripped
             image_name      — first tag, or '<untagged>'
-            grype_ref       — tag or docker:<image_id> for untagged images
-            hash            — first 12 chars of image id (no 'sha256:' prefix)
-            image_id        — full sha256:... for change detection / dedup
+            grype_ref       — tag or docker:<config_digest> for untagged images
+            hash            — first 12 chars of config digest (no 'sha256:' prefix)
+            config_digest   — full sha256:... config digest for local scan dedup
         """
         if not self.client:
             return []
@@ -89,7 +120,7 @@ class DockerWatcher:
                     "image_name": tag if tag else "<untagged>",
                     "grype_ref": tag if tag else f"docker:{image.id}",
                     "hash": image.id.replace("sha256:", "")[:12],
-                    "image_id": image.id,
+                    "config_digest": image.id,  # config digest (sha256:...) for local scan dedup
                 }
             )
 

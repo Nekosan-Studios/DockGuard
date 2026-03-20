@@ -3,6 +3,7 @@
   import Container from "@lucide/svelte/icons/container";
   import ShieldAlert from "@lucide/svelte/icons/shield-alert";
   import ListTodo from "@lucide/svelte/icons/list-todo";
+  import Bell from "@lucide/svelte/icons/bell";
   import Settings from "@lucide/svelte/icons/settings";
 
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
@@ -15,6 +16,7 @@
       url: "/vulnerabilities",
       icon: ShieldAlert,
     },
+    { title: "Notifications", url: "/notifications", icon: Bell },
     { title: "Tasks", url: "/tasks", icon: ListTodo },
     { title: "Settings", url: "/settings", icon: Settings },
   ];

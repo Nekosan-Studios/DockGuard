@@ -7,7 +7,10 @@ from sqlmodel import SQLModel
 import backend.database as _db
 from backend.models import (  # noqa: F401
     AppState,
+    NotificationChannel,
+    NotificationLog,
     Scan,
+    ScanContainer,
     Setting,
     SystemTask,
     Vulnerability,

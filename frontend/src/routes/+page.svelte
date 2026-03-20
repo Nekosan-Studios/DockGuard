@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { PageData } from "./$types";
   import * as Card from "$lib/components/ui/card/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
-  import { LineChart } from "layerchart";
+  import * as Pagination from "$lib/components/ui/pagination";
+  import { AreaChart } from "layerchart";
+  import { curveMonotoneX } from "d3-shape";
   import Shield from "@lucide/svelte/icons/shield";
   import Container from "@lucide/svelte/icons/container";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -13,9 +16,101 @@
   import CircleX from "@lucide/svelte/icons/circle-x";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
+  import { invalidateAll } from "$app/navigation";
   import { formatDistanceToNow, format } from "date-fns";
 
   let { data }: { data: PageData } = $props();
+
+  // eslint-disable-next-line svelte/prefer-writable-derived
+  let summary = $state({ ...data.summary });
+
+  // Sync detached state copy when server data changes (e.g. after invalidateAll)
+  $effect(() => {
+    summary = { ...data.summary };
+  });
+
+  // 30s background refresh with tab-visibility guard
+  $effect(() => {
+    const refresh = () => {
+      if (!document.hidden) invalidateAll();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  });
+
+  const isActive = $derived(
+    summary.active_tasks > 0 || summary.queued_tasks > 0 || summary.db_updating
+  );
+
+  $effect(() => {
+    if (!isActive) return;
+    const controller = new AbortController();
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/dashboard/summary", {
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          summary = { ...summary, ...data };
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }, 3000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  });
+
+  let activities = $state<
+    {
+      scan_id: number;
+      scanned_at: string;
+      image_name: string;
+      affected_containers_at_scan: string[];
+      affected_container_count_at_scan: number;
+      vulns_by_priority: Record<string, number>;
+    }[]
+  >([]);
+  let activityTotal = $state(0);
+  let activityPage = $state(1);
+  let activityLoading = $state(true);
+
+  async function fetchActivity(page: number) {
+    activityLoading = true;
+    try {
+      const res = await fetch(`/api/activity/recent?page=${page}&page_size=10`);
+      if (res.ok) {
+        const json = await res.json();
+        activities = json.activities ?? [];
+        activityTotal = json.total ?? 0;
+      }
+    } catch (err) {
+      console.error("Error fetching activity:", err);
+    } finally {
+      activityLoading = false;
+    }
+  }
+
+  onMount(() => {
+    fetchActivity(activityPage);
+  });
+
+  let _activityPageInit = false;
+  $effect(() => {
+    const p = activityPage;
+    if (!_activityPageInit) {
+      _activityPageInit = true;
+      return;
+    }
+    fetchActivity(p);
+  });
 
   import {
     PRIORITY_ORDER,
@@ -30,20 +125,26 @@
     return PRIORITY_ORDER.filter((p) => (vulnsByPriority[p] ?? 0) > 0);
   }
 
-  // Chart config
+  // Chart config — fixed semantic colors independent of --chart-N theme tokens
   const chartConfig = {
     urgent: {
       label: "Urgent Priority",
-      color: "var(--chart-1)",
+      color: "oklch(0.577 0.245 27.325)", // red (matches --destructive)
+    },
+    kev: {
+      label: "Actively Exploited (KEV)",
+      color: "oklch(0.75 0.183 55)", // amber/orange — warning, not green
     },
   } satisfies Chart.ChartConfig;
 
   // Parse trend dates for display
   const trendData = $derived(
-    (data.summary.trend ?? []).map((d: { date: string; urgent: number }) => ({
-      ...d,
-      label: format(new Date(d.date + "T12:00:00"), "MMM d"),
-    }))
+    (summary.trend ?? []).map(
+      (d: { date: string; urgent: number; kev: number }) => ({
+        ...d,
+        label: format(new Date(d.date + "T12:00:00"), "MMM d"),
+      })
+    )
   );
 
   const hasTrend = $derived(trendData.length > 0);
@@ -56,7 +157,7 @@
   }
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="container mx-auto py-6 space-y-6">
   <div>
     <h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
     <p class="text-muted-foreground">
@@ -86,7 +187,7 @@
   >
     <!-- Docker connectivity -->
     <span class="flex items-center gap-1.5">
-      {#if data.summary.docker_connected}
+      {#if summary.docker_connected}
         <CircleCheck class="h-3.5 w-3.5 text-green-500" />
         <span class="text-foreground font-medium">Docker</span>
         <span class="text-muted-foreground">Connected</span>
@@ -103,7 +204,7 @@
     <span class="flex items-center gap-1.5">
       <span class="text-muted-foreground">Grype</span>
       <span class="text-foreground font-medium"
-        >{data.summary.grype_version ?? "—"}</span
+        >{summary.grype_version ?? "—"}</span
       >
     </span>
 
@@ -113,9 +214,9 @@
     <span class="flex items-center gap-1.5">
       <span class="text-muted-foreground">Vuln DB</span>
       <span class="text-foreground font-medium"
-        >{formatVulnDb(data.summary.db_schema, data.summary.db_built)}</span
+        >{formatVulnDb(summary.db_schema, summary.db_built)}</span
       >
-      {#if data.summary.db_updating}
+      {#if summary.db_updating}
         <Badge
           class="gap-1 bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 pointer-events-none"
         >
@@ -131,9 +232,7 @@
     <span class="flex items-center gap-1.5">
       <span class="text-muted-foreground">Last checked</span>
       <span class="text-foreground font-medium">
-        {data.summary.last_db_checked_at
-          ? timeAgo(data.summary.last_db_checked_at)
-          : "—"}
+        {summary.last_db_checked_at ? timeAgo(summary.last_db_checked_at) : "—"}
       </span>
     </span>
   </div>
@@ -150,47 +249,44 @@
           <Container class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.running_containers === null}
+          {#if summary.running_containers === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div class="text-2xl font-bold">
-              {data.summary.running_containers}
+              {summary.running_containers}
             </div>
             <p class="text-muted-foreground text-xs mb-2">
-              running container{data.summary.running_containers === 1
+              running container{summary.running_containers === 1 ? "" : "s"} &middot;
+              {summary.unique_running_images} unique image{summary.unique_running_images ===
+              1
                 ? ""
-                : "s"} &middot;
-              {data.summary.images_scanned} image{data.summary
-                .images_scanned === 1
-                ? ""
-                : "s"} scanned
+                : "s"}
             </p>
-            {#if data.summary.active_tasks > 0 || data.summary.queued_tasks > 0 || data.summary.eol_count > 0}
+            {#if summary.active_tasks > 0 || summary.queued_tasks > 0 || summary.eol_count > 0}
               <div class="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
-                {#if data.summary.eol_count > 0}
+                {#if summary.eol_count > 0}
                   <Badge
                     class="bg-orange-100/50 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800 hover:bg-orange-100/80 pointer-events-none"
                   >
-                    {data.summary.eol_count} EOL system{data.summary
-                      .eol_count === 1
+                    {summary.eol_count} EOL system{summary.eol_count === 1
                       ? ""
                       : "s"}
                   </Badge>
                 {/if}
-                {#if data.summary.active_tasks > 0}
+                {#if summary.active_tasks > 0}
                   <Badge
                     class="bg-blue-100/50 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 hover:bg-blue-100/80 pointer-events-none"
                   >
-                    {data.summary.active_tasks} scanning
+                    {summary.active_tasks} scanning
                     <LoaderCircle class="animate-spin" />
                   </Badge>
                 {/if}
-                {#if data.summary.queued_tasks > 0}
+                {#if summary.queued_tasks > 0}
                   <Badge
                     class="bg-indigo-100/50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-800 hover:bg-indigo-100/80 pointer-events-none"
                   >
-                    {data.summary.queued_tasks} queued
+                    {summary.queued_tasks} queued
                   </Badge>
                 {/if}
               </div>
@@ -210,12 +306,12 @@
           <TriangleAlert class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.urgent_count === null}
+          {#if summary.urgent_count === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div class="text-2xl font-bold">
-              {data.summary.urgent_count}
+              {summary.urgent_count}
             </div>
             <p class="text-muted-foreground text-xs">
               with the highest risk scores across running containers
@@ -236,16 +332,16 @@
           <Zap class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.kev_count === null}
+          {#if summary.kev_count === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div
-              class="text-2xl font-bold {data.summary.kev_count > 0
+              class="text-2xl font-bold {summary.kev_count > 0
                 ? 'text-red-600 dark:text-red-400'
                 : ''}"
             >
-              {data.summary.kev_count}
+              {summary.kev_count}
             </div>
             <p class="text-muted-foreground text-xs">
               known exploited vulnerabilities (KEV)
@@ -255,29 +351,32 @@
       </a>
     </Card.Root>
 
-    <!-- New vulnerabilities (24h) -->
+    <!-- New findings since previous scan -->
     <Card.Root class="transition-colors hover:bg-muted/50">
       <a href="/vulnerabilities?report=new" class="block h-full">
         <Card.Header
           class="flex flex-row items-center justify-between space-y-0 pb-2"
         >
-          <Card.Title class="text-sm font-medium">New (Last 24h)</Card.Title>
+          <Card.Title class="text-sm font-medium"
+            >New (Since Previous Scan)</Card.Title
+          >
           <Shield class="text-muted-foreground h-4 w-4" />
         </Card.Header>
         <Card.Content>
-          {#if data.summary.new_vulns_24h === null}
+          {@const newFindingCount = summary.new_findings ?? 0}
+          {#if summary.new_findings === null}
             <div class="text-2xl font-bold">—</div>
             <p class="text-muted-foreground text-xs">No data yet</p>
           {:else}
             <div
-              class="text-2xl font-bold {(data.summary.new_vulns_24h ?? 0) > 0
+              class="text-2xl font-bold {newFindingCount > 0
                 ? 'text-amber-600 dark:text-amber-400'
                 : ''}"
             >
-              {data.summary.new_vulns_24h ?? 0}
+              {newFindingCount}
             </div>
             <p class="text-muted-foreground text-xs">
-              newly discovered vulnerabilities
+              vulnerabilities newly introduced since previous scan
             </p>
           {/if}
         </Card.Content>
@@ -288,10 +387,10 @@
   <!-- Critical vuln trend chart -->
   <Card.Root>
     <Card.Header>
-      <Card.Title>Urgent Priority — 30-Day Trend</Card.Title>
+      <Card.Title>30-Day Trend</Card.Title>
       <Card.Description>
-        Vulnerabilities with the highest risk scores across all scanned images
-        per day.
+        Urgent priority and actively exploited (KEV) vulnerabilities across all
+        scanned images per day.
       </Card.Description>
     </Card.Header>
     <Card.Content>
@@ -306,7 +405,7 @@
         </div>
       {:else}
         <Chart.Container config={chartConfig} class="h-[200px] w-full">
-          <LineChart
+          <AreaChart
             data={trendData}
             x="label"
             series={[
@@ -315,9 +414,22 @@
                 label: chartConfig.urgent.label,
                 color: chartConfig.urgent.color,
               },
+              {
+                key: "kev",
+                label: chartConfig.kev.label,
+                color: chartConfig.kev.color,
+                props: { line: { "stroke-dasharray": "5 3" } },
+              },
             ]}
             axis={true}
+            points={true}
             props={{
+              area: {
+                fillOpacity: 0.2,
+                line: { strokeWidth: 2 },
+                curve: curveMonotoneX,
+                motion: "tween",
+              },
               xAxis: {
                 format: (d: string) => d,
               },
@@ -330,22 +442,45 @@
             {#snippet tooltip()}
               <Chart.Tooltip indicator="line" />
             {/snippet}
-          </LineChart>
+          </AreaChart>
         </Chart.Container>
+        <!-- Legend -->
+        <div class="mt-3 flex flex-wrap items-center justify-center gap-4">
+          <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              class="h-2.5 w-2.5 rounded-full"
+              style="background-color: {chartConfig.urgent.color}"
+            ></span>
+            Urgent Priority
+          </span>
+          <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              class="h-2.5 w-2.5 rounded-full"
+              style="background-color: {chartConfig.kev.color}"
+            ></span>
+            Actively Exploited (KEV)
+          </span>
+        </div>
       {/if}
     </Card.Content>
   </Card.Root>
 
-  <!-- Recent activity -->
+  <!-- Recent scans -->
   <Card.Root>
     <Card.Header>
-      <Card.Title>Recent Activity</Card.Title>
+      <Card.Title>Recent Scans</Card.Title>
       <Card.Description
         >Latest scan results and detected changes.</Card.Description
       >
     </Card.Header>
     <Card.Content>
-      {#if data.activities.length === 0}
+      {#if activityLoading && activities.length === 0}
+        <div
+          class="flex flex-col items-center justify-center gap-2 py-8 text-center"
+        >
+          <LoaderCircle class="text-muted-foreground h-8 w-8 animate-spin" />
+        </div>
+      {:else if activities.length === 0}
         <div
           class="flex flex-col items-center justify-center gap-2 py-8 text-center"
         >
@@ -357,29 +492,41 @@
         <Table.Root>
           <Table.Header>
             <Table.Row>
-              <Table.Head class="w-[80px]">Type</Table.Head>
               <Table.Head class="w-[130px]">Scanned</Table.Head>
-              <Table.Head>Container</Table.Head>
+              <Table.Head>Affected Containers</Table.Head>
               <Table.Head>Image</Table.Head>
               <Table.Head>Vulnerabilities</Table.Head>
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {#each data.activities as activity (activity.scan_id)}
+            {#each activities as activity (activity.scan_id)}
               <Table.Row>
-                <Table.Cell>
-                  <span
-                    class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
-                  >
-                    Scan
-                  </span>
-                </Table.Cell>
                 <Table.Cell class="text-muted-foreground text-xs">
                   {timeAgo(activity.scanned_at)}
                 </Table.Cell>
                 <Table.Cell class="text-sm">
-                  {#if activity.container_name}
-                    {activity.container_name}
+                  {#if (activity.affected_container_count_at_scan ?? 0) > 0}
+                    {#if (activity.affected_container_count_at_scan ?? 0) <= 3}
+                      <div class="flex flex-wrap gap-1">
+                        {#each activity.affected_containers_at_scan ?? [] as containerName (containerName)}
+                          <span
+                            class="inline-flex max-w-[120px] truncate items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                            title={containerName}
+                          >
+                            {containerName}
+                          </span>
+                        {/each}
+                      </div>
+                    {:else}
+                      <span
+                        class="inline-flex items-center rounded border border-border/60 bg-muted/40 px-2 py-0.5 text-xs"
+                        title={(
+                          activity.affected_containers_at_scan ?? []
+                        ).join(", ")}
+                      >
+                        {activity.affected_container_count_at_scan}
+                      </span>
+                    {/if}
                   {:else}
                     <span class="text-muted-foreground">—</span>
                   {/if}
@@ -405,6 +552,35 @@
             {/each}
           </Table.Body>
         </Table.Root>
+
+        {#if activityTotal > 10}
+          <div class="mt-4">
+            <Pagination.Root
+              count={activityTotal}
+              perPage={10}
+              bind:page={activityPage}
+            >
+              {#snippet children({ pages, currentPage })}
+                <Pagination.Content>
+                  <Pagination.Item><Pagination.Previous /></Pagination.Item>
+                  {#each pages as pageItem (pageItem.key)}
+                    <Pagination.Item>
+                      {#if pageItem.type === "page"}
+                        <Pagination.Link
+                          page={pageItem}
+                          isActive={currentPage === pageItem.value}
+                        />
+                      {:else}
+                        <Pagination.Ellipsis />
+                      {/if}
+                    </Pagination.Item>
+                  {/each}
+                  <Pagination.Item><Pagination.Next /></Pagination.Item>
+                </Pagination.Content>
+              {/snippet}
+            </Pagination.Root>
+          </div>
+        {/if}
       {/if}
     </Card.Content>
   </Card.Root>

@@ -7,6 +7,9 @@ import {
   toUtcDate,
   priorityFromRiskScore,
   priorityTooltip,
+  decodeCvssVector,
+  referenceBaseText,
+  referenceDisplayText,
 } from "./utils";
 
 describe("vuln/utils", () => {
@@ -131,6 +134,98 @@ describe("vuln/utils", () => {
       expect(priorityTooltip(null)).toBe(
         "Low priority — Grype Risk Score: —/100"
       );
+    });
+  });
+
+  describe("decodeCvssVector", () => {
+    it("decodes a valid CVSS 3.1 vector", () => {
+      const result = decodeCvssVector(
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      );
+      expect(result).not.toBeNull();
+      expect(result!.map((c) => ({ label: c.label, value: c.value }))).toEqual([
+        { label: "Attack Vector", value: "Network" },
+        { label: "Attack Complexity", value: "Low" },
+        { label: "Privileges Required", value: "None" },
+        { label: "User Interaction", value: "None" },
+        { label: "Scope", value: "Unchanged" },
+        { label: "Confidentiality", value: "High" },
+        { label: "Integrity", value: "High" },
+        { label: "Availability", value: "High" },
+      ]);
+      // Each component should have description and severity
+      for (const c of result!) {
+        expect(c).toHaveProperty("description");
+        expect(c).toHaveProperty("severity");
+        expect(["none", "low", "medium", "high"]).toContain(c.severity);
+      }
+    });
+
+    it("returns null when AV metric is missing", () => {
+      expect(decodeCvssVector("AC:L/PR:N")).toBeNull();
+    });
+
+    it("preserves raw values for unknown metric codes", () => {
+      const result = decodeCvssVector(
+        "CVSS:3.1/AV:N/AC:X/PR:N/UI:N/S:U/C:H/I:H/A:H"
+      );
+      expect(result).not.toBeNull();
+      expect(result![1].label).toBe("Attack Complexity");
+      expect(result![1].value).toBe("X");
+    });
+
+    it("decodes a CVSS 4.0 vector", () => {
+      const result = decodeCvssVector(
+        "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+      );
+      expect(result).not.toBeNull();
+      expect(result!.length).toBe(11);
+      expect(result!.map((c) => c.label)).toContain("Attack Requirements");
+      expect(result!.map((c) => c.label)).toContain("Vuln. Availability");
+      expect(result!.map((c) => c.label)).toContain("Sub. Availability");
+      const va = result!.find((c) => c.label === "Vuln. Availability");
+      expect(va!.value).toBe("High");
+      expect(va!.severity).toBe("high");
+    });
+  });
+
+  describe("referenceBaseText", () => {
+    it("formats mapped NVD links with CVE", () => {
+      expect(
+        referenceBaseText("https://nvd.nist.gov/vuln/detail/CVE-2026-12345")
+      ).toBe("NVD • CVE-2026-12345");
+    });
+
+    it("falls back to extracted global ID when host is unmapped", () => {
+      expect(
+        referenceBaseText("https://vendor.example/advisories/CVE-2025-9999")
+      ).toBe("CVE-2025-9999");
+    });
+
+    it("falls back to hostname when no known ID exists", () => {
+      expect(referenceBaseText("https://example.com/security/advisory")).toBe(
+        "example.com"
+      );
+    });
+  });
+
+  describe("referenceDisplayText", () => {
+    it("appends cached title when present", () => {
+      expect(
+        referenceDisplayText(
+          "https://github.com/advisories/GHSA-abcd-1234-efgh",
+          "GitHub advisory title"
+        )
+      ).toBe("GitHub Advisory • GHSA-ABCD-1234-EFGH: GitHub advisory title");
+    });
+
+    it("returns base text when title missing", () => {
+      expect(
+        referenceDisplayText(
+          "https://security-tracker.debian.org/tracker/CVE-2024-1111",
+          null
+        )
+      ).toBe("Debian Tracker • CVE-2024-1111");
     });
   });
 });

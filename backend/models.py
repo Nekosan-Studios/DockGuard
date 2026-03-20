@@ -14,13 +14,23 @@ class Scan(SQLModel, table=True):
     distro_name: str | None = None
     distro_version: str | None = None
     is_distro_eol: bool = Field(default=False)
-    container_name: str | None = None
     vex_status: str | None = None  # "found", "none", "error", "unchecked"
     vex_source: str | None = None
     vex_checked_at: datetime | None = None
     vex_error: str | None = None
+    is_update_check: bool = Field(default=False)
+    is_preview: bool = Field(default=False)
 
-    vulnerabilities: list[Vulnerability] = Relationship(back_populates="scan")
+    vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
+    containers: list["ScanContainer"] = Relationship(back_populates="scan")
+
+
+class ScanContainer(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    scan_id: int = Field(foreign_key="scan.id", index=True)
+    container_name: str = Field(index=True)
+
+    scan: Scan | None = Relationship(back_populates="containers")
 
 
 class Vulnerability(SQLModel, table=True):
@@ -32,6 +42,7 @@ class Vulnerability(SQLModel, table=True):
     description: str | None = None
     data_source: str | None = None
     urls: str | None = None  # comma-separated
+    urls_titles: str | None = None  # JSON object mapping URL -> title
 
     cvss_base_score: float | None = None
     epss_score: float | None = None
@@ -39,6 +50,7 @@ class Vulnerability(SQLModel, table=True):
     is_kev: bool = False
     risk_score: float | None = None
     cwes: str | None = None  # comma-separated
+    cwe_titles: str | None = None  # JSON object mapping CWE ID -> definition name
 
     package_name: str
     installed_version: str
@@ -59,6 +71,32 @@ class Vulnerability(SQLModel, table=True):
     scan: Scan | None = Relationship(back_populates="vulnerabilities")
 
 
+class NotificationChannel(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    apprise_url: str
+    enabled: bool = True
+    notify_urgent: bool = False
+    notify_all_new: bool = False
+    notify_digest: bool = False
+    notify_kev: bool = False
+    notify_eol: bool = False
+    notify_scan_failure: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class NotificationLog(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    channel_id: int = Field(foreign_key="notificationchannel.id")
+    notification_type: str  # "urgent", "new_vulns", "digest", "eol", "scan_failure", "test"
+    title: str
+    body: str
+    status: str  # "sent", "failed"
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class AppState(SQLModel, table=True):
     """Single-row table (id=1) for app-wide persistent state."""
 
@@ -67,6 +105,7 @@ class AppState(SQLModel, table=True):
     grype_version: str | None = None
     db_schema: str | None = None
     db_built: datetime | None = None
+    last_digest_data: str | None = None
 
 
 class Setting(SQLModel, table=True):
@@ -85,3 +124,17 @@ class SystemTask(SQLModel, table=True):
     finished_at: datetime | None = None
     error_message: str | None = None
     result_details: str | None = None  # Generic info (e.g. "Found 3 new containers")
+
+
+class ImageUpdateCheck(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    image_name: str = Field(unique=True, index=True)  # e.g. "nginx:latest"
+    running_digest: str  # manifest digest from Docker's RepoDigests (sha256:...)
+    registry_digest: str | None = None  # Docker-Content-Digest from registry
+    last_checked_at: datetime
+    # "up_to_date"|"update_available"|"scan_pending"|"scan_complete"|"check_failed"
+    status: str
+    update_scan_id: int | None = Field(default=None, foreign_key="scan.id", nullable=True)
+    current_scan_id: int | None = Field(default=None, foreign_key="scan.id", nullable=True)
+    pending_task_id: int | None = Field(default=None, foreign_key="systemtask.id", nullable=True)
+    error: str | None = None

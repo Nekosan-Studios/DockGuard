@@ -9,7 +9,7 @@
   import { slide } from "svelte/transition";
   import { formatDistanceToNow } from "date-fns";
   import { SvelteSet, SvelteURLSearchParams } from "svelte/reactivity";
-  import { onDestroy, untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import {
     PRIORITY_CLASSES,
     PRIORITY_ORDER,
@@ -18,6 +18,11 @@
   } from "./utils.js";
   import VulnRow from "./VulnRow.svelte";
   import type { Vulnerability } from "./VulnRow.svelte";
+  import History from "@lucide/svelte/icons/history";
+  import ArrowUpCircle from "@lucide/svelte/icons/arrow-up-circle";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import ContainerHistoryDialog from "./ContainerHistoryDialog.svelte";
+  import UpdateAvailableDialog from "./UpdateAvailableDialog.svelte";
 
   // Priority order is imported from utils.ts
 
@@ -25,6 +30,9 @@
   const SUBVIEW_MAX_ROWS = 400;
   const SUBVIEW_PAGE_SIZE = 200;
   const AUTO_FILTER_THRESHOLD = 15;
+  const SUBVIEW_TRANSITION_MS = 200;
+  const FIRST_SEEN_IN_IMAGE_TOOLTIP =
+    "Scan where this vulnerability instance was first seen in this image. Not container specific.";
 
   export interface ContainerRecord {
     scan_id?: number | null;
@@ -42,22 +50,75 @@
     vulns_by_priority_no_vex: Record<string, number>;
     total?: number;
     scanned_at?: string | null;
+    has_update?: boolean;
+    update_scan_id?: number | null;
+    update_status?: string | null;
+    pending_task_id?: number | null;
   }
 
   let {
     container,
     hideVexResolved = false,
+    activeCve = null,
+    showHistory = true,
+    expandedContainerName = undefined,
+    onToggleExpand,
+    onModalChange,
   }: {
     container: ContainerRecord;
     hideVexResolved?: boolean;
+    activeCve?: string | null;
+    showHistory?: boolean;
+    expandedContainerName?: string | null | undefined;
+    onToggleExpand?: (containerName: string | null) => void;
+    onModalChange?: (vulnId: string, open: boolean) => void;
   } = $props();
 
   // ── Local State (Replaces Parent `SvelteMap`s) ──────────────────────────
-  let expanded = $state(false);
+  let localExpanded = $state(false);
+  let expanded = $derived(
+    expandedContainerName === undefined
+      ? localExpanded
+      : expandedContainerName === container.container_name
+  );
+  let historyOpen = $state(false);
+  let updateOpen = $state(false);
+
   let vexStatus = $state(container.vex_status);
   let hasVex = $state(container.has_vex);
   let vexError = $state(container.vex_error);
   let vexChecking = $state(false);
+
+  let diffSummary = $state<{ added: number; removed: number } | null>(null);
+
+  $effect(() => {
+    const scanId = container.update_scan_id;
+    if (!scanId) return;
+    fetch(`/api/update-scans/${scanId}/diff`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data)
+          diffSummary = {
+            added: data.added_count,
+            removed: data.removed_count,
+          };
+      })
+      .catch(() => {});
+  });
+
+  let updatePillSuffix = $derived.by(() => {
+    if (!diffSummary || (diffSummary.added === 0 && diffSummary.removed === 0))
+      return "";
+    const parts = [
+      diffSummary.added > 0 ? `${diffSummary.added} added` : "",
+      diffSummary.removed > 0 ? `${diffSummary.removed} removed` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const label =
+      diffSummary.added + diffSummary.removed === 1 ? "vuln" : "vulns";
+    return ` (${parts} ${label})`;
+  });
 
   async function recheckVex(e: MouseEvent) {
     e.stopPropagation();
@@ -88,6 +149,7 @@
     | "vuln_id"
     | "severity"
     | "package_name"
+    | "vex_status"
     | "cvss_base_score"
     | "epss_score"
     | "is_kev"
@@ -100,8 +162,32 @@
   let partiallyLoadedPriority = $state<string | undefined>(undefined);
 
   // ── Sentinel & Observer logic ─────────────────────────────────────────────
+  let containerRowElement: HTMLTableRowElement | null = $state(null);
   let sentinel: HTMLElement | null = $state(null);
+  let tableScroller: HTMLDivElement | null = $state(null);
   let observer: IntersectionObserver | null = null;
+  let wasExpanded = false;
+  let pendingReanchorTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function clearPendingReanchor() {
+    if (pendingReanchorTimeout) {
+      clearTimeout(pendingReanchorTimeout);
+      pendingReanchorTimeout = null;
+    }
+  }
+
+  function anchorExpandedRow() {
+    if (typeof containerRowElement?.scrollIntoView === "function") {
+      containerRowElement.scrollIntoView({
+        block: "start",
+        inline: "nearest",
+        behavior: "auto",
+      });
+    }
+    if (tableScroller) {
+      tableScroller.scrollLeft = 0;
+    }
+  }
 
   $effect(() => {
     if (observer) {
@@ -139,7 +225,25 @@
     });
   });
 
-  onDestroy(() => observer?.disconnect());
+  $effect(() => {
+    const isNowExpanded = expanded;
+    clearPendingReanchor();
+    if (isNowExpanded && !wasExpanded) {
+      void tick().then(() => {
+        anchorExpandedRow();
+        pendingReanchorTimeout = setTimeout(() => {
+          anchorExpandedRow();
+          pendingReanchorTimeout = null;
+        }, SUBVIEW_TRANSITION_MS + 40);
+      });
+    }
+    wasExpanded = isNowExpanded;
+  });
+
+  onDestroy(() => {
+    observer?.disconnect();
+    clearPendingReanchor();
+  });
 
   // ── Data Fetching ─────────────────────────────────────────────────────────
   async function fetchVulns(
@@ -192,10 +296,15 @@
   function toggleExpanded() {
     if (!container.has_scan) return;
 
-    expanded = !expanded;
+    const nextExpanded = !expanded;
+    if (expandedContainerName === undefined) {
+      localExpanded = nextExpanded;
+    } else {
+      onToggleExpand?.(nextExpanded ? container.container_name : null);
+    }
 
     // If expanding for the first time and we have no vulns loaded
-    if (expanded && vulns.length === 0) {
+    if (nextExpanded && vulns.length === 0) {
       const total = container.total ?? 0;
       const map = hideVexResolved
         ? container.vulns_by_priority_no_vex
@@ -273,6 +382,7 @@
 </script>
 
 <Table.Row
+  bind:ref={containerRowElement}
   class={container.has_scan ? "cursor-pointer hover:bg-muted/50" : ""}
   onclick={toggleExpanded}
 >
@@ -283,9 +393,23 @@
           ? 'rotate-90'
           : ''} {!container.has_scan ? 'opacity-0' : ''}"
       />
-      <div>
-        <div class="font-medium flex items-center gap-2">
-          {container.container_name}
+      <div class="min-w-0">
+        <div class="font-medium flex items-center gap-2 min-w-0">
+          <span class={showHistory ? "" : "truncate"}>
+            {container.container_name}
+          </span>
+          {#if container.has_scan && showHistory}
+            <button
+              onclick={(e) => {
+                e.stopPropagation();
+                historyOpen = true;
+              }}
+              class="text-muted-foreground hover:text-foreground ml-1 rounded p-0.5 transition-colors"
+              title="View scan history"
+            >
+              <History class="h-3.5 w-3.5" />
+            </button>
+          {/if}
           {#if container.is_distro_eol}
             <Badge
               variant="outline"
@@ -335,8 +459,37 @@
               </Tooltip.Content>
             </Tooltip.Root>
           {/if}
+          {#if container.has_update}
+            {#if container.update_status === "scan_pending"}
+              <span
+                class="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-100/50 px-2 py-0.5 text-xs font-medium text-teal-700 cursor-default dark:border-teal-800 dark:bg-teal-900/40 dark:text-teal-300"
+              >
+                <ArrowUpCircle class="h-3 w-3" />
+                Update Available
+                <span class="opacity-40">·</span>
+                <LoaderCircle class="h-3 w-3 animate-spin opacity-70" />
+                <span class="opacity-70">Scanning…</span>
+              </span>
+            {:else}
+              <button
+                onclick={(e) => {
+                  e.stopPropagation();
+                  updateOpen = true;
+                }}
+                class="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-100/50 px-2 py-0.5 text-xs font-medium text-teal-700 transition-opacity hover:opacity-80 dark:border-teal-800 dark:bg-teal-900/40 dark:text-teal-300"
+              >
+                <ArrowUpCircle class="h-3 w-3" />
+                Update Available{updatePillSuffix}
+              </button>
+            {/if}
+          {/if}
         </div>
-        <div class="text-muted-foreground font-mono text-xs">
+        <div
+          class="text-muted-foreground font-mono text-xs {showHistory
+            ? ''
+            : 'truncate'}"
+          title={showHistory ? undefined : container.image_name}
+        >
           {container.image_name}
         </div>
       </div>
@@ -397,218 +550,249 @@
 <!-- Expanded detail row -->
 {#if expanded}
   <Table.Row>
-    <Table.Cell colspan={3} class="p-0">
+    <Table.Cell colspan={3} class="p-0 align-middle">
       <div
         transition:slide={{ duration: 200 }}
         class="bg-muted/20 border-muted border-l-4 overflow-hidden"
       >
-        {#if loadingMore && vulns.length === 0}
-          <div class="flex items-center gap-2 px-6 py-4 text-sm">
-            <Loader2 class="text-muted-foreground h-4 w-4 animate-spin" />
-            <span class="text-muted-foreground">Loading vulnerabilities…</span>
-          </div>
-        {:else}
-          <svelte:boundary
-            onerror={(e) =>
-              console.error("[DockGuard] sub-view render error:", e)}
-          >
-            {#if container.is_distro_eol}
-              <div
-                class="mx-6 mt-4 mb-2 rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex gap-3 text-sm"
+        <svelte:boundary
+          onerror={(e) =>
+            console.error("[DockGuard] sub-view render error:", e)}
+        >
+          {#if container.is_distro_eol}
+            <div
+              class="mx-6 mt-4 mb-2 rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex gap-3 text-sm"
+            >
+              <span class="font-medium"
+                >End-of-Life OS{container.distro_display
+                  ? ` (${container.distro_display})`
+                  : ""}:</span
               >
-                <span class="font-medium"
-                  >End-of-Life OS{container.distro_display
-                    ? ` (${container.distro_display})`
-                    : ""}:</span
-                >
-                <span>Vulnerability data may be incomplete or outdated.</span>
-              </div>
-            {/if}
+              <span>Vulnerability data may be incomplete or outdated.</span>
+            </div>
+          {/if}
 
-            {#if visibleVulns.length === 0}
-              <p class="text-muted-foreground px-6 py-4 text-sm">
-                {activeFilters.size > 0
-                  ? "No vulnerabilities match the selected filters."
-                  : "No vulnerabilities found for this image."}
-              </p>
-            {:else}
-              <div class="overflow-x-auto">
-                <Table.Root class="w-full min-w-[1200px] text-xs">
-                  <colgroup>
-                    <col class="w-[140px]" />
-                    <col class="w-[140px]" />
-                    <col class="w-[100px]" />
-                    <col class="w-[100px]" />
+          {#if visibleVulns.length === 0 && !loadingMore}
+            <p class="text-muted-foreground px-6 py-4 text-sm">
+              {activeFilters.size > 0
+                ? "No vulnerabilities match the selected filters."
+                : "No vulnerabilities found for this image."}
+            </p>
+          {:else if visibleVulns.length > 0}
+            <div bind:this={tableScroller} class="overflow-x-auto">
+              <Table.Root
+                class="w-full text-xs {showHistory
+                  ? 'min-w-[1220px]'
+                  : 'min-w-[1160px] table-fixed'}"
+              >
+                <colgroup>
+                  {#if showHistory}
+                    <col class="w-[170px]" />
+                    <col class="w-[166px]" />
                     <col class="w-[90px]" />
-                    <col class="w-[80px]" />
-                    <col class="w-[80px]" />
-                    <col class="w-[80px]" />
+                    <col class="w-[1%]" />
+                    <col class="w-[1%]" />
+                    <col class="w-[1%]" />
                     {#if hasVexData}
                       <col class="w-[80px]" />
                     {/if}
                     <col class="w-[100px]" />
-                    <col class="w-auto" />
-                  </colgroup>
-                  <Table.Header>
-                    <Table.Row class="bg-muted/30">
-                      <Table.Head class="pl-2">
-                        <SortButton
-                          label="CVE ID"
-                          size="sm"
-                          sortDirection={sortCol === "vuln_id"
-                            ? sortDir
-                            : false}
-                          onclick={(e: MouseEvent) =>
-                            toggleVulnSort("vuln_id", e)}
-                        />
-                      </Table.Head>
-                      <Table.Head>
-                        <SortButton
-                          label="Package"
-                          size="sm"
-                          sortDirection={sortCol === "package_name"
-                            ? sortDir
-                            : false}
-                          onclick={(e: MouseEvent) =>
-                            toggleVulnSort("package_name", e)}
-                        />
-                      </Table.Head>
-                      <Table.Head class="text-center">Version</Table.Head>
-                      <Table.Head class="text-center">Fixed In</Table.Head>
-                      <Table.Head class="text-center">
-                        <Tooltip.Root>
-                          <Tooltip.Trigger>
-                            {#snippet child({ props })}
-                              <SortButton
-                                label="Priority"
-                                size="sm"
-                                sortDirection={sortCol === "severity"
-                                  ? sortDir
-                                  : false}
-                                {...props}
-                                onclick={(e: MouseEvent) =>
-                                  toggleVulnSort("severity", e)}
-                              />
-                            {/snippet}
-                          </Tooltip.Trigger>
-                          <Tooltip.Content>
-                            Priority based on severity and exploitability.
-                          </Tooltip.Content>
-                        </Tooltip.Root>
-                      </Table.Head>
-                      <Table.Head class="text-center">
-                        <Tooltip.Root>
-                          <Tooltip.Trigger>
-                            {#snippet child({ props })}
-                              <SortButton
-                                label="CVSS"
-                                size="sm"
-                                sortDirection={sortCol === "cvss_base_score"
-                                  ? sortDir
-                                  : false}
-                                {...props}
-                                onclick={(e: MouseEvent) =>
-                                  toggleVulnSort("cvss_base_score", e)}
-                              />
-                            {/snippet}
-                          </Tooltip.Trigger>
-                          <Tooltip.Content>
-                            Common Vulnerability Scoring System.
-                          </Tooltip.Content>
-                        </Tooltip.Root>
-                      </Table.Head>
-                      <Table.Head class="text-center">
-                        <Tooltip.Root>
-                          <Tooltip.Trigger>
-                            {#snippet child({ props })}
-                              <SortButton
-                                label="EPSS %"
-                                size="sm"
-                                sortDirection={sortCol === "epss_score"
-                                  ? sortDir
-                                  : false}
-                                {...props}
-                                onclick={(e: MouseEvent) =>
-                                  toggleVulnSort("epss_score", e)}
-                              />
-                            {/snippet}
-                          </Tooltip.Trigger>
-                          <Tooltip.Content
-                            >Exploit Prediction Scoring System.</Tooltip.Content
-                          >
-                        </Tooltip.Root>
-                      </Table.Head>
-                      <Table.Head class="text-center">
-                        <Tooltip.Root>
-                          <Tooltip.Trigger>
-                            {#snippet child({ props })}
-                              <SortButton
-                                label="KEV"
-                                size="sm"
-                                sortDirection={sortCol === "is_kev"
-                                  ? sortDir
-                                  : false}
-                                {...props}
-                                onclick={(e: MouseEvent) =>
-                                  toggleVulnSort("is_kev", e)}
-                              />
-                            {/snippet}
-                          </Tooltip.Trigger>
-                          <Tooltip.Content
-                            >Known Exploited Vulnerabilities catalog.</Tooltip.Content
-                          >
-                        </Tooltip.Root>
-                      </Table.Head>
-                      {#if hasVexData}
-                        <Table.Head class="text-center">
-                          <Tooltip.Root>
-                            <Tooltip.Trigger>
-                              <span class="text-xs font-medium">VEX</span>
-                            </Tooltip.Trigger>
-                            <Tooltip.Content
-                              >Vulnerability Exploitability eXchange</Tooltip.Content
-                            >
-                          </Tooltip.Root>
-                        </Table.Head>
-                      {/if}
-                      <Table.Head class="text-center">
-                        <SortButton
-                          label="First Seen"
-                          size="sm"
-                          sortDirection={sortCol === "first_seen_at"
-                            ? sortDir
-                            : false}
-                          onclick={(e: MouseEvent) =>
-                            toggleVulnSort("first_seen_at", e)}
-                        />
-                      </Table.Head>
-                      <Table.Head class="pr-6">Description</Table.Head>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {#each visibleVulns as vuln (vuln.vuln_id)}
-                      <VulnRow {vuln} hasAnyVex={hasVexData} />
-                    {/each}
-                  </Table.Body>
-                </Table.Root>
-              </div>
-            {/if}
+                  {:else}
+                    <col class="w-[206px]" />
+                    <col class="w-[204px]" />
+                    <col class="w-[96px]" />
+                    <col class="w-[82px]" />
+                    <col class="w-[82px]" />
+                    <col class="w-[64px]" />
+                    {#if hasVexData}
+                      <col class="w-[104px]" />
+                    {/if}
+                    <col class="w-[160px]" />
+                  {/if}
+                  <col class="w-auto" />
+                </colgroup>
+                <Table.Header>
+                  <Table.Row class="bg-muted/30">
+                    <Table.Head class="pl-2">
+                      <SortButton
+                        label="CVE ID"
+                        size="sm"
+                        sortDirection={sortCol === "vuln_id" ? sortDir : false}
+                        onclick={(e: MouseEvent) =>
+                          toggleVulnSort("vuln_id", e)}
+                      />
+                    </Table.Head>
+                    <Table.Head>
+                      <SortButton
+                        label="Package"
+                        size="sm"
+                        sortDirection={sortCol === "package_name"
+                          ? sortDir
+                          : false}
+                        onclick={(e: MouseEvent) =>
+                          toggleVulnSort("package_name", e)}
+                      />
+                    </Table.Head>
 
-            {#snippet failed(error, reset)}
-              <div class="flex flex-col items-start gap-3 px-6 py-4">
-                <p class="text-sm font-medium text-destructive">
-                  Error rendering vulnerabilities: {error instanceof Error
-                    ? error.message
-                    : String(error)}
-                </p>
-                <button
-                  class="text-xs underline text-muted-foreground"
-                  onclick={reset}>Try again</button
-                >
-              </div>
-            {/snippet}
-          </svelte:boundary>
-        {/if}
+                    <Table.Head class="text-center">
+                      <Tooltip.Root>
+                        <Tooltip.Trigger>
+                          {#snippet child({ props })}
+                            <SortButton
+                              label="Priority"
+                              size="sm"
+                              sortDirection={sortCol === "severity"
+                                ? sortDir
+                                : false}
+                              {...props}
+                              onclick={(e: MouseEvent) =>
+                                toggleVulnSort("severity", e)}
+                            />
+                          {/snippet}
+                        </Tooltip.Trigger>
+                        <Tooltip.Content>
+                          Priority based on severity and exploitability.
+                        </Tooltip.Content>
+                      </Tooltip.Root>
+                    </Table.Head>
+                    <Table.Head class="text-center">
+                      <Tooltip.Root>
+                        <Tooltip.Trigger>
+                          {#snippet child({ props })}
+                            <SortButton
+                              label="CVSS"
+                              size="sm"
+                              sortDirection={sortCol === "cvss_base_score"
+                                ? sortDir
+                                : false}
+                              {...props}
+                              onclick={(e: MouseEvent) =>
+                                toggleVulnSort("cvss_base_score", e)}
+                            />
+                          {/snippet}
+                        </Tooltip.Trigger>
+                        <Tooltip.Content>
+                          Common Vulnerability Scoring System.
+                        </Tooltip.Content>
+                      </Tooltip.Root>
+                    </Table.Head>
+                    <Table.Head class="text-center">
+                      <Tooltip.Root>
+                        <Tooltip.Trigger>
+                          {#snippet child({ props })}
+                            <SortButton
+                              label="EPSS %"
+                              size="sm"
+                              sortDirection={sortCol === "epss_score"
+                                ? sortDir
+                                : false}
+                              {...props}
+                              onclick={(e: MouseEvent) =>
+                                toggleVulnSort("epss_score", e)}
+                            />
+                          {/snippet}
+                        </Tooltip.Trigger>
+                        <Tooltip.Content
+                          >Exploit Prediction Scoring System.</Tooltip.Content
+                        >
+                      </Tooltip.Root>
+                    </Table.Head>
+                    <Table.Head class="text-center">
+                      <Tooltip.Root>
+                        <Tooltip.Trigger>
+                          {#snippet child({ props })}
+                            <SortButton
+                              label="KEV"
+                              size="sm"
+                              sortDirection={sortCol === "is_kev"
+                                ? sortDir
+                                : false}
+                              {...props}
+                              onclick={(e: MouseEvent) =>
+                                toggleVulnSort("is_kev", e)}
+                            />
+                          {/snippet}
+                        </Tooltip.Trigger>
+                        <Tooltip.Content
+                          >Known Exploited Vulnerabilities catalog.</Tooltip.Content
+                        >
+                      </Tooltip.Root>
+                    </Table.Head>
+                    {#if hasVexData}
+                      <Table.Head class="text-center">
+                        <Tooltip.Root>
+                          <Tooltip.Trigger>
+                            {#snippet child({ props })}
+                              <SortButton
+                                label="VEX"
+                                size="sm"
+                                sortDirection={sortCol === "vex_status"
+                                  ? sortDir
+                                  : false}
+                                {...props}
+                                onclick={(e: MouseEvent) =>
+                                  toggleVulnSort("vex_status", e)}
+                              />
+                            {/snippet}
+                          </Tooltip.Trigger>
+                          <Tooltip.Content
+                            >Vulnerability Exploitability eXchange</Tooltip.Content
+                          >
+                        </Tooltip.Root>
+                      </Table.Head>
+                    {/if}
+                    <Table.Head class="text-center">
+                      <Tooltip.Root>
+                        <Tooltip.Trigger>
+                          {#snippet child({ props })}
+                            <SortButton
+                              label="First Seen in Image"
+                              size="sm"
+                              sortDirection={sortCol === "first_seen_at"
+                                ? sortDir
+                                : false}
+                              {...props}
+                              onclick={(e: MouseEvent) =>
+                                toggleVulnSort("first_seen_at", e)}
+                            />
+                          {/snippet}
+                        </Tooltip.Trigger>
+                        <Tooltip.Content
+                          >{FIRST_SEEN_IN_IMAGE_TOOLTIP}</Tooltip.Content
+                        >
+                      </Tooltip.Root>
+                    </Table.Head>
+                    <Table.Head class="pr-6">Description</Table.Head>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {#each visibleVulns as vuln (vuln.vuln_id)}
+                    <VulnRow
+                      {vuln}
+                      hasAnyVex={hasVexData}
+                      {activeCve}
+                      {onModalChange}
+                    />
+                  {/each}
+                </Table.Body>
+              </Table.Root>
+            </div>
+          {/if}
+
+          {#snippet failed(error, reset)}
+            <div class="flex flex-col items-start gap-3 px-6 py-4">
+              <p class="text-sm font-medium text-destructive">
+                Error rendering vulnerabilities: {error instanceof Error
+                  ? error.message
+                  : String(error)}
+              </p>
+              <button
+                class="text-xs underline text-muted-foreground"
+                onclick={reset}>Try again</button
+              >
+            </div>
+          {/snippet}
+        </svelte:boundary>
 
         {#if hasMore || loadingMore}
           <div
@@ -640,3 +824,6 @@
     </Table.Cell>
   </Table.Row>
 {/if}
+
+<ContainerHistoryDialog bind:open={historyOpen} {container} />
+<UpdateAvailableDialog bind:open={updateOpen} {container} />

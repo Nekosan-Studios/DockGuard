@@ -2,14 +2,51 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from backend.database import Database
 from backend.docker_watcher import DockerWatcher
 from backend.grype_scanner import GrypeScanner
-from backend.models import SystemTask
+from backend.jobs.notifications import process_scan_notifications
+from backend.models import ImageUpdateCheck, Scan, SystemTask
 
 logger = logging.getLogger(__name__)
+
+
+async def _run_scans_then_notify(
+    db: Database,
+    scan_coros: list,
+    scan_task_ids: list[int],
+    batch_min_scan_id: int,
+) -> None:
+    """Run all scan coroutines, then process notifications for the batch."""
+    results = await asyncio.gather(*scan_coros, return_exceptions=True)
+
+    # Collect failures from the gather results
+    failures: list[tuple[int, BaseException]] = []
+    for task_id, exc in zip(scan_task_ids, results):
+        if isinstance(exc, BaseException):
+            failures.append((task_id, exc))
+
+    # Find all scans created during this batch (these are the successful ones).
+    # Using ID > batch_min_scan_id avoids a race condition that could arise from
+    # using a timestamp when two batches overlap.
+    with Session(db.engine) as session:
+        recent_scans = session.exec(select(Scan).where(Scan.id > batch_min_scan_id).order_by(col(Scan.id))).all()
+        scan_ids = [s.id for s in recent_scans if s.id is not None]
+
+        # Build the results list: None for each successful scan, exception for failures
+        result_list: list[BaseException | None] = [None] * len(scan_ids)
+
+        # Add failures (use task_id as placeholder since there's no Scan row)
+        for task_id, exc in failures:
+            scan_ids.append(task_id)
+            result_list.append(exc)
+
+    try:
+        await process_scan_notifications(db, scan_ids, result_list)
+    except Exception:
+        logger.exception("Error processing scan notifications")
 
 
 async def check_running_containers(
@@ -36,38 +73,81 @@ async def check_running_containers(
         watcher = DockerWatcher()
         running = watcher.list_running_containers()
 
+        # Group running containers by image digest so one scan job covers all
+        # containers sharing the same underlying image.
+        running_by_digest: dict[str, list[dict]] = {}
+        for item in running:
+            running_by_digest.setdefault(item["config_digest"], []).append(item)
+
         new_scans_queued = 0
         scanner = GrypeScanner(watcher=watcher, database=db)
-        for img in running:
-            image_id = img["image_id"]  # full sha256:...
-            if image_id in seen_digests:
+        scan_coros: list = []
+        scan_task_ids: list[int] = []
+
+        with Session(db.engine) as session:
+            last_scan = session.exec(select(Scan).order_by(col(Scan.id).desc()).limit(1)).first()
+            batch_min_scan_id = (last_scan.id or 0) if last_scan else 0
+
+        for config_digest, image_group in running_by_digest.items():
+            if config_digest in seen_digests:
                 continue
 
-            seen_digests.add(image_id)
+            representative = image_group[0]
+            image_name = representative["image_name"]
+            grype_ref = representative["grype_ref"]
+            container_names = [c["container_name"] for c in image_group]
+
+            seen_digests.add(config_digest)
             logger.info(
                 "New running image detected: %s (%s) — scheduling Grype scan",
-                img["image_name"],
-                img["hash"],
+                image_name,
+                representative["hash"],
             )
+
+            # Invalidate any stale update check only if the locally-running image
+            # has actually changed (i.e. the user pulled a new version).  We compare
+            # manifest digests on both sides — manifest digest is what
+            # check_registry_updates stores in ImageUpdateCheck.running_digest, and
+            # it is what get_manifest_digest returns from Docker's RepoDigests.
+            #
+            # We never fall back to the config digest here: config digest and manifest
+            # digest are hashes of different documents and must never be compared with
+            # each other.  If we cannot resolve a manifest digest (locally-built image
+            # with no RepoDigests), we skip the deletion and preserve any existing
+            # record rather than risk a false positive.
+            with Session(db.engine) as session:
+                stale_check = session.exec(
+                    select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)
+                ).first()
+                if stale_check:
+                    current_manifest_digest = watcher.get_manifest_digest(image_name)
+                    if current_manifest_digest is not None and stale_check.running_digest != current_manifest_digest:
+                        session.delete(stale_check)
+                        session.commit()
+                        logger.info("Cleared stale ImageUpdateCheck for %s (manifest digest changed)", image_name)
 
             # Create a queued task for the scan
             with Session(db.engine) as session:
                 scan_task = SystemTask(
                     task_type="scan",
-                    task_name=f"Scan {img['image_name']}",
+                    task_name=f"Scan image {image_name}",
                     status="queued",
                     created_at=datetime.now(UTC),
                 )
                 session.add(scan_task)
                 session.commit()
+                assert scan_task.id is not None
                 scan_task_id = scan_task.id
 
             new_scans_queued += 1
-            asyncio.create_task(
-                scanner.scan_image_async(
-                    img["image_name"], img["grype_ref"], scan_semaphore, img["container_name"], scan_task_id
-                )
+            scan_coros.append(
+                scanner.scan_image_async(image_name, grype_ref, scan_semaphore, container_names, scan_task_id)
             )
+            scan_task_ids.append(scan_task_id)
+
+        # Gather scans and notify on completion instead of fire-and-forget
+        if scan_coros:
+            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids, batch_min_scan_id))
 
         with Session(db.engine) as session:
             task = session.get(SystemTask, task_id)
@@ -75,7 +155,8 @@ async def check_running_containers(
                 task.status = "completed"
                 task.finished_at = datetime.now(UTC)
                 task.result_details = (
-                    f"Detected {len(running)} running containers. Queued {new_scans_queued} new scans."
+                    f"Detected {len(running)} running containers across {len(running_by_digest)} images. "
+                    f"Queued {new_scans_queued} image scans."
                 )
                 session.add(task)
                 session.commit()

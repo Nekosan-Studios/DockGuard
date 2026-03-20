@@ -13,5 +13,6 @@ services:
       - SCAN_INTERVAL_SECONDS=60
       - MAX_CONCURRENT_SCANS=1
       - DB_CHECK_INTERVAL_SECONDS=3600
+      # - BASE_URL=http://your-server-ip:8764  # Public URL for deep links in notifications
       - API_URL=http://localhost:8765
       - TZ=America/Los_Angeles

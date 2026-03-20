@@ -16,7 +16,7 @@ describe("CveLinkCell", () => {
     const { getByText } = render(CveLinkCell, {
       vulnId: "CVE-2023-1234",
       dataSource: null,
-      firstSeenAt: null,
+      isNew: false,
     });
 
     const link = getByText("CVE-2023-1234");
@@ -30,7 +30,7 @@ describe("CveLinkCell", () => {
     const { getByText } = render(CveLinkCell, {
       vulnId: "GHSA-abcd-1234",
       dataSource: "https://github.com/advisories/GHSA-abcd-1234",
-      firstSeenAt: null,
+      isNew: false,
     });
 
     const link = getByText("GHSA-abcd-1234");
@@ -40,27 +40,21 @@ describe("CveLinkCell", () => {
     );
   });
 
-  it("does not display NEW badge for old vulnerabilities", () => {
-    const pastDate = new Date();
-    pastDate.setDate(pastDate.getDate() - 3); // 3 days ago
-
+  it("does not display NEW badge when isNew is false", () => {
     const { queryByText } = render(CveLinkCell, {
       vulnId: "CVE-2023-1234",
-      firstSeenAt: pastDate.toISOString(),
       dataSource: null,
+      isNew: false,
     });
 
     expect(queryByText("NEW")).not.toBeInTheDocument();
   });
 
-  it("displays NEW badge for vulnerabilities seen in the last 24 hours", () => {
-    const recentDate = new Date();
-    recentDate.setHours(recentDate.getHours() - 10); // 10 hours ago
-
+  it("displays NEW badge when isNew is true", () => {
     const { getByText } = render(CveLinkCell, {
       vulnId: "CVE-2023-9999",
-      firstSeenAt: recentDate.toISOString(),
       dataSource: null,
+      isNew: true,
     });
 
     expect(getByText("NEW")).toBeInTheDocument();

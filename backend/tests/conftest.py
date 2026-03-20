@@ -10,25 +10,31 @@ import pytest
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Remind the developer to run e2e tests when they are excluded by default."""
+    """Remind the developer to run integration/e2e tests when they are excluded by default."""
     markexpr = getattr(session.config.option, "markexpr", "")
-    if "not e2e" in markexpr:
-        print("\nNote: e2e tests excluded. Run `uv run pytest -v -m e2e` to include them.")
+    if "not e2e" in markexpr or "not integration" in markexpr:
+        print(
+            "\nNote: integration and e2e tests excluded."
+            "\n  Run `uv run pytest -v -m integration` for integration tests."
+            "\n  Run `uv run pytest -v -m e2e` for e2e tests."
+        )
 
 
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 import docker as docker_sdk
+from backend.config import ConfigManager
 from backend.database import Database
 from backend.database import db as production_db
+from backend.docker_watcher import _connect_to_docker
 from backend.grype_scanner import _parse_image_repository
 from backend.main import app
-from backend.models import Scan, Vulnerability
+from backend.models import Scan, ScanContainer, Vulnerability
 
 # ---------------------------------------------------------------------------
 # Test database — fresh in-memory SQLite per test
@@ -41,6 +47,18 @@ from backend.models import Scan, Vulnerability
 
 @pytest.fixture
 def test_db():
+    # Import all models before create_all so every table is registered in metadata
+    from backend.models import (  # noqa: F401
+        ImageUpdateCheck,
+        NotificationChannel,
+        NotificationLog,
+        Scan,
+        ScanContainer,
+        Setting,
+        SystemTask,
+        Vulnerability,
+    )
+
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -74,20 +92,30 @@ def api_client(test_db):
                         with patch("backend.routers.tasks.db", test_db):
                             with patch("backend.routers.settings.db", test_db):
                                 with patch("backend.routers.internal.db", test_db):
-                                    with (
-                                        patch("backend.routers.containers.DockerWatcher") as cw,
-                                        patch("backend.routers.vulnerabilities.DockerWatcher") as vw,
-                                        patch("backend.jobs.containers.DockerWatcher") as jw,
-                                    ):
-                                        cw.return_value.list_images.return_value = []
-                                        cw.return_value.list_running_containers.return_value = []
-                                        vw.return_value.list_images.return_value = []
-                                        vw.return_value.list_running_containers.return_value = []
-                                        jw.return_value.list_images.return_value = []
-                                        jw.return_value.list_running_containers.return_value = []
-                                        with TestClient(app, raise_server_exceptions=True) as client:
-                                            # tests expect the mock instance
-                                            yield client, test_db, (cw, vw)
+                                    with patch("backend.routers.notifications.db", test_db):
+                                        with (
+                                            patch("backend.main.ContainerScheduler") as mock_scheduler,
+                                            patch("backend.routers.containers.DockerWatcher") as cw,
+                                            patch("backend.routers.vulnerabilities.DockerWatcher") as vw,
+                                        ):
+                                            mock_inst = mock_scheduler.return_value
+                                            mock_inst.start.return_value = None
+                                            mock_inst.shutdown.return_value = None
+                                            mock_inst.update_job_intervals.return_value = None
+                                            mock_inst.get_jobs.return_value = [
+                                                MagicMock(
+                                                    id="scan_for_container_changes", name="Scan for Container Changes"
+                                                ),
+                                                MagicMock(id="check_db_update", name="Check for grype DB updates"),
+                                            ]
+                                            cw.return_value.list_images.return_value = []
+                                            cw.return_value.list_running_containers.return_value = []
+                                            vw.return_value.list_images.return_value = []
+                                            vw.return_value.list_running_containers.return_value = []
+                                            with patch("backend.scheduler._active_scheduler", mock_inst):
+                                                with TestClient(app, raise_server_exceptions=True) as client:
+                                                    # tests expect the mock instance
+                                                    yield client, test_db, (cw, vw)
 
     app.dependency_overrides.clear()
 
@@ -98,7 +126,12 @@ def api_client(test_db):
 
 
 def seed_scan(
-    database: Database, image_name: str, image_digest: str, vulns: list[dict], scanned_at: datetime | None = None
+    database: Database,
+    image_name: str,
+    image_digest: str,
+    vulns: list[dict],
+    scanned_at: datetime | None = None,
+    container_names: list[str] | None = None,
 ) -> Scan:
     scan = Scan(
         scanned_at=scanned_at or datetime.now(UTC),
@@ -113,6 +146,8 @@ def seed_scan(
     with Session(database.engine) as session:
         session.add(scan)
         session.flush()
+        for container_name in sorted({name for name in (container_names or []) if name}):
+            session.add(ScanContainer(scan_id=scan.id, container_name=container_name))
         for v in vulns:
             session.add(Vulnerability(scan_id=scan.id, **v))
         session.commit()
@@ -208,10 +243,11 @@ def integration_client(tmp_path):
                     with patch("backend.routers.tasks.db", temp_db):
                         with patch("backend.routers.settings.db", temp_db):
                             with patch("backend.routers.internal.db", temp_db):
-                                with patch("backend.jobs.containers.DockerWatcher") as mock_watcher:
-                                    mock_watcher.return_value.list_images.return_value = []
-                                    with TestClient(app, raise_server_exceptions=True) as client:
-                                        yield client, temp_db
+                                with patch("backend.routers.notifications.db", temp_db):
+                                    with patch("backend.jobs.containers.DockerWatcher") as mock_watcher:
+                                        mock_watcher.return_value.list_images.return_value = []
+                                        with TestClient(app, raise_server_exceptions=True) as client:
+                                            yield client, temp_db
     app.dependency_overrides.clear()
 
 
@@ -224,7 +260,8 @@ def integration_client(tmp_path):
 def require_docker():
     """Skip the test if Docker daemon is not reachable."""
     try:
-        docker_sdk.from_env().ping()
+        client = _connect_to_docker()
+        client.ping()
     except Exception:
         pytest.skip("Docker daemon not available")
 
@@ -245,7 +282,7 @@ def test_container(require_docker):
 
     Yields dict: {"image_ref": "alpine:latest", "started_by_fixture": bool}
     """
-    client = docker_sdk.from_env()
+    client = _connect_to_docker()
     test_image = "alpine:latest"
     test_name = "dg-test"
 
@@ -278,6 +315,7 @@ def e2e_client(tmp_path, require_docker, require_grype):
     """
     db_file = tmp_path / "e2e.db"
     temp_db = Database(f"sqlite:///{db_file}")
+    original_get_setting = ConfigManager.get_setting
     app.dependency_overrides[production_db.get_session] = temp_db.get_session
     with patch("backend.database.DATABASE_PATH", str(db_file)):
         with patch("backend.main.db", temp_db):
@@ -286,10 +324,18 @@ def e2e_client(tmp_path, require_docker, require_grype):
                     with patch("backend.routers.tasks.db", temp_db):
                         with patch("backend.routers.settings.db", temp_db):
                             with patch("backend.routers.internal.db", temp_db):
-                                with patch("backend.scheduler.ConfigManager.get_setting") as mock_get:
-                                    mock_get.side_effect = lambda k, s: (
-                                        {"value": "5"} if k == "SCAN_INTERVAL_SECONDS" else {"value": "86400"}
-                                    )
-                                    with TestClient(app, raise_server_exceptions=True) as client:
-                                        yield client, temp_db
+                                with patch("backend.routers.notifications.db", temp_db):
+                                    with patch("backend.scheduler.ConfigManager.get_setting") as mock_get:
+                                        mock_get.side_effect = lambda k, s: (
+                                            {
+                                                "key": k,
+                                                "value": "5",
+                                                "source": "test",
+                                                "editable": True,
+                                            }
+                                            if k == "SCAN_INTERVAL_SECONDS"
+                                            else original_get_setting(k, s)
+                                        )
+                                        with TestClient(app, raise_server_exceptions=True) as client:
+                                            yield client, temp_db
     app.dependency_overrides.clear()
