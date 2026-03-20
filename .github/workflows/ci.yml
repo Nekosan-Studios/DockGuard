@@ -44,7 +44,7 @@ jobs:
       - name: Install grype (for e2e tests)
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
-            | sh -s -- -b /usr/local/bin v0.109.1
+            | sh -s -- -b /usr/local/bin v0.110.0
 
       - name: Run pytest (including e2e)
         run: uv run pytest -m ""
