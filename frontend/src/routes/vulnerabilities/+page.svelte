@@ -15,25 +15,55 @@
   import type { Vulnerability } from "$lib/components/vuln/VulnRow.svelte";
   import { page } from "$app/stores";
   import { on } from "svelte/events";
-  import { onDestroy, tick } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
+  import VulnDetailModal from "$lib/components/vuln/VulnDetailModal.svelte";
 
   let { data }: { data: PageData } = $props();
 
   const firstSeenInImageTooltip =
     "Scan where this vulnerability instance was first seen in this image. Not container specific.";
 
-  // ── Deep link state ─────────────────────────────────────────────────────
+  // ── Deep link + shared modal state ───────────────────────────────────────
   let activeCve = $derived($page.url.searchParams.get("cve"));
+  let selectedVuln = $state<Vulnerability | null>(null);
+  let pageModalOpen = $state(false);
+  let prevPageModalOpen = $state(false);
+  let lastAutoOpenedCve = $state<string | null>(null);
 
-  function handleModalChange(vulnId: string, open: boolean) {
-    if (!open) {
-      const u = new URL($page.url);
-      if (u.searchParams.get("cve") === vulnId) {
-        u.searchParams.delete("cve");
-        replaceState(u, {});
+  // Auto-open when activeCve matches a loaded row (re-checks as more rows load)
+  $effect(() => {
+    const cve = activeCve;
+    if (!cve) {
+      lastAutoOpenedCve = null;
+      return;
+    }
+    if (cve === lastAutoOpenedCve) return;
+    const match = rows.find((v) => v.vuln_id === cve);
+    if (match) {
+      lastAutoOpenedCve = cve;
+      selectedVuln = match;
+      pageModalOpen = true;
+    }
+  });
+
+  // Clear ?cve= URL param when modal closes
+  $effect(() => {
+    const open = pageModalOpen;
+    if (open !== prevPageModalOpen) {
+      prevPageModalOpen = open;
+      if (!open) {
+        untrack(() => {
+          if (selectedVuln) {
+            const u = new URL($page.url);
+            if (u.searchParams.get("cve") === selectedVuln.vuln_id) {
+              u.searchParams.delete("cve");
+              replaceState(u, {});
+            }
+          }
+        });
       }
     }
-  }
+  });
 
   // ── Infinite scroll state ─────────────────────────────────────────────────
   let rows = $state<Vulnerability[]>([]);
@@ -497,8 +527,10 @@
                   {vuln}
                   showContainers={true}
                   {hasAnyVex}
-                  {activeCve}
-                  onModalChange={handleModalChange}
+                  onSelect={(v) => {
+                    selectedVuln = v;
+                    pageModalOpen = true;
+                  }}
                 />
               {/each}
             </Table.Body>
@@ -532,3 +564,11 @@
     </Card.Content>
   </Card.Root>
 </div>
+
+{#if selectedVuln}
+  <VulnDetailModal
+    vuln={selectedVuln}
+    bind:open={pageModalOpen}
+    showContainers={true}
+  />
+{/if}

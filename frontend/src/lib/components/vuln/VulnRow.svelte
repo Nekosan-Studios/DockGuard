@@ -9,8 +9,6 @@
   import VexStatusCell from "./VexStatusCell.svelte";
   import PriorityCell from "./PriorityCell.svelte";
   import CveLinkCell from "./CveLinkCell.svelte";
-  import VulnDetailModal from "./VulnDetailModal.svelte";
-  import { untrack } from "svelte";
   import {
     PRIORITY_CLASSES,
     priorityFromRiskScore,
@@ -71,47 +69,13 @@
     vuln,
     showContainers = false,
     hasAnyVex = true,
-    activeCve = null,
-    onModalChange,
+    onSelect,
   }: {
     vuln: Vulnerability;
     showContainers?: boolean;
     hasAnyVex?: boolean;
-    activeCve?: string | null;
-    onModalChange?: (vulnId: string, open: boolean) => void;
+    onSelect?: (vuln: Vulnerability) => void;
   } = $props();
-
-  let modalOpen = $state(false);
-  let prevModalOpen = $state(false);
-  // Only auto-open once per activeCve value to avoid re-opening after user dismisses.
-  let lastAutoOpenedCve = $state<string | null>(null);
-
-  // Auto-open when this row matches the deep-linked CVE
-  $effect(() => {
-    if (
-      activeCve &&
-      activeCve === vuln.vuln_id &&
-      !modalOpen &&
-      lastAutoOpenedCve !== activeCve
-    ) {
-      lastAutoOpenedCve = activeCve;
-      modalOpen = true;
-    }
-    // Reset guard when this CVE is no longer the deep-link target so future
-    // deep links to the same CVE work correctly (e.g. browser back).
-    if (!activeCve || activeCve !== vuln.vuln_id) {
-      lastAutoOpenedCve = null;
-    }
-  });
-
-  // Notify parent when modal state *actually changes*
-  $effect(() => {
-    const current = modalOpen;
-    if (current !== prevModalOpen) {
-      prevModalOpen = current;
-      untrack(() => onModalChange?.(vuln.vuln_id, current));
-    }
-  });
 
   // If the backend didn't supply a `.packages` array but did supply top-level package fields, we wrap it in a mock array to keep the template logic identical.
   let packages = $derived(
@@ -144,9 +108,7 @@
     vulnId={vuln.vuln_id}
     dataSource={vuln.data_source}
     isNew={vuln.is_new ?? false}
-    onDetailClick={() => {
-      modalOpen = true;
-    }}
+    onDetailClick={() => onSelect?.(vuln)}
   />
 
   {#if showContainers}
@@ -336,5 +298,3 @@
     {/if}
   </Table.Cell>
 </Table.Row>
-
-<VulnDetailModal {vuln} bind:open={modalOpen} {showContainers} />
