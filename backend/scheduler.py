@@ -77,7 +77,7 @@ class ContainerScheduler:
             self.db_check_interval = int(ConfigManager.get_setting("DB_CHECK_INTERVAL_SECONDS", session)["value"])
             self.scan_retention_days = int(ConfigManager.get_setting("SCAN_RETENTION_DAYS", session)["value"])
             self.digest_hour = _parse_digest_hour(ConfigManager.get_setting("DAILY_DIGEST_HOUR", session)["value"])
-        self.task_retention_days = int(os.environ.get("TASK_RETENTION_DAYS", "7"))
+        self.task_retention_days = int(os.environ.get("TASK_RETENTION_DAYS", "3"))
 
         self.digest_timezone = _get_digest_timezone()
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)

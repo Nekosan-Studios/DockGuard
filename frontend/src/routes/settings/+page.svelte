@@ -13,6 +13,9 @@
   import CheckCircle2 from "@lucide/svelte/icons/check-circle-2";
 
   import { settings } from "$lib/stores/settings";
+  import type { PageData } from "./$types";
+
+  let { data }: { data: PageData } = $props();
 
   let isSaving = $state(false);
   let saveMessage: { type: "success" | "error"; text: string } | null =
@@ -20,6 +23,7 @@
   let hasChanges = $state(false);
   let localValues: Record<string, string> = $state({});
   let initialized = $state(false);
+  let trackedImageCount = $derived(data.trackedImageCount);
 
   onMount(async () => {
     await settings.fetch();
@@ -120,7 +124,16 @@
     { min?: number; max?: number; step?: number }
   > = {
     DAILY_DIGEST_HOUR: { min: 0, max: 23, step: 1 },
+    SCAN_RETENTION_DAYS: { min: 0, step: 1 },
   };
+
+  // ~55 MB per tracked image per year, derived from real-world data (155 MB over
+  // 22 days across 46 images, ~1.2 rescans/day/image driven by grype DB updates).
+  function estimateDbSizePerYear(imageCount: number): string {
+    const mb = imageCount * 55;
+    if (mb < 1024) return `${mb} MB`;
+    return `${(mb / 1024).toFixed(1)} GB`;
+  }
 
   const settingMeta: Record<
     string,
@@ -143,7 +156,7 @@
     },
     SCAN_RETENTION_DAYS: {
       label: "Scan Data Retention",
-      desc: "Scan history older than this many days will be automatically purged each day. The most recent scan for each image is always kept regardless of age.",
+      desc: "Scan history older than this many days will be automatically purged each day. Set to 0 to never prune. The most recent scan per image is always kept regardless of age. Note: pruning saves disk space but you will lose historical data for history graphs and scan history.",
       group: "Maintenance",
     },
     DAILY_DIGEST_HOUR: {
@@ -252,6 +265,18 @@
                       >
                     {/if}
                   {/if}
+                  {#if key === "SCAN_RETENTION_DAYS" && trackedImageCount > 0}
+                    {@const retDays = parseInt(
+                      localValues[key] ?? conf.value,
+                      10
+                    )}
+                    {#if retDays === 0}
+                      <span
+                        class="text-xs text-muted-foreground whitespace-nowrap"
+                        >= never prune</span
+                      >
+                    {/if}
+                  {/if}
                 </div>
 
                 <p class="text-[0.8rem] text-muted-foreground">
@@ -261,6 +286,14 @@
                   >
                   {meta.desc}
                 </p>
+                {#if key === "SCAN_RETENTION_DAYS" && trackedImageCount > 0}
+                  <p class="text-[0.8rem] text-muted-foreground">
+                    Given the {trackedImageCount} image{trackedImageCount === 1
+                      ? ""
+                      : "s"} currently tracked, this database is estimated to grow
+                    ~{estimateDbSizePerYear(trackedImageCount)} per year without pruning.
+                  </p>
+                {/if}
               </div>
             {/each}
           </Card.Content>

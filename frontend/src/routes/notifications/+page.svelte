@@ -161,8 +161,8 @@
     try {
       await notifications.deleteChannel(id);
       await notifications.fetchLog(logPage);
-    } catch {
-      // silently fail; UI will stay consistent
+    } catch (e) {
+      console.warn("Failed to delete notification channel:", e);
     }
     deleteConfirmId = null;
   }

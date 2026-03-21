@@ -23,8 +23,8 @@
           appVersion = version;
         }
       }
-    } catch {
-      // ignore – version is cosmetic
+    } catch (e) {
+      console.warn("Failed to fetch app version:", e);
     }
   });
 </script>

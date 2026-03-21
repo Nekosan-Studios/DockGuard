@@ -236,8 +236,8 @@
         (i) => i.status === "complete" || i.status === "failed"
       );
       if (allDone) stopPolling();
-    } catch {
-      // Ignore transient polling errors
+    } catch (e) {
+      console.warn("Transient error polling preview scan status:", e);
     }
   }
 
