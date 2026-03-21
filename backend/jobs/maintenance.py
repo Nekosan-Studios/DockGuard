@@ -1,8 +1,10 @@
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session, delete, select
 
+from backend.api_helpers import _fmt_duration
 from backend.database import Database
 from backend.models import NotificationLog, Scan, SystemTask, Vulnerability
 
@@ -40,6 +42,7 @@ async def purge_old_data(db: Database, scan_retention_days: int, task_retention_
 
     scans_deleted = vulns_deleted = tasks_deleted = notifications_deleted = 0
     error_msg = None
+    t0 = time.perf_counter()
 
     try:
         with Session(db.engine) as session:
@@ -85,20 +88,23 @@ async def purge_old_data(db: Database, scan_retention_days: int, task_retention_
 
             session.commit()
 
+        elapsed = time.perf_counter() - t0
         logger.info(
-            "Purge complete — scan_retention=%dd task_retention=%dd scans=%d vulns=%d tasks=%d notifications=%d",
+            "Purge complete — scan_retention=%dd task_retention=%dd scans=%d vulns=%d tasks=%d notifications=%d in %s",
             scan_retention_days,
             task_retention_days,
             scans_deleted,
             vulns_deleted,
             tasks_deleted,
             notifications_deleted,
+            _fmt_duration(elapsed),
         )
 
     except Exception as exc:
         logger.exception("Error in purge_old_data")
         error_msg = str(exc)
 
+    elapsed = time.perf_counter() - t0
     with Session(db.engine) as session:
         task = session.get(SystemTask, task_id)
         if task:
@@ -109,6 +115,7 @@ async def purge_old_data(db: Database, scan_retention_days: int, task_retention_
                 f"Deleted {scans_deleted} scan(s), {vulns_deleted} vulnerability row(s), "
                 f"{tasks_deleted} task history row(s), {notifications_deleted} notification log row(s). "
                 f"Scan retention: {scan_retention_days}d, task retention: {task_retention_days}d."
+                f" ({_fmt_duration(elapsed)})"
             )
             session.add(task)
             session.commit()

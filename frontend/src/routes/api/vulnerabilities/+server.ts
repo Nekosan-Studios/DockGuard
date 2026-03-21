@@ -17,7 +17,12 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
     params.set(k, v);
   }
 
+  const t0 = performance.now();
   const res = await fetch(`${API_URL}/images/vulnerabilities?${params}`);
+  const elapsed = performance.now() - t0;
+  console.info(
+    `[VulnLoad proxy /api/vulnerabilities] fetch: ${elapsed.toFixed(1)}ms status=${res.status}`
+  );
   return new Response(res.body, {
     status: res.status,
     headers: { "content-type": "application/json" },

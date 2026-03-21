@@ -156,6 +156,15 @@ def _new_vuln_keys_for_scans(session: Session, scans: list[Scan]) -> dict[int, s
     return result
 
 
+def _fmt_duration(secs: float) -> str:
+    """Format a duration in seconds as 'Xm Ys' or 'Xs'."""
+    if secs >= 60:
+        m = int(secs // 60)
+        s = int(secs % 60)
+        return f"{m}m {s}s"
+    return f"{int(secs)}s"
+
+
 def _parse_image_query(image: str) -> tuple[str, str]:
     if image.startswith("sha256:"):
         return "digest", image

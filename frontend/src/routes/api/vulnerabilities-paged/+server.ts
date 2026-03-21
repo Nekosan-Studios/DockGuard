@@ -12,7 +12,12 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
   for (const [k, v] of url.searchParams.entries()) {
     params.set(k, v);
   }
+  const t0 = performance.now();
   const res = await fetch(`${API_URL}/vulnerabilities?${params}`);
+  const elapsed = performance.now() - t0;
+  console.info(
+    `[VulnLoad proxy /api/vulnerabilities-paged] fetch: ${elapsed.toFixed(1)}ms status=${res.status}`
+  );
   return new Response(res.body, {
     status: res.status,
     headers: { "content-type": "application/json" },

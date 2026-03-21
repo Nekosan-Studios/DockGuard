@@ -1,3 +1,5 @@
+import logging
+import time
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +21,7 @@ from ..docker_watcher import DockerWatcher
 from ..models import Scan, Vulnerability
 
 router = APIRouter(tags=["Vulnerabilities"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/images/vulnerabilities")
@@ -39,8 +42,15 @@ def get_vulnerabilities(
 
         raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
 
+    t_total = time.perf_counter()
+
+    t0 = time.perf_counter()
     scan = _latest_scan_for_ref(image_ref, session)
+    logger.info("[VulnLoad /images/vulnerabilities] latest_scan_for_ref: %.3fs", time.perf_counter() - t0)
+
+    t0 = time.perf_counter()
     new_keys = _new_vuln_keys_for_scans(session, [scan]).get(scan.id, set())
+    logger.info("[VulnLoad /images/vulnerabilities] new_vuln_keys: %.3fs", time.perf_counter() - t0)
 
     q = select(Vulnerability).where(Vulnerability.scan_id == scan.id)
     if hide_vex:
@@ -57,10 +67,15 @@ def get_vulnerabilities(
         elif priority == "Low":
             q = q.where((Vulnerability.risk_score < 20) | (Vulnerability.risk_score.is_(None)))
 
+    t0 = time.perf_counter()
     vulns = session.exec(q).all()
+    logger.info(
+        "[VulnLoad /images/vulnerabilities] db fetch vulns: %.3fs (%d rows)", time.perf_counter() - t0, len(vulns)
+    )
 
     # Group by vuln_id
     grouped_vulns: dict[str, dict] = {}
+    t0 = time.perf_counter()
     for v in vulns:
         vuln_id = v.vuln_id
         new_key = (v.vuln_id, v.package_name, v.installed_version)
@@ -93,6 +108,12 @@ def get_vulnerabilities(
             v_risk = v.risk_score or 0
             if v_risk > (gv.get("risk_score") or 0):
                 gv["risk_score"] = v.risk_score
+
+    logger.info(
+        "[VulnLoad /images/vulnerabilities] python group+aggregate: %.3fs (%d unique CVEs)",
+        time.perf_counter() - t0,
+        len(grouped_vulns),
+    )
 
     # Sort packages within each group
     for vd in grouped_vulns.values():
@@ -149,10 +170,23 @@ def get_vulnerabilities(
             return (null_last, rank if not desc else -rank)
         return 0
 
+    t0 = time.perf_counter()
     all_vulns = sorted(grouped_vulns.values(), key=_image_sort_key)
+    logger.info("[VulnLoad /images/vulnerabilities] python sort: %.3fs", time.perf_counter() - t0)
+
     total_count = len(all_vulns)
     page_vulns = all_vulns[offset : offset + limit]
     has_more = (offset + limit) < total_count
+
+    logger.info(
+        "[VulnLoad /images/vulnerabilities] total: %.3fs (image=%s offset=%d limit=%d returning=%d of %d)",
+        time.perf_counter() - t_total,
+        image_ref,
+        offset,
+        limit,
+        len(page_vulns),
+        total_count,
+    )
 
     return {
         "scan_id": scan.id,
@@ -244,8 +278,17 @@ def get_vulnerabilities_across_running(
 
         raise _HTTPException(status_code=422, detail=f"Invalid sort_by value: '{sort_by}'")
 
+    t_total = time.perf_counter()
+
+    t0 = time.perf_counter()
     watcher = DockerWatcher()
     running = watcher.list_running_containers()
+    logger.info(
+        "[VulnLoad /vulnerabilities] list_running_containers: %.3fs (%d containers)",
+        time.perf_counter() - t0,
+        len(running),
+    )
+
     if not running:
         return {
             "report": report,
@@ -259,8 +302,12 @@ def get_vulnerabilities_across_running(
 
     image_names = {img["image_name"] for img in running}
 
+    t0 = time.perf_counter()
     latest_scan_id_subq = select(func.max(Scan.id)).where(Scan.image_name.in_(image_names)).group_by(Scan.image_name)
     scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
+    logger.info(
+        "[VulnLoad /vulnerabilities] latest scans query: %.3fs (%d scans)", time.perf_counter() - t0, len(scans)
+    )
 
     image_to_containers = defaultdict(list)
     for c in running:
@@ -297,7 +344,9 @@ def get_vulnerabilities_across_running(
     if hide_vex:
         q = q.where((Vulnerability.vex_status.is_(None)) | (~Vulnerability.vex_status.in_(["not_affected", "fixed"])))
 
+    t0 = time.perf_counter()
     new_keys_by_scan = _new_vuln_keys_for_scans(session, scans)
+    logger.info("[VulnLoad /vulnerabilities] new_vuln_keys: %.3fs", time.perf_counter() - t0)
 
     if report == "critical":
         q = q.where(Vulnerability.severity == "Critical")
@@ -310,7 +359,9 @@ def get_vulnerabilities_across_running(
     elif report == "vex_annotated":
         q = q.where(Vulnerability.vex_status.isnot(None))
 
+    t0 = time.perf_counter()
     vulns = session.exec(q).all()
+    logger.info("[VulnLoad /vulnerabilities] db fetch vulns: %.3fs (%d rows)", time.perf_counter() - t0, len(vulns))
 
     if report == "new":
         vulns = [
@@ -325,6 +376,7 @@ def get_vulnerabilities_across_running(
     grouped_vulns: dict[str, dict] = {}
     total_instances = 0
 
+    t0 = time.perf_counter()
     for v in vulns:
         img_name = scan_id_to_images[v.scan_id]
         containers_for_img = image_to_containers[img_name]
@@ -374,6 +426,12 @@ def get_vulnerabilities_across_running(
             v_risk = v.risk_score or 0
             if v_risk > (gv.get("risk_score") or 0):
                 gv["risk_score"] = v.risk_score
+
+    logger.info(
+        "[VulnLoad /vulnerabilities] python group+aggregate: %.3fs (%d unique CVEs)",
+        time.perf_counter() - t0,
+        len(grouped_vulns),
+    )
 
     for vd in grouped_vulns.values():
         vd["packages"].sort(
@@ -433,7 +491,9 @@ def get_vulnerabilities_across_running(
             return (null_last, rank if not desc else -rank)
         return 0
 
+    t0 = time.perf_counter()
     all_vulns = sorted(grouped_vulns.values(), key=_clean_sort_key)
+    logger.info("[VulnLoad /vulnerabilities] python sort: %.3fs", time.perf_counter() - t0)
 
     for vd in all_vulns:
         if vd.get("description") and len(vd["description"]) > _DESC_LIMIT:
@@ -443,6 +503,15 @@ def get_vulnerabilities_across_running(
     total_count = len(all_vulns)
     page_vulns = all_vulns[offset : offset + limit]
     has_more = (offset + limit) < total_count
+
+    logger.info(
+        "[VulnLoad /vulnerabilities] total: %.3fs (offset=%d limit=%d returning=%d of %d)",
+        time.perf_counter() - t_total,
+        offset,
+        limit,
+        len(page_vulns),
+        total_count,
+    )
 
     return {
         "report": report,

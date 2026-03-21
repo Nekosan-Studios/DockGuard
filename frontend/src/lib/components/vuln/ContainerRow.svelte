@@ -6,7 +6,6 @@
   import AlertCircle from "@lucide/svelte/icons/alert-circle";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import SortButton from "../../../routes/containers/sort-button.svelte";
-  import { slide } from "svelte/transition";
   import { formatDistanceToNow } from "date-fns";
   import { SvelteSet, SvelteURLSearchParams } from "svelte/reactivity";
   import { onDestroy, tick, untrack } from "svelte";
@@ -22,13 +21,14 @@
   import ArrowUpCircle from "@lucide/svelte/icons/arrow-up-circle";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import ContainerHistoryDialog from "./ContainerHistoryDialog.svelte";
+  import VulnDetailModal from "./VulnDetailModal.svelte";
   import UpdateAvailableDialog from "./UpdateAvailableDialog.svelte";
 
   // Priority order is imported from utils.ts
 
   // Constants matches parent logic
   const SUBVIEW_MAX_ROWS = 400;
-  const SUBVIEW_PAGE_SIZE = 200;
+  const SUBVIEW_PAGE_SIZE = 50;
   const AUTO_FILTER_THRESHOLD = 15;
   const SUBVIEW_TRANSITION_MS = 200;
   const FIRST_SEEN_IN_IMAGE_TOOLTIP =
@@ -81,8 +81,42 @@
       ? localExpanded
       : expandedContainerName === container.container_name
   );
+  let hasEverExpanded = $state(false);
   let historyOpen = $state(false);
   let updateOpen = $state(false);
+
+  // ── Shared modal (one instance for all vuln rows) ─────────────────────────
+  let selectedVuln = $state<Vulnerability | null>(null);
+  let modalOpen = $state(false);
+  let prevModalOpen = $state(false);
+  let lastAutoOpenedCve = $state<string | null>(null);
+
+  // Notify parent when modal closes (for URL ?cve= cleanup)
+  $effect(() => {
+    const open = modalOpen;
+    if (open !== prevModalOpen) {
+      prevModalOpen = open;
+      if (!open) {
+        untrack(() => onModalChange?.(selectedVuln?.vuln_id ?? "", false));
+      }
+    }
+  });
+
+  // Auto-open modal when activeCve matches a loaded vuln
+  $effect(() => {
+    const cve = activeCve;
+    if (!cve) {
+      lastAutoOpenedCve = null;
+      return;
+    }
+    if (cve === lastAutoOpenedCve) return;
+    const match = untrack(() => vulns.find((v) => v.vuln_id === cve));
+    if (match) {
+      lastAutoOpenedCve = cve;
+      selectedVuln = match;
+      modalOpen = true;
+    }
+  });
 
   let vexStatus = $state(container.vex_status);
   let hasVex = $state(container.has_vex);
@@ -266,13 +300,19 @@
       if (priorityFilter) params.set("priority", priorityFilter);
       if (hideVexResolved) params.set("hide_vex", "true");
 
+      const fetchStart = performance.now();
       const res = await fetch(`/api/vulnerabilities?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const payload = await res.json();
 
       const newRows: Vulnerability[] = payload.vulnerabilities ?? [];
+      const fetchMs = performance.now() - fetchStart;
+      console.info(
+        `[VulnLoad ContainerRow] fetch: ${fetchMs.toFixed(1)}ms image=${container.image_name} priority=${priorityFilter ?? "none"} returned=${newRows.length}`
+      );
       const existing = offset === 0 ? [] : [...vulns];
+      const renderStart = performance.now();
       vulns = [...existing, ...newRows];
 
       currentOffset = vulns.length;
@@ -283,6 +323,11 @@
       sortCol = sCol;
       sortDir = sDir;
       partiallyLoadedPriority = priorityFilter;
+
+      await tick();
+      console.info(
+        `[VulnLoad ContainerRow] DOM render: ${(performance.now() - renderStart).toFixed(1)}ms image=${container.image_name} total_rows=${vulns.length}`
+      );
     } catch (err) {
       console.error("Failed to fetch vulns for", container.image_name, err);
       if (offset === 0) vulns = [];
@@ -293,33 +338,49 @@
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
+  function doExpand() {
+    hasEverExpanded = true;
+    if (expandedContainerName === undefined) {
+      localExpanded = true;
+    } else {
+      onToggleExpand?.(container.container_name);
+    }
+  }
+
   function toggleExpanded() {
     if (!container.has_scan) return;
 
-    const nextExpanded = !expanded;
-    if (expandedContainerName === undefined) {
-      localExpanded = nextExpanded;
-    } else {
-      onToggleExpand?.(nextExpanded ? container.container_name : null);
+    // Collapsing — always immediate (CSS hide, no DOM destruction)
+    if (expanded) {
+      if (expandedContainerName === undefined) {
+        localExpanded = false;
+      } else {
+        onToggleExpand?.(null);
+      }
+      return;
     }
 
-    // If expanding for the first time and we have no vulns loaded
-    if (nextExpanded && vulns.length === 0) {
-      const total = container.total ?? 0;
-      const map = hideVexResolved
-        ? container.vulns_by_priority_no_vex
-        : container.vulns_by_priority;
-      const topPriority =
-        total >= AUTO_FILTER_THRESHOLD
-          ? PRIORITY_ORDER.find((p) => (map ? (map[p] ?? 0) : 0) > 0)
-          : undefined;
+    // Already has data — just CSS-unhide, no fetch needed
+    if (hasEverExpanded) {
+      doExpand();
+      return;
+    }
 
-      if (topPriority) {
-        activeFilters.add(topPriority);
-        fetchVulns(0, sortCol, sortDir, topPriority);
-      } else {
-        fetchVulns(0, sortCol, sortDir, undefined);
-      }
+    // First open — expand and fetch
+    doExpand();
+    const total = container.total ?? 0;
+    const map = hideVexResolved
+      ? container.vulns_by_priority_no_vex
+      : container.vulns_by_priority;
+    const topPriority =
+      total >= AUTO_FILTER_THRESHOLD
+        ? PRIORITY_ORDER.find((p) => (map ? (map[p] ?? 0) : 0) > 0)
+        : undefined;
+    if (topPriority) {
+      activeFilters.add(topPriority);
+      fetchVulns(0, sortCol, sortDir, topPriority);
+    } else {
+      fetchVulns(0, sortCol, sortDir, undefined);
     }
   }
 
@@ -547,14 +608,11 @@
   </Table.Cell>
 </Table.Row>
 
-<!-- Expanded detail row -->
-{#if expanded}
-  <Table.Row>
+<!-- Expanded detail row — kept in DOM after first open, CSS-hidden when collapsed -->
+{#if hasEverExpanded}
+  <Table.Row class={!expanded ? "hidden" : ""}>
     <Table.Cell colspan={3} class="p-0 align-middle">
-      <div
-        transition:slide={{ duration: 200 }}
-        class="bg-muted/20 border-muted border-l-4 overflow-hidden"
-      >
+      <div class="bg-muted/20 border-muted border-l-4 overflow-hidden">
         <svelte:boundary
           onerror={(e) =>
             console.error("[DockGuard] sub-view render error:", e)}
@@ -770,8 +828,10 @@
                     <VulnRow
                       {vuln}
                       hasAnyVex={hasVexData}
-                      {activeCve}
-                      {onModalChange}
+                      onSelect={(v) => {
+                        selectedVuln = v;
+                        modalOpen = true;
+                      }}
                     />
                   {/each}
                 </Table.Body>
@@ -827,3 +887,6 @@
 
 <ContainerHistoryDialog bind:open={historyOpen} {container} />
 <UpdateAvailableDialog bind:open={updateOpen} {container} />
+{#if selectedVuln}
+  <VulnDetailModal vuln={selectedVuln} bind:open={modalOpen} />
+{/if}
