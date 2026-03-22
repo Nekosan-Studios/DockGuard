@@ -799,11 +799,11 @@ class TestPriorityCountsStr:
     def test_empty_dict(self):
         from backend.jobs.notifications import _priority_counts_str
 
-        assert _priority_counts_str({}) == "0 vulnerabilities"
+        assert _priority_counts_str({}) == "0 vulns"
 
 
 class TestBuildVulnBody:
-    """Coverage for all three tiers of _build_vuln_body."""
+    """Coverage for all three tiers of _build_vuln_body and the tier helpers."""
 
     def _make_vuln(self, vuln_id: str, risk_score: float, is_kev: bool = False):
         from backend.models import Vulnerability
@@ -819,11 +819,12 @@ class TestBuildVulnBody:
         )
 
     def test_tier1_full_detail(self):
-        """≤5 vulns → full per-CVE listing."""
+        """Tier 1 lists individual CVE IDs; returned tier is 1."""
         from backend.jobs.notifications import _build_vuln_body
 
         vulns = [self._make_vuln(f"CVE-2024-000{i}", 70.0) for i in range(3)]
-        body = _build_vuln_body({"web": vulns}, base_url="")
+        body, tier = _build_vuln_body({"web": vulns}, base_url="")
+        assert tier == 1
         assert "CVE-2024-0000" in body
         assert "web" in body
 
@@ -831,52 +832,86 @@ class TestBuildVulnBody:
         from backend.jobs.notifications import _build_vuln_body
 
         vuln = self._make_vuln("CVE-2024-9999", 70.0, is_kev=True)
-        body = _build_vuln_body({"web": [vuln]}, base_url="")
+        body, _ = _build_vuln_body({"web": [vuln]}, base_url="")
         assert "[KEV]" in body
 
     def test_tier1_includes_markdown_link_with_base_url(self):
         from backend.jobs.notifications import _build_vuln_body
 
         vuln = self._make_vuln("CVE-2024-9999", 70.0)
-        body = _build_vuln_body({"web": [vuln]}, base_url="https://example.com")
+        body, _ = _build_vuln_body({"web": [vuln]}, base_url="https://example.com")
         assert "[CVE-2024-9999](" in body
 
-    def test_tier2_per_container_summary(self):
-        """6–10 total vulns with ≤10 containers → per-container summary lines."""
+    def test_tier1_used_by_default_regardless_of_count(self):
+        """Without max_len, tier 1 is always attempted first (no count threshold)."""
         from backend.jobs.notifications import _build_vuln_body
 
-        # 6 vulns in 2 containers — exceeds DETAIL_THRESHOLD of 5
+        vulns = [self._make_vuln(f"CVE-2024-{i:04d}", 70.0) for i in range(20)]
+        containers = {f"c-{i}": vulns for i in range(3)}
+        body, tier = _build_vuln_body(containers, base_url="")
+        assert tier == 1
+
+    def test_tier2_per_container_summary(self):
+        """With a max_len that excludes tier 1, tier 2 shows one line per container."""
+        from backend.jobs.notifications import _build_vuln_body
+
         vulns = [self._make_vuln(f"CVE-2024-{i:04d}", 70.0) for i in range(3)]
-        body = _build_vuln_body({"web": vulns, "db": vulns}, base_url="")
-        # Tier 2 shows container names as bold labels
-        assert "**web**" in body
-        assert "**db**" in body
-        # Tier 2 does NOT list individual CVE IDs
+        # Tier 1 for 6 vulns is ~240 chars; max_len=30 forces tier 2 (~24 chars)
+        body, tier = _build_vuln_body({"web": vulns, "db": vulns}, base_url="", max_len=30)
+        assert tier == 2
+        assert "web:" in body
+        assert "db:" in body
         assert "CVE-2024-0000" not in body
 
     def test_tier2_kev_count_in_summary(self):
         from backend.jobs.notifications import _build_vuln_body
 
         vulns = [self._make_vuln(f"CVE-2024-{i:04d}", 70.0, is_kev=(i == 0)) for i in range(3)]
-        body = _build_vuln_body({"web": vulns, "db": vulns}, base_url="")
+        # Tier 1 for 6 vulns is ~228 chars; tier 2 with KEV note is ~40 chars; use max_len=50
+        body, tier = _build_vuln_body({"web": vulns, "db": vulns}, base_url="", max_len=50)
+        assert tier == 2
         assert "KEV" in body
 
     def test_tier3_rolled_up_total(self):
-        """More than 10 containers → single rolled-up summary."""
+        """With a max_len too small for tier 2, tier 3 returns a single summary."""
         from backend.jobs.notifications import _build_vuln_body
 
-        # 11 containers, 1 vuln each → triggers tier 3
+        # Tier 2 for 11 containers is ~242 chars; max_len=100 forces tier 3 (~50 chars)
         containers = {f"container-{i}": [self._make_vuln(f"CVE-2024-{i:04d}", 70.0)] for i in range(11)}
-        body = _build_vuln_body(containers, base_url="")
-        assert "**11** containers" in body
-        assert "**11**" in body
+        body, tier = _build_vuln_body(containers, base_url="", max_len=100)
+        assert tier == 3
+        assert "11 containers" in body
+        assert "11 new" in body
 
     def test_tier3_kev_count_shown(self):
         from backend.jobs.notifications import _build_vuln_body
 
         containers = {f"container-{i}": [self._make_vuln(f"CVE-2024-{i:04d}", 70.0, is_kev=True)] for i in range(11)}
-        body = _build_vuln_body(containers, base_url="")
+        body, _ = _build_vuln_body(containers, base_url="", max_len=100)
         assert "CISA KEV" in body
+
+    def test_tier2_used_when_tier1_exactly_exceeds_limit(self):
+        """Tier selection is exact: if len(tier1) > max_len, tier 2 is used."""
+        from backend.jobs.notifications import _build_tier1, _build_tier2, _build_vuln_body
+
+        vulns = [self._make_vuln(f"CVE-2024-{i:04d}", 70.0) for i in range(3)]
+        containers = {"web": vulns, "db": vulns}
+        tier1_len = len(_build_tier1(containers, ""))
+        tier2_len = len(_build_tier2(containers))
+        assert tier1_len > tier2_len  # sanity check
+        # max_len one char below tier1 → must use tier2
+        _, tier = _build_vuln_body(containers, base_url="", max_len=tier1_len - 1)
+        assert tier == 2
+
+    def test_summary_title_tag_driven_by_tier(self):
+        """Callers append [Summary] to title when tier > 1."""
+        from backend.jobs.notifications import _build_vuln_body
+
+        vulns = [self._make_vuln(f"CVE-2024-{i:04d}", 70.0) for i in range(3)]
+        _, tier = _build_vuln_body({"web": vulns, "db": vulns}, base_url="", max_len=30)
+        base_title = "New: 6 Vulnerabilities"
+        title = base_title + (" [Summary]" if tier > 1 else "")
+        assert "[Summary]" in title
 
 
 class TestFindNewVulnerabilitiesEmpty:
@@ -999,7 +1034,7 @@ class TestSendDailyDigest:
                 # Second run — should include "Changes since last digest"
                 await send_daily_digest(test_db)
 
-        assert any("Changes since last digest" in b for b in captured_bodies)
+        assert any("Changes:" in b for b in captured_bodies)
 
     @pytest.mark.anyio
     async def test_invalid_last_digest_data_does_not_crash(self, test_db):
@@ -1035,6 +1070,19 @@ class TestSendDailyDigest:
 
 
 class TestNotifierServiceBranches:
+    def test_get_body_maxlen_returns_positive_int_for_valid_url(self):
+        from backend.services.notifier import get_body_maxlen
+
+        result = get_body_maxlen("json://localhost")
+        assert isinstance(result, int)
+        assert result > 0
+
+    def test_get_body_maxlen_returns_default_for_invalid_url(self):
+        from backend.services.notifier import _DEFAULT_BODY_MAXLEN, get_body_maxlen
+
+        result = get_body_maxlen("not-a-real-scheme://garbage")
+        assert result == _DEFAULT_BODY_MAXLEN
+
     @pytest.mark.anyio
     async def test_all_urls_rejected_returns_false(self):
         from backend.services.notifier import send
@@ -1084,3 +1132,151 @@ class TestNotifierServiceBranches:
 
         assert ok is False
         assert "boom" in (err or "")
+
+
+# ---------------------------------------------------------------------------
+# _build_digest_body unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDigestBody:
+    _BASE_DATA = {
+        "image_count": 5,
+        "total_vulns": 3844,
+        "severity": {"Critical": 83, "High": 769, "Medium": 1618, "Low": 253, "Negligible": 1009},
+        "kev_count": 16,
+        "eol_count": 1,
+        "deltas": {"total": 39, "kev": 2, "eol": 0},
+        "updates": [
+            {"image_name": "nginx:latest", "status": "scan_complete", "added": 5, "removed": 2},
+            {"image_name": "postgres:16", "status": "scan_pending", "added": None, "removed": None},
+        ],
+    }
+
+    def test_tier1_includes_updates_section(self):
+        from backend.jobs.notifications import _build_digest_body
+
+        body, tier = _build_digest_body(self._BASE_DATA)
+        assert tier == 1
+        assert "Updates available" in body
+        assert "nginx:latest" in body
+        assert "+5 added" in body
+        assert "2 fixed" in body
+        assert "scan in progress" in body
+
+    def test_tier2_omits_per_image_detail(self):
+        from backend.jobs.notifications import _build_digest_body, _build_digest_tier1
+
+        tier1 = _build_digest_tier1(self._BASE_DATA)
+        # Force tier 2 by setting max_len just below tier1 length
+        body, tier = _build_digest_body(self._BASE_DATA, max_len=len(tier1) - 1)
+        assert tier == 2
+        # Tier 2 has update count but no per-image lines
+        assert "Updates available: 2 images" in body
+        assert "nginx:latest" not in body
+
+    def test_tier3_compact_format(self):
+        from backend.jobs.notifications import _build_digest_body, _build_digest_tier2
+
+        tier2 = _build_digest_tier2(self._BASE_DATA)
+        # Force tier 3 by setting max_len just below tier2 length
+        body, tier = _build_digest_body(self._BASE_DATA, max_len=len(tier2) - 1)
+        assert tier == 3
+        # Tier 3 drops Medium/Low/Negligible
+        assert "Med:" not in body
+        assert "Low:" not in body
+        assert "Neg:" not in body
+        # But keeps Critical and High
+        assert "Crit:" in body
+        assert "High:" in body
+
+    def test_tier1_falls_back_to_tier2_when_too_long(self):
+        from backend.jobs.notifications import _build_digest_body, _build_digest_tier1, _build_digest_tier2
+
+        tier1 = _build_digest_tier1(self._BASE_DATA)
+        tier2 = _build_digest_tier2(self._BASE_DATA)
+        assert len(tier1) > len(tier2)  # sanity
+        _, tier = _build_digest_body(self._BASE_DATA, max_len=len(tier1) - 1)
+        assert tier == 2
+
+    def test_no_updates_omits_updates_section(self):
+        from backend.jobs.notifications import _build_digest_body
+
+        data = {**self._BASE_DATA, "updates": []}
+        body, tier = _build_digest_body(data)
+        assert tier == 1
+        assert "Updates available" not in body
+
+    def test_scan_complete_no_changes(self):
+        from backend.jobs.notifications import _build_digest_body
+
+        data = {
+            **self._BASE_DATA,
+            "updates": [
+                {"image_name": "redis:latest", "status": "scan_complete", "added": 0, "removed": 0},
+            ],
+        }
+        body, _ = _build_digest_body(data)
+        assert "no vuln changes" in body
+
+    def test_update_available_status(self):
+        from backend.jobs.notifications import _build_digest_body
+
+        data = {
+            **self._BASE_DATA,
+            "updates": [
+                {"image_name": "myapp:v2", "status": "update_available", "added": None, "removed": None},
+            ],
+        }
+        body, _ = _build_digest_body(data)
+        assert "update detected" in body
+
+
+# ---------------------------------------------------------------------------
+# _build_eol_body unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildEolBody:
+    _ENTRIES = [
+        {
+            "image_name": "myapp:2.0",
+            "container_display": "myapp-1",
+            "distro_name": "debian",
+            "distro_version": "10 (buster)",
+        },
+        {"image_name": "oldweb:1.0", "container_display": "web-1", "distro_name": "ubuntu", "distro_version": "18.04"},
+    ]
+
+    def test_tier1_full_detail(self):
+        from backend.jobs.notifications import _build_eol_body
+
+        body, tier = _build_eol_body(self._ENTRIES)
+        assert tier == 1
+        assert "myapp:2.0" in body
+        assert "myapp-1" in body
+        assert "debian" in body
+        assert "10 (buster)" in body
+        assert "oldweb:1.0" in body
+
+    def test_tier2_image_names_only(self):
+        from backend.jobs.notifications import _build_eol_body
+        from backend.jobs.notifications import _build_eol_body as builder
+
+        # Build tier 1 to get its length, then force tier 2
+        tier1_body, _ = builder(self._ENTRIES)
+        body, tier = _build_eol_body(self._ENTRIES, max_len=len(tier1_body) - 1)
+        assert tier == 2
+        assert "myapp:2.0" in body
+        assert "oldweb:1.0" in body
+        # No distro detail in tier 2
+        assert "debian" not in body
+        assert "myapp-1" not in body
+
+    def test_tier3_count_only(self):
+        from backend.jobs.notifications import _build_eol_body
+
+        # tier2 is "myapp:2.0, oldweb:1.0" (~22 chars); max_len=10 forces tier 3
+        body, tier = _build_eol_body(self._ENTRIES, max_len=10)
+        assert tier == 3
+        assert "2" in body

@@ -216,14 +216,13 @@
     {
       key: "notify_all_new",
       label: "All New",
-      description:
-        "Any vulnerabilities newly introduced since the previous scan (all severities)",
+      description: "Any vulnerabilities new since a container's previous scan",
     },
     {
       key: "notify_digest",
       label: "Daily Digest",
       description:
-        "Scheduled daily summary of all containers and vulnerability counts",
+        "Scheduled daily summary of all containers, vulnerability counts, and available image updates",
     },
     {
       key: "notify_eol",
@@ -314,13 +313,6 @@
                   <p><strong>Email:</strong> mailto://user:pass@gmail.com</p>
                   <p><strong>Gotify:</strong> gotify://host/token</p>
                   <p><strong>ntfy:</strong> ntfy://topic</p>
-                  <p class="pt-2 font-sans text-muted-foreground">
-                    Tip: Append <code class="font-mono">?format=html</code> to
-                    enable rich formatting (bold, links) for services that
-                    support HTML, e.g.
-                    <code class="font-mono">pover://user@token?format=html</code
-                    >
-                  </p>
                   <p class="pt-1 font-sans">
                     <a
                       href="https://github.com/caronc/apprise/wiki"
@@ -402,6 +394,14 @@
                 class="text-xs bg-muted px-2 py-1 rounded font-mono break-all"
                 >{channel.apprise_url}</code
               >
+              {#if (channel.body_maxlen ?? 32768) < 32768}
+                <p class="text-xs text-muted-foreground mt-1">
+                  Max message size: {(
+                    channel.body_maxlen ?? 32768
+                  ).toLocaleString()} characters — large notifications will be condensed
+                  to fit.
+                </p>
+              {/if}
             </div>
 
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

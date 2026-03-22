@@ -176,6 +176,7 @@ def _channel_dict(channel: NotificationChannel) -> dict:
         "id": channel.id,
         "name": channel.name,
         "apprise_url": channel.apprise_url,
+        "body_maxlen": notifier.get_body_maxlen(channel.apprise_url),
         "enabled": channel.enabled,
         "notify_urgent": channel.notify_urgent,
         "notify_kev": channel.notify_kev,
