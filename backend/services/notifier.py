@@ -5,6 +5,21 @@ import apprise
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_BODY_MAXLEN = 32768  # Matches Apprise NotifyBase default
+
+
+def get_body_maxlen(url: str) -> int:
+    """Return the minimum body_maxlen across all plugins loaded from url.
+
+    Reads the advertised limit directly from the Apprise plugin without
+    making any network requests. Falls back to _DEFAULT_BODY_MAXLEN if
+    the URL is invalid or the plugin exposes no limit.
+    """
+    ap = apprise.Apprise()
+    if not ap.add(url):
+        return _DEFAULT_BODY_MAXLEN
+    return min((plugin.body_maxlen for plugin in ap), default=_DEFAULT_BODY_MAXLEN)
+
 
 def validate_url(apprise_url: str) -> bool:
     """Check whether *apprise_url* is recognised by Apprise.
