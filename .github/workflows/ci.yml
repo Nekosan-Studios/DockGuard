@@ -18,6 +18,18 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ── Job 0: Secret scanning ───────────────────────────────────────────
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so trufflehog can diff all commits
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
   # ── Job 1: Run tests (PRs and optional manual dispatch) ─────────────
   test:
     if: github.event_name == 'pull_request'
