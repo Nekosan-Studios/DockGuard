@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
@@ -201,10 +202,9 @@
         <!-- Added vulns -->
         {#if diff.added.length > 0}
           {@const groupedAdded = groupByVulnId(diff.added)}
-          <div class="rounded-md border">
-            <button
+          <Collapsible.Root bind:open={addedExpanded} class="rounded-md border">
+            <Collapsible.Trigger
               class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40 transition-colors"
-              onclick={() => (addedExpanded = !addedExpanded)}
             >
               <ChevronRight
                 class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {addedExpanded
@@ -231,8 +231,8 @@
                   {/if}
                 {/each}
               </div>
-            </button>
-            {#if addedExpanded}
+            </Collapsible.Trigger>
+            <Collapsible.Content>
               <div class="border-t px-3 pb-3 pt-2 space-y-0.5">
                 {#each groupedAdded.slice(0, 50) as v (v.vuln_id)}
                   <div class="flex items-center gap-2 text-xs">
@@ -321,17 +321,19 @@
                   </p>
                 {/if}
               </div>
-            {/if}
-          </div>
+            </Collapsible.Content>
+          </Collapsible.Root>
         {/if}
 
         <!-- Removed vulns -->
         {#if diff.removed.length > 0}
           {@const groupedRemoved = groupByVulnId(diff.removed)}
-          <div class="rounded-md border">
-            <button
+          <Collapsible.Root
+            bind:open={removedExpanded}
+            class="rounded-md border"
+          >
+            <Collapsible.Trigger
               class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40 transition-colors"
-              onclick={() => (removedExpanded = !removedExpanded)}
             >
               <ChevronRight
                 class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {removedExpanded
@@ -358,8 +360,8 @@
                   {/if}
                 {/each}
               </div>
-            </button>
-            {#if removedExpanded}
+            </Collapsible.Trigger>
+            <Collapsible.Content>
               <div class="border-t px-3 pb-3 pt-2 space-y-0.5">
                 {#each groupedRemoved.slice(0, 50) as v (v.vuln_id)}
                   <div
@@ -448,8 +450,8 @@
                   </p>
                 {/if}
               </div>
-            {/if}
-          </div>
+            </Collapsible.Content>
+          </Collapsible.Root>
         {/if}
       {/if}
     </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { PageData } from "./$types";
+  import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
@@ -168,18 +169,14 @@
 
   <!-- API error banner -->
   {#if data.apiError}
-    <div
-      class="rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10 text-red-800 dark:text-red-300 flex items-start gap-4"
-    >
-      <TriangleAlert class="mt-0.5 h-5 w-5 shrink-0" />
-      <div class="flex flex-col gap-1 text-sm">
-        <span class="font-medium">Unexpected Error</span>
-        <span class="opacity-90"
-          >An unexpected error occurred while loading dashboard data. Please try
-          again shortly.</span
-        >
-      </div>
-    </div>
+    <Alert.Root variant="destructive">
+      <TriangleAlert />
+      <Alert.Title>Unexpected Error</Alert.Title>
+      <Alert.Description
+        >An unexpected error occurred while loading dashboard data. Please try
+        again shortly.</Alert.Description
+      >
+    </Alert.Root>
   {/if}
 
   <!-- Status bar -->

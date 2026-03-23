@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -176,23 +177,15 @@
   >
     <div class="max-h-[85vh] overflow-y-auto p-6 pr-5">
       {#if enriched !== null && enriched.source === "ghsa" && enriched.data.withdrawn_at}
-        <div
-          class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20"
-        >
-          <div class="flex items-center gap-2">
-            <AlertTriangle
-              class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
-            />
-            <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
-              Advisory Withdrawn
-            </p>
-          </div>
-          <p class="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
+        <Alert.Root variant="caution" class="mb-4">
+          <AlertTriangle />
+          <Alert.Title>Advisory Withdrawn</Alert.Title>
+          <Alert.Description>
             This advisory was retracted on {formatShortDate(
               enriched.data.withdrawn_at
             )} and may represent a false positive.
-          </p>
-        </div>
+          </Alert.Description>
+        </Alert.Root>
       {/if}
       <Dialog.Header>
         <div class="flex flex-wrap items-center gap-2">

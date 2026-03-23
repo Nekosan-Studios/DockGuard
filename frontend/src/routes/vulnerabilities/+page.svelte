@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from "./$types";
+  import * as Alert from "$lib/components/ui/alert/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
@@ -249,21 +250,17 @@
   </div>
 
   {#if data.eol_images && data.eol_images.length > 0}
-    <div
-      class="rounded-md border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/50 dark:bg-orange-900/10 text-orange-800 dark:text-orange-300 flex items-start gap-4"
-    >
-      <ShieldAlert class="mt-0.5 h-5 w-5 shrink-0" />
-      <div class="flex flex-col gap-1 text-sm">
-        <span class="font-medium">End-of-Life Systems Detected</span>
-        <span class="opacity-90">
-          One or more running containers are using an end-of-life operating
-          system: {data.eol_images
-            .map((e) => e.container_name + (e.distro ? ` (${e.distro})` : ""))
-            .join(", ")}. Vulnerability data for these systems may be
-          incomplete, outdated, or inaccurate.
-        </span>
-      </div>
-    </div>
+    <Alert.Root variant="warning">
+      <ShieldAlert />
+      <Alert.Title>End-of-Life Systems Detected</Alert.Title>
+      <Alert.Description>
+        One or more running containers are using an end-of-life operating
+        system: {data.eol_images
+          .map((e) => e.container_name + (e.distro ? ` (${e.distro})` : ""))
+          .join(", ")}. Vulnerability data for these systems may be incomplete,
+        outdated, or inaccurate.
+      </Alert.Description>
+    </Alert.Root>
   {/if}
 
   <Card.Root>
@@ -345,18 +342,14 @@
     </Card.Header>
     <Card.Content class="p-0 sm:p-6 sm:pt-0">
       {#if data.apiError}
-        <div
-          class="rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/10 text-red-800 dark:text-red-300 flex items-start gap-4 mb-4"
-        >
-          <ShieldAlert class="mt-0.5 h-5 w-5 shrink-0" />
-          <div class="flex flex-col gap-1 text-sm">
-            <span class="font-medium">Unexpected Error</span>
-            <span class="opacity-90">
-              An unexpected error occurred while loading vulnerability data.
-              Please try again shortly.
-            </span>
-          </div>
-        </div>
+        <Alert.Root variant="destructive" class="mb-4">
+          <ShieldAlert />
+          <Alert.Title>Unexpected Error</Alert.Title>
+          <Alert.Description
+            >An unexpected error occurred while loading vulnerability data.
+            Please try again shortly.</Alert.Description
+          >
+        </Alert.Root>
       {:else if rows.length === 0 && !loadingMore}
         <div
           class="flex flex-col items-center justify-center gap-2 py-8 text-center rounded-md border border-dashed border-muted-foreground/30 mx-6 mb-6"
