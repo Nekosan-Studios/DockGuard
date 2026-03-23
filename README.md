@@ -42,7 +42,7 @@ DockGuard is a free, self-hosted security scanner. It watches your running Docke
 
 - **Detect EOL Base Images** - Alerts you when a container image is running an End-of-Life Base OS image that may no longer be receiving security patches.
 
-- **New version detection** - Checks to see if a new version of your container is available. Pre-scans the new version for vulnerability changes without affecting your Docker installation.
+- **New version detection** - Let's you know when a new version of any of your containers is available. Pre-scans the new version for vulnerability changes without affecting your Docker installation.
 
 - **Review vulnerabilities before installing new apps** - Preview scan let's you provide a docker compose file or a list of images, and Dockguard will scan those images and report on vulnerabilities without installing the app into your local Docker environment.
 
