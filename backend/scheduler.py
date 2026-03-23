@@ -205,6 +205,10 @@ class ContainerScheduler:
 
         Reconciles container state on each connect/reconnect, then streams events.
         Reconnects automatically after Docker daemon restarts.
+
+        The blocking Docker event stream runs in a daemon thread so it never
+        prevents Python from exiting at test teardown or shutdown. Events are
+        forwarded to the asyncio coroutine via an asyncio.Queue.
         """
         RECONNECT_DELAY = 5
         stop_threading: threading.Event | None = None
@@ -223,15 +227,34 @@ class ContainerScheduler:
                 gen = watcher.stream_container_events(stop_threading)
                 loop = asyncio.get_running_loop()
                 _SENTINEL = object()
+                event_queue: asyncio.Queue = asyncio.Queue()
 
-                def _next() -> object:
+                def _stream_worker() -> None:
                     try:
-                        return next(gen)
-                    except StopIteration:
-                        return _SENTINEL
+                        for event in gen:
+                            try:
+                                loop.call_soon_threadsafe(event_queue.put_nowait, event)
+                            except RuntimeError:
+                                break  # event loop closed
+                            if stop_threading.is_set():
+                                break
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            loop.call_soon_threadsafe(event_queue.put_nowait, _SENTINEL)
+                        except RuntimeError:
+                            pass  # event loop already closed
+
+                # daemon=True: this thread will not block Python exit even if it
+                # is stuck waiting for the next Docker event.
+                threading.Thread(target=_stream_worker, daemon=True).start()
 
                 while not self._event_stop.is_set():
-                    event = await loop.run_in_executor(None, _next)
+                    try:
+                        event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
+                    except TimeoutError:
+                        continue
                     if event is _SENTINEL:
                         break  # Docker disconnected; outer loop will reconnect
                     logger.debug("Docker event: container start — triggering immediate scan check")
