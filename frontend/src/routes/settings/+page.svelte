@@ -118,8 +118,8 @@
     { label: string; desc: string; group: string }
   > = {
     SCAN_INTERVAL_SECONDS: {
-      label: "Container Check Interval",
-      desc: "How often (in seconds) to check for new or updated running containers and for newer versions available on their registries.",
+      label: "Registry Update Check Interval",
+      desc: "How often (in seconds) to check running images against their registries for newer versions.",
       group: "Scanning",
     },
     MAX_CONCURRENT_SCANS: {

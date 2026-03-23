@@ -21,7 +21,7 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
     with Session(db.engine) as session:
         task = SystemTask(
             task_type="scheduled_registry_check",
-            task_name="Check Registry for Image Updates",
+            task_name="Check for Registry Updates",
             status="running",
             created_at=now,
             started_at=now,
@@ -61,22 +61,34 @@ async def check_registry_updates(db: Database, scan_semaphore: asyncio.Semaphore
                     continue
                 images[name] = running_manifest_digest
 
-        checked = 0
-        updates_found = 0
-
+        # Build a list of (image_name, registry_ref, running_manifest_digest) so
+        # all registry HEAD requests can be dispatched in parallel below.
+        # Append :latest only for untagged refs. Use the same logic as
+        # _parse_image_ref: find the last colon and check that nothing
+        # after it looks like a port (i.e. no "/" follows it).
+        image_list: list[tuple[str, str, str]] = []
         for image_name, running_manifest_digest in images.items():
-            # Untagged refs (e.g. "jgraph/drawio") are normalized to ":latest"
-            # for the registry lookup only.  The DB key (image_name) stays as
-            # the original untagged string so all downstream lookups continue
-            # to match Docker's Config.Image value without further normalization.
-            # Append :latest only for untagged refs. Use the same logic as
-            # _parse_image_ref: find the last colon and check that nothing
-            # after it looks like a port (i.e. no "/" follows it).
             last_colon = image_name.rfind(":")
             has_tag = last_colon != -1 and "/" not in image_name[last_colon + 1 :]
             registry_ref = image_name if has_tag else f"{image_name}:latest"
-            registry_manifest_digest = await asyncio.to_thread(get_registry_digest, registry_ref)
+            image_list.append((image_name, registry_ref, running_manifest_digest))
 
+        # Fetch all registry digests concurrently — this is the I/O bottleneck
+        # (one blocking HTTP HEAD per image) that previously ran serially.
+        # Cap concurrency to avoid bursting too many simultaneous connections at
+        # the registry; 10 in-flight requests is plenty for any homelab scale.
+        _registry_sem = asyncio.Semaphore(10)
+
+        async def _fetch(ref: str) -> str | None:
+            async with _registry_sem:
+                return await asyncio.to_thread(get_registry_digest, ref)
+
+        registry_digests = await asyncio.gather(*[_fetch(registry_ref) for _, registry_ref, _ in image_list])
+
+        checked = 0
+        updates_found = 0
+
+        for (image_name, _, running_manifest_digest), registry_manifest_digest in zip(image_list, registry_digests):
             with Session(db.engine) as session:
                 check = session.exec(select(ImageUpdateCheck).where(ImageUpdateCheck.image_name == image_name)).first()
 

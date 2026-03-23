@@ -125,8 +125,14 @@ Both the SvelteKit SSR server and the FastAPI backend run inside one Docker cont
 ### SQLite by default
 SQLite is the only supported database. It requires zero configuration, stores data in a single file that's easy to back up, and is more than sufficient for single-host home lab workloads. The volume mount in the compose file (`./data:/app/data`) handles persistence across container restarts.
 
-### Polling, not events
-The scheduler polls the Docker API at a configurable interval rather than subscribing to Docker events. This is simpler to implement, easier to reason about, and sufficient for the target use case (home lab containers don't change frequently). The tradeoff is up to one poll interval of latency before a new container is detected.
+### Event-driven container detection with reconciliation
+New container detection is event-driven: a persistent asyncio task (`_run_event_listener` in `scheduler.py`) subscribes to the Docker event stream and triggers `check_running_containers` immediately on each `container start` event, giving near-instant scan triggering (<1s vs the previous 60s poll interval).
+
+State is reconciled on each connect and reconnect — containers started before the app launched or during a Docker daemon restart are detected as soon as the event stream comes up. If Docker is unavailable at startup the listener retries every 5 seconds.
+
+`stop`/`die` events are intentionally not handled: the `/containers/running` and `/dashboard/summary` API endpoints query the Docker socket directly on each request (a sub-millisecond local call), so running container state is always current without any caching layer.
+
+Registry update checks (`check_registry_updates`) still run on the periodic APScheduler interval — they query remote registries rather than the local Docker daemon, so event-driven triggering does not apply.
 
 ### Grype as a subprocess
 Grype is invoked as a subprocess rather than via a library. This keeps the Python codebase simple, makes it easy to upgrade Grype independently of the Python dependencies, and allows Grype to manage its own database lifecycle. The tradeoff is process spawn overhead per scan.

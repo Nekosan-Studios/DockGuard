@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlmodel import Session, select
 
@@ -451,7 +451,7 @@ def test_cleanup_stray_tasks_sets_error_message(test_db):
 
 
 def test_update_job_intervals_reschedules_scan_job(test_db):
-    """Changing SCAN_INTERVAL_SECONDS reschedules the scan_for_container_changes job."""
+    """Changing SCAN_INTERVAL_SECONDS reschedules the check_registry_updates job."""
     from backend.config import ConfigManager
 
     sched = ContainerScheduler(test_db)
@@ -497,3 +497,85 @@ def test_update_job_intervals_reschedules_digest_job(test_db):
     sched.update_job_intervals()
 
     assert sched.digest_hour == new_hour
+
+
+# ---------------------------------------------------------------------------
+# _run_event_listener
+# ---------------------------------------------------------------------------
+
+
+@patch("backend.scheduler.asyncio.sleep", new_callable=AsyncMock)
+@patch("backend.scheduler.DockerWatcher")
+@patch("backend.scheduler.check_running_containers", new_callable=AsyncMock)
+def test_event_listener_reconciles_and_handles_start_event(mock_check, mock_watcher_cls, mock_sleep, test_db):
+    """Listener reconciles state on connect, then triggers check on each start event."""
+    sched = ContainerScheduler(test_db)
+
+    mock_watcher = MagicMock()
+    mock_watcher.client = MagicMock()
+    mock_watcher_cls.return_value = mock_watcher
+
+    call_count = 0
+
+    async def _check(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            sched._event_stop.set()
+
+    mock_check.side_effect = _check
+    # Stream yields one start event then ends
+    mock_watcher.stream_container_events.return_value = iter([{"Action": "start"}])
+
+    asyncio.run(sched._run_event_listener())
+
+    assert mock_check.call_count == 2  # reconciliation + event
+
+
+@patch("backend.scheduler.asyncio.sleep", new_callable=AsyncMock)
+@patch("backend.scheduler.DockerWatcher")
+@patch("backend.scheduler.check_running_containers", new_callable=AsyncMock)
+def test_event_listener_reconciles_on_reconnect(mock_check, mock_watcher_cls, mock_sleep, test_db):
+    """After a disconnect, listener reconnects and reconciles state again."""
+    sched = ContainerScheduler(test_db)
+
+    mock_watcher = MagicMock()
+    mock_watcher.client = MagicMock()
+    mock_watcher_cls.return_value = mock_watcher
+
+    call_count = 0
+
+    async def _check(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            sched._event_stop.set()
+
+    mock_check.side_effect = _check
+    # Empty stream — triggers immediate disconnect and reconnect
+    mock_watcher.stream_container_events.return_value = iter([])
+
+    asyncio.run(sched._run_event_listener())
+
+    assert mock_check.call_count == 2  # reconciliation on first connect + reconciliation on reconnect
+
+
+@patch("backend.scheduler.asyncio.sleep", new_callable=AsyncMock)
+@patch("backend.scheduler.DockerWatcher")
+@patch("backend.scheduler.check_running_containers", new_callable=AsyncMock)
+def test_event_listener_skips_check_when_docker_unavailable(mock_check, mock_watcher_cls, mock_sleep, test_db):
+    """When Docker is unavailable, listener sleeps and retries without calling check."""
+    sched = ContainerScheduler(test_db)
+
+    mock_watcher = MagicMock()
+    mock_watcher.client = None  # Docker not available
+    mock_watcher_cls.return_value = mock_watcher
+
+    async def _sleep(seconds):
+        sched._event_stop.set()  # Stop after first retry sleep
+
+    mock_sleep.side_effect = _sleep
+
+    asyncio.run(sched._run_event_listener())
+
+    mock_check.assert_not_called()
