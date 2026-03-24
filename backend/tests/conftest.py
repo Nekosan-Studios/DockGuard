@@ -104,7 +104,7 @@ def api_client(test_db):
                                             mock_inst.update_job_intervals.return_value = None
                                             mock_inst.get_jobs.return_value = [
                                                 MagicMock(
-                                                    id="scan_for_container_changes", name="Scan for Container Changes"
+                                                    id="check_registry_updates", name="Check for Registry Updates"
                                                 ),
                                                 MagicMock(id="check_db_update", name="Check for grype DB updates"),
                                             ]

@@ -55,5 +55,5 @@ def test_scheduler_job_registered(integration_client):
     assert sched_module._active_scheduler is not None, "_active_scheduler was never set"
     jobs = sched_module._active_scheduler.get_jobs()
     job_ids = [j.id for j in jobs]
-    assert "scan_for_container_changes" in job_ids, f"Expected job 'scan_for_container_changes', found: {job_ids}"
+    assert "check_registry_updates" in job_ids, f"Expected job 'check_registry_updates', found: {job_ids}"
     assert "check_db_update" in job_ids, f"Expected job 'check_db_update', found: {job_ids}"

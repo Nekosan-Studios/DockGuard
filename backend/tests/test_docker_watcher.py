@@ -1,3 +1,4 @@
+import threading
 from unittest.mock import MagicMock, patch
 
 import docker
@@ -265,3 +266,64 @@ def test_get_manifest_digest_returns_none_when_no_client(mock_from_env):
     watcher = DockerWatcher()
     watcher.client = None
     assert watcher.get_manifest_digest("nginx:latest") is None
+
+
+# ---------------------------------------------------------------------------
+# stream_container_events
+# ---------------------------------------------------------------------------
+
+
+@patch("docker.from_env")
+def test_stream_container_events_yields_start_events(mock_from_env):
+    event = {"Action": "start", "Type": "container"}
+    mock_client = MagicMock()
+    mock_client.events.return_value = iter([event])
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    stop_event = threading.Event()
+    events = list(watcher.stream_container_events(stop_event))
+
+    assert events == [event]
+    mock_client.events.assert_called_once_with(decode=True, filters={"type": "container", "event": "start"})
+
+
+@patch("docker.from_env")
+def test_stream_container_events_stops_on_stop_event(mock_from_env):
+    stop_event = threading.Event()
+    stop_event.set()  # Set before iteration — each event is checked before yielding
+
+    mock_client = MagicMock()
+    mock_client.events.return_value = iter([{"Action": "start"}, {"Action": "start"}])
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    events = list(watcher.stream_container_events(stop_event))
+
+    assert events == []
+
+
+@patch("docker.from_env")
+def test_stream_container_events_no_client(mock_from_env):
+    mock_from_env.return_value = MagicMock()
+
+    watcher = DockerWatcher()
+    watcher.client = None
+    stop_event = threading.Event()
+
+    events = list(watcher.stream_container_events(stop_event))
+    assert events == []
+
+
+@patch("docker.from_env")
+def test_stream_container_events_on_docker_exception(mock_from_env):
+    mock_client = MagicMock()
+    mock_client.events.side_effect = docker.errors.DockerException("connection reset")
+    mock_from_env.return_value = mock_client
+
+    watcher = DockerWatcher()
+    stop_event = threading.Event()
+
+    # Should not raise — exception is caught and logged as debug
+    events = list(watcher.stream_container_events(stop_event))
+    assert events == []

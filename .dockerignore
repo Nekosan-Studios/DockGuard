@@ -1,15 +1,59 @@
+# Version control
 .git
-.gitignore
+
+# Python / dev tooling
 .venv
-backend/tests/
-data/
+.ruff_cache
+.pytest_cache
 **/__pycache__
 *.pyc
 *.pyo
+htmlcov/
+*.db
+
+# Environment & secrets
 .env
 .env.*
+
+# Editor / OS
 .vscode
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+
+# CI / project metadata
+.github
 .claude
+.agents
+
+# Documentation (not needed in image)
 README.md
+ARCHITECTURE.md
+CONTRIBUTING.md
+DEVELOPING.md
+LICENSE.md
+AGENTS.md
+CLAUDE.md
+docs/
+
+# VEX / security metadata
+vex/
+
+# Dev scripts
+dev.sh
+
+# Docker Compose (not needed inside image)
+docker-compose.yml
+
+# Backend tests
+backend/tests/
+
+# Runtime data
+data/
+
+# Frontend artifacts (rebuilt in Stage 1)
 frontend/node_modules/
 frontend/.svelte-kit/
+frontend/build/
+frontend/coverage/

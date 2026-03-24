@@ -75,7 +75,7 @@ describe("PriorityCell", () => {
     const trigger = container.querySelector("button");
     if (trigger) fireEvent.pointerEnter(trigger);
     // Tooltip opens but no vector labels
-    await screen.findByText(/Urgent/i);
+    await screen.findAllByText(/Urgent/i);
     expect(screen.queryByText("Attack Vector")).not.toBeInTheDocument();
   });
 
@@ -86,7 +86,7 @@ describe("PriorityCell", () => {
     });
     const trigger = container.querySelector("button");
     if (trigger) fireEvent.pointerEnter(trigger);
-    await screen.findByText(/Urgent/i);
+    await screen.findAllByText(/Urgent/i);
     expect(screen.queryByText("Attack Vector")).not.toBeInTheDocument();
   });
 });

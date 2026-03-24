@@ -13,7 +13,7 @@
   bind:ref
   data-slot="menubar"
   class={cn(
-    "bg-background flex h-9 items-center gap-1 rounded-md border p-1 shadow-xs",
+    "h-8 gap-0.5 rounded-lg border p-[3px] flex items-center",
     className
   )}
   {...restProps}

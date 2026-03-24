@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+from collections.abc import Generator
 
 import docker
 
@@ -125,6 +127,22 @@ class DockerWatcher:
             )
 
         return containers
+
+    def stream_container_events(self, stop_event: threading.Event) -> Generator[dict]:
+        """Blocking generator yielding Docker container start events.
+
+        Returns when stop_event is set or the Docker event stream ends (e.g. daemon restart).
+        Must be called from a thread executor since it blocks between events.
+        """
+        if not self.client:
+            return
+        try:
+            for event in self.client.events(decode=True, filters={"type": "container", "event": "start"}):
+                if stop_event.is_set():
+                    return
+                yield event
+        except docker.errors.DockerException as e:
+            logger.debug("Docker event stream ended: %s", e)
 
 
 if __name__ == "__main__":

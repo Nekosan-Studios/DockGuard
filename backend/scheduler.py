@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import threading
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -9,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlmodel import Session, select
 
+from backend.docker_watcher import DockerWatcher
 from backend.jobs.containers import check_running_containers
 from backend.jobs.grype_db import check_db_update
 from backend.jobs.maintenance import purge_old_data
@@ -82,17 +84,18 @@ class ContainerScheduler:
         self.digest_timezone = _get_digest_timezone()
         self._scan_semaphore = asyncio.Semaphore(self.max_concurrent_scans)
         self._scheduler = AsyncIOScheduler()
+        self._event_listener_task: asyncio.Task | None = None
+        self._event_stop = asyncio.Event()
         self._bootstrap_seen_digests()
         self._cleanup_stray_tasks()
 
         self._scheduler.add_job(
-            self._run_scan_for_container_changes,
+            self._run_check_registry_updates,
             IntervalTrigger(seconds=self.scan_interval),
-            id="scan_for_container_changes",
-            name="Scan for Container Changes",
+            id="check_registry_updates",
+            name="Check for Registry Updates",
             max_instances=1,
             coalesce=True,
-            next_run_time=datetime.now(),
             replace_existing=True,
         )
         self._scheduler.add_job(
@@ -123,8 +126,13 @@ class ContainerScheduler:
 
     def start(self) -> None:
         self._scheduler.start()
+        self._event_listener_task = asyncio.get_event_loop().create_task(self._run_event_listener())
+        logger.info("Scheduler: Docker event listener started")
 
     def shutdown(self) -> None:
+        self._event_stop.set()
+        if self._event_listener_task:
+            self._event_listener_task.cancel()
         self._scheduler.shutdown()
 
     def update_job_intervals(self) -> None:
@@ -137,9 +145,9 @@ class ContainerScheduler:
             if scan_interval != self.scan_interval:
                 self.scan_interval = scan_interval
                 self._scheduler.reschedule_job(
-                    "scan_for_container_changes", trigger=IntervalTrigger(seconds=self.scan_interval)
+                    "check_registry_updates", trigger=IntervalTrigger(seconds=self.scan_interval)
                 )
-                logger.info("Scheduler updated scan_for_container_changes interval to %ds", self.scan_interval)
+                logger.info("Scheduler updated check_registry_updates interval to %ds", self.scan_interval)
 
             if db_check_interval != self.db_check_interval:
                 self.db_check_interval = db_check_interval
@@ -189,11 +197,79 @@ class ContainerScheduler:
                 session.commit()
                 logger.info("Scheduler: marked %d stray task(s) as failed", len(stray_tasks))
 
-    async def _run_scan_for_container_changes(self) -> None:
-        await asyncio.gather(
-            check_running_containers(self.db, self._seen_digests, self._scan_semaphore),
-            check_registry_updates(self.db, self._scan_semaphore),
-        )
+    async def _run_check_registry_updates(self) -> None:
+        await check_registry_updates(self.db, self._scan_semaphore)
+
+    async def _run_event_listener(self) -> None:
+        """Persistent asyncio task that listens for Docker container start events.
+
+        Reconciles container state on each connect/reconnect, then streams events.
+        Reconnects automatically after Docker daemon restarts.
+
+        The blocking Docker event stream runs in a daemon thread so it never
+        prevents Python from exiting at test teardown or shutdown. Events are
+        forwarded to the asyncio coroutine via an asyncio.Queue.
+        """
+        RECONNECT_DELAY = 5
+        stop_threading: threading.Event | None = None
+        while not self._event_stop.is_set():
+            try:
+                watcher = DockerWatcher()
+                if not watcher.client:
+                    await asyncio.sleep(RECONNECT_DELAY)
+                    continue
+
+                # Reconcile on connect/reconnect: catches containers started during
+                # any gap (initial startup or while disconnected after daemon restart).
+                await check_running_containers(self.db, self._seen_digests, self._scan_semaphore)
+
+                stop_threading = threading.Event()
+                gen = watcher.stream_container_events(stop_threading)
+                loop = asyncio.get_running_loop()
+                _SENTINEL = object()
+                event_queue: asyncio.Queue = asyncio.Queue()
+
+                def _stream_worker() -> None:
+                    try:
+                        for event in gen:
+                            try:
+                                loop.call_soon_threadsafe(event_queue.put_nowait, event)
+                            except RuntimeError:
+                                break  # event loop closed
+                            if stop_threading.is_set():
+                                break
+                    except Exception:
+                        logger.exception("Docker event stream worker error; sentinel will notify async side")
+                    finally:
+                        try:
+                            loop.call_soon_threadsafe(event_queue.put_nowait, _SENTINEL)
+                        except RuntimeError:
+                            pass  # event loop already closed
+
+                # daemon=True: this thread will not block Python exit even if it
+                # is stuck waiting for the next Docker event.
+                threading.Thread(target=_stream_worker, daemon=True).start()
+
+                while not self._event_stop.is_set():
+                    try:
+                        event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
+                    except TimeoutError:
+                        continue
+                    if event is _SENTINEL:
+                        break  # Docker disconnected; outer loop will reconnect
+                    logger.debug("Docker event: container start — triggering immediate scan check")
+                    await check_running_containers(self.db, self._seen_digests, self._scan_semaphore)
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Event listener error; reconnecting in %ds", RECONNECT_DELAY)
+            finally:
+                if stop_threading is not None:
+                    stop_threading.set()
+
+            if not self._event_stop.is_set():
+                await asyncio.sleep(RECONNECT_DELAY)
 
     async def _run_check_db_update(self) -> None:
         await check_db_update(self.db, self._seen_digests)

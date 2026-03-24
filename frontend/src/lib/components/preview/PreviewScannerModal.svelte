@@ -1,6 +1,10 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
+  import { Textarea } from "$lib/components/ui/textarea/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import ContainerRow from "$lib/components/vuln/ContainerRow.svelte";
   import type { ContainerRecord } from "$lib/components/vuln/ContainerRow.svelte";
@@ -241,6 +245,8 @@
     }
   }
 
+  let fileInputEl = $state<HTMLInputElement | null>(null);
+
   let allDone = $derived(
     previewItems.length > 0 &&
       previewItems.every(
@@ -279,33 +285,30 @@
     >
       {#if step === "input"}
         <div class="flex flex-col gap-4 mt-2">
-          <textarea
+          <Textarea
             bind:value={inputText}
-            class="min-h-[180px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+            class="min-h-[180px] font-mono resize-none"
             placeholder="nginx:latest&#10;redis:7-alpine&#10;&#10;— or paste a docker-compose.yml —"
-          ></textarea>
+          />
 
           {#if parseError}
-            <div
-              class="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-900/10 text-red-800 dark:text-red-300 text-sm flex items-center gap-2"
-            >
-              <TriangleAlert class="h-4 w-4 shrink-0" />
-              {parseError}
-            </div>
+            <Alert.Root variant="destructive">
+              <TriangleAlert />
+              <Alert.Description>{parseError}</Alert.Description>
+            </Alert.Root>
           {/if}
 
           <div class="flex items-center justify-between gap-3">
-            <label
-              class="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              <input
-                type="file"
-                accept=".yml,.yaml"
-                class="hidden"
-                onchange={handleFileChange}
-              />
+            <Button variant="outline" onclick={() => fileInputEl?.click()}>
               Upload compose file…
-            </label>
+            </Button>
+            <input
+              bind:this={fileInputEl}
+              type="file"
+              accept=".yml,.yaml"
+              class="hidden"
+              onchange={handleFileChange}
+            />
 
             <div class="flex gap-2">
               <Dialog.Close
@@ -313,10 +316,9 @@
               >
                 Cancel
               </Dialog.Close>
-              <button
+              <Button
                 onclick={handleContinue}
                 disabled={parseLoading || !inputText.trim()}
-                class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {#if parseLoading}
                   <Loader2 class="h-4 w-4 animate-spin" />
@@ -324,7 +326,7 @@
                 {:else}
                   Continue
                 {/if}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -336,13 +338,13 @@
               Remove any you don't want to scan.
             </p>
             {#if parseErrors.length > 0}
-              <div
-                class="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/10 text-amber-800 dark:text-amber-300 text-xs"
-              >
-                {#each parseErrors as err (err)}
-                  <p>{err}</p>
-                {/each}
-              </div>
+              <Alert.Root variant="caution" class="mb-3 text-xs">
+                <Alert.Description>
+                  {#each parseErrors as err (err)}
+                    <p>{err}</p>
+                  {/each}
+                </Alert.Description>
+              </Alert.Root>
             {/if}
             <div class="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
               {#each parsedImages as img (img)}
@@ -371,34 +373,38 @@
                 </p>
               </div>
               <div class="flex items-center gap-2">
-                <button
+                <Button
+                  variant="outline"
+                  size="icon"
+                  class="h-7 w-7"
                   onclick={() =>
                     (maxConcurrent = Math.max(1, maxConcurrent - 1))}
                   disabled={maxConcurrent <= 1}
-                  class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background text-sm font-medium hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Decrease parallel scans"
                 >
                   −
-                </button>
+                </Button>
                 <span class="w-4 text-center text-sm font-mono"
                   >{maxConcurrent}</span
                 >
-                <button
+                <Button
+                  variant="outline"
+                  size="icon"
+                  class="h-7 w-7"
                   onclick={() =>
                     (maxConcurrent = Math.min(4, maxConcurrent + 1))}
                   disabled={maxConcurrent >= 4}
-                  class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input bg-background text-sm font-medium hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Increase parallel scans"
                 >
                   +
-                </button>
+                </Button>
               </div>
             </div>
             <label class="flex cursor-pointer items-start gap-2">
-              <input
-                type="checkbox"
-                bind:checked={skipEnrichments}
-                class="mt-0.5 shrink-0"
+              <Checkbox
+                class="mt-0.5"
+                checked={skipEnrichments}
+                onCheckedChange={(v) => (skipEnrichments = v === true)}
               />
               <div>
                 <p class="text-sm font-medium">Quick scan</p>
@@ -410,22 +416,18 @@
           </div>
 
           <div class="flex justify-between gap-2">
-            <button
-              onclick={() => (step = "input")}
-              class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
-            >
+            <Button variant="outline" onclick={() => (step = "input")}>
               Back
-            </button>
-            <button
+            </Button>
+            <Button
               onclick={startScans}
               disabled={parsedImages.length === 0 || submitting}
-              class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ScanLine class="h-4 w-4" />
               Scan {parsedImages.length} image{parsedImages.length !== 1
                 ? "s"
                 : ""}
-            </button>
+            </Button>
           </div>
         </div>
       {:else}
