@@ -311,10 +311,10 @@
             />
 
             <div class="flex gap-2">
-              <Dialog.Close
-                class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
-              >
-                Cancel
+              <Dialog.Close>
+                {#snippet child({ props })}
+                  <Button variant="outline" {...props}>Cancel</Button>
+                {/snippet}
               </Dialog.Close>
               <Button
                 onclick={handleContinue}
@@ -375,8 +375,7 @@
               <div class="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  size="icon"
-                  class="h-7 w-7"
+                  size="icon-sm"
                   onclick={() =>
                     (maxConcurrent = Math.max(1, maxConcurrent - 1))}
                   disabled={maxConcurrent <= 1}
@@ -389,8 +388,7 @@
                 >
                 <Button
                   variant="outline"
-                  size="icon"
-                  class="h-7 w-7"
+                  size="icon-sm"
                   onclick={() =>
                     (maxConcurrent = Math.min(4, maxConcurrent + 1))}
                   disabled={maxConcurrent >= 4}
@@ -553,10 +551,10 @@
           {/if}
 
           <div class="flex justify-end">
-            <Dialog.Close
-              class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
-            >
-              Close
+            <Dialog.Close>
+              {#snippet child({ props })}
+                <Button variant="outline" {...props}>Close</Button>
+              {/snippet}
             </Dialog.Close>
           </div>
         </div>

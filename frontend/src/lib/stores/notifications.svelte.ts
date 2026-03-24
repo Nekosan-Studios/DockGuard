@@ -10,6 +10,8 @@ export interface NotificationChannel {
   notify_eol: boolean;
   notify_scan_failure: boolean;
   body_maxlen?: number;
+  service_name?: string | null;
+  notify_format?: string | null;
   created_at: string;
   updated_at: string;
 }

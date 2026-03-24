@@ -13,9 +13,11 @@ function makeData(overrides = {}) {
 }
 
 describe("Tasks page", () => {
-  it("renders the page heading", () => {
+  it("renders the page description", () => {
     render(Page, { data: makeData() });
-    expect(screen.getByRole("heading", { name: "Tasks" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Background jobs, scan queue, and task history.")
+    ).toBeInTheDocument();
   });
 
   it("shows empty state when there are no tasks", () => {

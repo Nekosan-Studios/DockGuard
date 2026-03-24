@@ -160,13 +160,6 @@
 </script>
 
 <div class="container mx-auto py-6 space-y-6">
-  <div>
-    <h1 class="text-2xl font-bold tracking-tight">Dashboard</h1>
-    <p class="text-muted-foreground">
-      Overview of your Docker security posture.
-    </p>
-  </div>
-
   <!-- API error banner -->
   {#if data.apiError}
     <Alert.Root variant="destructive">

@@ -38,13 +38,6 @@ function makeData(overrides = {}) {
 }
 
 describe("Dashboard page", () => {
-  it("renders the page heading", () => {
-    render(Page, { data: makeData() });
-    expect(
-      screen.getByRole("heading", { name: "Dashboard" })
-    ).toBeInTheDocument();
-  });
-
   it("shows Docker as disconnected when docker_connected is false", () => {
     render(Page, { data: makeData() });
     expect(screen.getByText("Disconnected")).toBeInTheDocument();

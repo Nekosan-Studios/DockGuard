@@ -21,6 +21,22 @@ def get_body_maxlen(url: str) -> int:
     return min((plugin.body_maxlen for plugin in ap), default=_DEFAULT_BODY_MAXLEN)
 
 
+def get_service_info(url: str) -> tuple[str | None, str | None]:
+    """Return (service_name, notify_format) for the first plugin loaded from url.
+
+    Returns (None, None) if the URL is invalid or no plugin is loaded.
+    notify_format is the string value (e.g. 'text', 'html', 'markdown').
+    """
+    ap = apprise.Apprise()
+    if not ap.add(url):
+        return None, None
+    for plugin in ap:
+        fmt = plugin.notify_format
+        fmt_value = fmt.value if hasattr(fmt, "value") else str(fmt)
+        return plugin.service_name, fmt_value
+    return None, None
+
+
 def validate_url(apprise_url: str) -> bool:
     """Check whether *apprise_url* is recognised by Apprise.
 

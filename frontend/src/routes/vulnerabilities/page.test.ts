@@ -52,13 +52,6 @@ function makeData(overrides = {}) {
 }
 
 describe("Vulnerabilities page", () => {
-  it("renders the page heading", () => {
-    render(Page, { data: makeData() });
-    expect(
-      screen.getByRole("heading", { name: "Vulnerabilities" })
-    ).toBeInTheDocument();
-  });
-
   it("shows empty state when there are no vulnerabilities", () => {
     render(Page, { data: makeData() });
     expect(
