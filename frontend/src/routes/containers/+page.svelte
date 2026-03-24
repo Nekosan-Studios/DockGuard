@@ -174,15 +174,15 @@
             results.</Card.Description
           >
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={() => (previewScanOpen = true)}
+        >
+          <ScanLine class="h-4 w-4" />
+          Preview Scan
+        </Button>
         <div class="ml-auto flex items-center gap-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => (previewScanOpen = true)}
-          >
-            <ScanLine class="h-4 w-4" />
-            Preview Scan
-          </Button>
           {#if anyContainerHasVex}
             <div class="border-l border-border/50 pl-4 ml-2 my-1">
               <label

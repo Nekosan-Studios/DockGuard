@@ -40,6 +40,7 @@
   let skipEnrichments = $state(false);
   let maxConcurrent = $state(1);
   let submitting = $state(false);
+  let fatalError = $state<string | null>(null);
 
   function resetState() {
     step = "input";
@@ -48,6 +49,7 @@
     parseErrors = [];
     parseLoading = false;
     parseError = null;
+    fatalError = null;
     previewItems = [];
     skipEnrichments = false;
     maxConcurrent = 1;
@@ -181,20 +183,36 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      previewItems = (data.preview_items ?? []).map(
-        (item: { image_name: string; task_id: number }) => ({
-          task_id: item.task_id,
-          image_name: item.image_name,
-          status: "pending" as const,
-          error_message: null,
-          scan_data: null,
-          progress_lines: [] as string[],
-        })
-      );
+      const serverItems: { image_name: string; task_id: number }[] =
+        data.preview_items ?? [];
+      if (serverItems.length === 0) throw new Error("No scan tasks returned");
+
+      // Validate task_ids are unique before updating state to avoid each_key_duplicate
+      const ids = serverItems.map((i) => i.task_id);
+      const uniqueIds = new Set(ids);
+      if (uniqueIds.size !== ids.length) {
+        throw new Error("Server returned duplicate task IDs");
+      }
+
+      previewItems = serverItems.map((item) => ({
+        task_id: item.task_id,
+        image_name: item.image_name,
+        status: "pending" as const,
+        error_message: null,
+        scan_data: null,
+        progress_lines: [] as string[],
+      }));
       startPolling();
     } catch (e) {
-      step = "review";
-      parseError = `Failed to start scans: ${e instanceof Error ? e.message : String(e)}`;
+      const msg = e instanceof Error ? e.message : String(e);
+      // If we're already showing the scanning step, display an inline error
+      // there rather than jumping back to review with potentially stale state.
+      if (step === "scanning") {
+        fatalError = `An unexpected error occurred: ${msg}`;
+      } else {
+        step = "review";
+        parseError = `Failed to start scans: ${msg}`;
+      }
     } finally {
       submitting = false;
     }
@@ -454,10 +472,17 @@
             {/if}
           </div>
 
+          {#if fatalError}
+            <Alert.Root variant="destructive">
+              <TriangleAlert />
+              <Alert.Description>{fatalError}</Alert.Description>
+            </Alert.Root>
+          {/if}
+
           <!-- Pending/scanning/failed rows (non-table list) -->
           {#if pendingItems.length > 0}
             <div class="flex flex-col gap-1">
-              {#each pendingItems as item (item.task_id)}
+              {#each pendingItems as item (item.image_name)}
                 <div
                   class="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono"
                 >
@@ -494,7 +519,7 @@
                   </div>
                   {#if item.status === "scanning" && item.progress_lines.length > 0}
                     <div class="mt-1 flex flex-col gap-0.5">
-                      {#each item.progress_lines as line, i (line)}
+                      {#each item.progress_lines as line, i (i)}
                         <div class="flex items-center gap-1.5 text-xs">
                           {#if i < item.progress_lines.length - 1}
                             <CheckCircle2
@@ -535,7 +560,7 @@
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {#each completedItems as item (item.task_id)}
+                  {#each completedItems as item (item.image_name)}
                     {#if item.scan_data}
                       <ContainerRow
                         container={item.scan_data}
