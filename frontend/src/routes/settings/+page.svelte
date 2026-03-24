@@ -160,14 +160,11 @@
   });
 </script>
 
-<div class="container mx-auto py-6 max-w-5xl">
-  <div>
-    <h3 class="text-lg font-medium">Application Configuration</h3>
-    <p class="text-sm text-muted-foreground">
-      Manage how DockGuard behaves. Settings configured via `docker-compose.yml`
-      or environment variables cannot be modified here.
-    </p>
-  </div>
+<div class="container mx-auto py-6 space-y-6">
+  <p class="text-sm text-muted-foreground">
+    Manage how DockGuard behaves. Settings configured via `docker-compose.yml`
+    or environment variables cannot be modified here.
+  </p>
 
   {#if Object.keys(settings.data).length === 0}
     <div class="flex items-center justify-center p-12 text-muted-foreground">
@@ -261,10 +258,10 @@
       <div class="flex items-center gap-4">
         <Button type="submit" disabled={!hasChanges || isSaving}>
           {#if isSaving}
-            <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 class="animate-spin" />
             Saving...
           {:else}
-            <SaveIcon class="mr-2 h-4 w-4" />
+            <SaveIcon />
             Save Changes
           {/if}
         </Button>

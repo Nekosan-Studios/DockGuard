@@ -3,9 +3,13 @@
 Usage:
     uv run python -m backend.scripts.test_notifications URL [URL ...]
     uv run python -m backend.scripts.test_notifications URL --max-len 512
+    uv run python -m backend.scripts.test_notifications URL --base-url https://dockguard.example.com
 
 Pass --max-len to override the detected body_maxlen for all channels.
 This lets you simulate constrained services and verify which summary tier is chosen.
+
+Pass --base-url to include CVE deep links in vuln notification bodies.
+Without it, vuln bodies contain plain CVE IDs with no links.
 """
 
 import argparse
@@ -170,7 +174,7 @@ def _vuln_title(containers: dict, prefix: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def _send_all(urls: list[str], max_len_override: int | None) -> None:
+async def _send_all(urls: list[str], max_len_override: int | None, base_url: str) -> None:
     print(f"\nSending to {len(urls)} channel(s):")
     limits: list[int] = []
     for url in urls:
@@ -217,7 +221,7 @@ async def _send_all(urls: list[str], max_len_override: int | None) -> None:
                 continue
             base_title = _vuln_title(containers, prefix)
             effective_limit = max(0, limit - len(preamble))
-            vuln_body, tier = _build_vuln_body(containers, base_url="", max_len=effective_limit)
+            vuln_body, tier = _build_vuln_body(containers, base_url=base_url, max_len=effective_limit)
             title = base_title + (" [Summary]" if tier > 1 else "")
             full_body = preamble + vuln_body
             ok, err = await notifier.send([url], title, full_body, notify_type)
@@ -231,7 +235,7 @@ async def _send_all(urls: list[str], max_len_override: int | None) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Send one of each DockGuard notification type with canned data to real Apprise URLs.",
-        epilog="Example: uv run python -m backend.scripts.test_notifications pover://user@token --max-len 512",
+        epilog="Example: uv run python -m backend.scripts.test_notifications pover://user@token --base-url https://dockguard.example.com",
     )
     parser.add_argument("urls", nargs="+", metavar="URL", help="Apprise URL(s) to send to")
     parser.add_argument(
@@ -241,8 +245,14 @@ def main() -> None:
         metavar="N",
         help="Override body_maxlen for all channels (useful for testing summary tiers)",
     )
+    parser.add_argument(
+        "--base-url",
+        default="",
+        metavar="URL",
+        help="Base URL for CVE deep links in vuln notifications (e.g. https://dockguard.example.com)",
+    )
     args = parser.parse_args()
-    asyncio.run(_send_all(args.urls, args.max_len))
+    asyncio.run(_send_all(args.urls, args.max_len, args.base_url))
 
 
 if __name__ == "__main__":

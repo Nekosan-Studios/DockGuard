@@ -240,15 +240,6 @@
 </script>
 
 <div class="flex flex-col gap-6">
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">Vulnerabilities</h1>
-      <p class="text-muted-foreground">
-        Detailed view of vulnerabilities across running containers.
-      </p>
-    </div>
-  </div>
-
   {#if data.eol_images && data.eol_images.length > 0}
     <Alert.Root variant="warning">
       <ShieldAlert />

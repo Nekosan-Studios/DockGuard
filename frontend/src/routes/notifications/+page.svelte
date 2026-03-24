@@ -238,14 +238,11 @@
   ];
 </script>
 
-<div class="space-y-8">
-  <div>
-    <h3 class="text-lg font-medium">Notifications</h3>
-    <p class="text-sm text-muted-foreground">
-      Configure notification channels to receive alerts about vulnerabilities,
-      scan failures, and daily digests via 80+ services.
-    </p>
-  </div>
+<div class="container mx-auto py-6 space-y-6">
+  <p class="text-sm text-muted-foreground">
+    Configure notification channels to receive alerts about vulnerabilities,
+    scan failures, and daily digests via 80+ services.
+  </p>
 
   {#if loading}
     <div class="flex items-center justify-center p-12 text-muted-foreground">
@@ -262,7 +259,7 @@
           size="sm"
           onclick={() => (showAddForm = !showAddForm)}
         >
-          <Plus class="mr-1 h-4 w-4" />
+          <Plus />
           Add Channel
         </Button>
       </div>
@@ -335,12 +332,12 @@
             <div class="flex gap-2">
               <Button size="sm" disabled={creating} onclick={handleCreate}>
                 {#if creating}
-                  <Loader2 class="mr-1 h-4 w-4 animate-spin" />
+                  <Loader2 class="animate-spin" />
                 {/if}
                 Create
               </Button>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onclick={() => {
                   showAddForm = false;
@@ -396,10 +393,25 @@
               >
               {#if (channel.body_maxlen ?? 32768) < 32768}
                 <p class="text-xs text-muted-foreground mt-1">
-                  Max message size: {(
-                    channel.body_maxlen ?? 32768
-                  ).toLocaleString()} characters — large notifications will be condensed
-                  to fit.
+                  {channel.service_name ?? "This service"} has a max message size
+                  of {(channel.body_maxlen ?? 32768).toLocaleString()} characters
+                  — large notifications will be condensed to fit.
+                </p>
+              {/if}
+              {#if channel.notify_format}
+                <p class="text-xs text-muted-foreground mt-1">
+                  {#if channel.notify_format === "text"}
+                    {channel.service_name ?? "This service"} receives plain text —
+                    formatting and links will not be rendered.
+                  {:else if channel.notify_format === "markdown"}
+                    {channel.service_name ?? "This service"} receives Markdown — set
+                    <code class="bg-muted px-1 rounded">BASE_URL</code> in settings
+                    so notification links work correctly.
+                  {:else if channel.notify_format === "html"}
+                    {channel.service_name ?? "This service"} receives HTML — set
+                    <code class="bg-muted px-1 rounded">BASE_URL</code> in settings
+                    so notification links work correctly.
+                  {/if}
                 </p>
               {/if}
             </div>
@@ -435,9 +447,9 @@
                 onclick={() => handleTest(channel.id)}
               >
                 {#if testingId === channel.id}
-                  <Loader2 class="mr-1 h-3 w-3 animate-spin" />
+                  <Loader2 class="animate-spin" />
                 {:else}
-                  <Send class="mr-1 h-3 w-3" />
+                  <Send />
                 {/if}
                 Test
               </Button>
@@ -451,13 +463,12 @@
                 <AlertDialog.Trigger>
                   {#snippet child({ props })}
                     <Button
-                      variant="ghost"
+                      variant="destructive"
                       size="sm"
-                      class="text-destructive hover:text-destructive"
                       {...props}
                       onclick={() => (deleteConfirmId = channel.id)}
                     >
-                      <Trash2 class="mr-1 h-3 w-3" />
+                      <Trash2 />
                       Delete
                     </Button>
                   {/snippet}

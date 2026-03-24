@@ -117,12 +117,9 @@
 </script>
 
 <div class="flex flex-col gap-6">
-  <div>
-    <h1 class="text-2xl font-bold tracking-tight">Tasks</h1>
-    <p class="text-muted-foreground mt-1">
-      Background jobs, scan queue, and task history.
-    </p>
-  </div>
+  <p class="text-sm text-muted-foreground">
+    Background jobs, scan queue, and task history.
+  </p>
 
   <!-- API error banner -->
   {#if data.apiError}

@@ -14,11 +14,6 @@ beforeEach(() => {
 });
 
 describe("Settings page", () => {
-  it("renders the page heading", () => {
-    render(Page);
-    expect(screen.getByText("Application Configuration")).toBeInTheDocument();
-  });
-
   it("renders the page description", () => {
     render(Page);
     expect(

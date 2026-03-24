@@ -32,11 +32,9 @@ function makeData(overrides = {}) {
 }
 
 describe("Containers page", () => {
-  it("renders the page heading", () => {
+  it("renders the card title", () => {
     render(Page, { data: makeData() });
-    expect(
-      screen.getByRole("heading", { name: "Containers" })
-    ).toBeInTheDocument();
+    expect(screen.getByText("Running Containers")).toBeInTheDocument();
   });
 
   it("shows empty state when there are no containers", () => {

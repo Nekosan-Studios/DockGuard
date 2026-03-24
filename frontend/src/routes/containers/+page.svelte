@@ -164,19 +164,6 @@
 </script>
 
 <div class="container mx-auto py-6 space-y-6">
-  <div class="flex items-center gap-4">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">Containers</h1>
-      <p class="text-muted-foreground">
-        Running containers and their vulnerability status.
-      </p>
-    </div>
-    <Button variant="outline" onclick={() => (previewScanOpen = true)}>
-      <ScanLine class="h-4 w-4" />
-      Preview Scan
-    </Button>
-  </div>
-
   <Card.Root>
     <Card.Header>
       <div class="space-y-1.5 flex flex-row items-center gap-4">
@@ -187,30 +174,40 @@
             results.</Card.Description
           >
         </div>
-        {#if anyContainerHasVex}
-          <div class="border-l border-border/50 pl-4 ml-2 my-1">
-            <label
-              class="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap"
-            >
-              <Checkbox
-                checked={hideVexResolved}
-                onCheckedChange={(v) => {
-                  hideVexResolved = v === true;
-                }}
-              />
-              Hide VEX Resolved
-              <Tooltip.Root>
-                <Tooltip.Trigger class="cursor-default">
-                  <span class="text-muted-foreground/60 text-xs">ⓘ</span>
-                </Tooltip.Trigger>
-                <Tooltip.Content>
-                  Hide vulnerabilities where the supplier has declared them "not
-                  affected" or "fixed" via VEX attestations.
-                </Tooltip.Content>
-              </Tooltip.Root>
-            </label>
-          </div>
-        {/if}
+        <div class="ml-auto flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (previewScanOpen = true)}
+          >
+            <ScanLine class="h-4 w-4" />
+            Preview Scan
+          </Button>
+          {#if anyContainerHasVex}
+            <div class="border-l border-border/50 pl-4 ml-2 my-1">
+              <label
+                class="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap"
+              >
+                <Checkbox
+                  checked={hideVexResolved}
+                  onCheckedChange={(v) => {
+                    hideVexResolved = v === true;
+                  }}
+                />
+                Hide VEX Resolved
+                <Tooltip.Root>
+                  <Tooltip.Trigger class="cursor-default">
+                    <span class="text-muted-foreground/60 text-xs">ⓘ</span>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>
+                    Hide vulnerabilities where the supplier has declared them
+                    "not affected" or "fixed" via VEX attestations.
+                  </Tooltip.Content>
+                </Tooltip.Root>
+              </label>
+            </div>
+          {/if}
+        </div>
       </div>
     </Card.Header>
     <Card.Content>
