@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
-from ..api_helpers import _as_utc, _latest_vuln_scan_ids_for_images, _new_vuln_keys_for_scans, _priority_bucket, _severity_rank
+from ..api_helpers import (
+    _as_utc,
+    _latest_vuln_scan_ids_for_images,
+    _new_vuln_keys_for_scans,
+    _priority_bucket,
+    _severity_rank,
+)
 from ..database import db
 from ..docker_watcher import DockerWatcher
 from ..models import AppState, ImageUpdateCheck, Scan, ScanContainer, SystemTask, Vulnerability

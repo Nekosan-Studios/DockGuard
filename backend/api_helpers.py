@@ -1,7 +1,7 @@
 import json
 from collections import defaultdict
+from collections.abc import Collection
 from datetime import UTC, datetime
-from typing import Collection
 
 from fastapi import HTTPException
 from sqlmodel import Session, func, select

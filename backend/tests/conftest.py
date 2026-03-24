@@ -132,6 +132,8 @@ def seed_scan(
     vulns: list[dict],
     scanned_at: datetime | None = None,
     container_names: list[str] | None = None,
+    is_update_check: bool = False,
+    is_preview: bool = False,
 ) -> Scan:
     scan = Scan(
         scanned_at=scanned_at or datetime.now(UTC),
@@ -142,6 +144,8 @@ def seed_scan(
         db_built=datetime(2024, 1, 15, tzinfo=UTC),
         distro_name="debian",
         distro_version="12",
+        is_update_check=is_update_check,
+        is_preview=is_preview,
     )
     with Session(database.engine) as session:
         session.add(scan)
