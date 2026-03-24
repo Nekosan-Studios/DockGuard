@@ -239,7 +239,7 @@ class ContainerScheduler:
                             if stop_threading.is_set():
                                 break
                     except Exception:
-                        pass
+                        logger.exception("Docker event stream worker error; sentinel will notify async side")
                     finally:
                         try:
                             loop.call_soon_threadsafe(event_queue.put_nowait, _SENTINEL)
