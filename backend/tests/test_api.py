@@ -663,3 +663,86 @@ def test_get_vulnerabilities_across_running_no_scans_for_running_images(api_clie
 
     data = client.get("/vulnerabilities?report=all").json()
     assert data["total_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Regression: update_check and preview scans must not be selected as "latest"
+# ---------------------------------------------------------------------------
+
+
+def test_vulnerabilities_ignores_update_check_scan(api_client):
+    """update_check scans (of available image versions) must not override the
+    latest regular scan when computing the running-image vulnerability report.
+
+    Regression for: /vulnerabilities endpoint missing is_update_check filter,
+    causing CVEs from non-deployed image versions to appear as "new" findings.
+    """
+    client, test_db, (_, mock_vw) = api_client
+
+    # Seed a regular scan with one vuln
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        scanned_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    # Seed a newer update_check scan for the same image with an extra vuln —
+    # this simulates checking the registry for an image not yet deployed
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:bbbb",
+        [VULN_CRITICAL, VULN_HIGH],
+        scanned_at=datetime(2026, 1, 2, tzinfo=UTC),
+        is_update_check=True,
+    )
+
+    mock_vw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    # report=all: totals must come from the regular scan (1 vuln), not the update_check scan (2 vulns)
+    all_data = client.get("/vulnerabilities?report=all").json()
+    all_ids = [v["vuln_id"] for v in all_data["vulnerabilities"]]
+    assert all_data["total_count"] == 1
+    assert VULN_HIGH["vuln_id"] not in all_ids  # VULN_HIGH only exists in the update_check scan
+
+    # report=new: VULN_HIGH must not appear as a new finding
+    new_data = client.get("/vulnerabilities?report=new").json()
+    new_ids = [v["vuln_id"] for v in new_data["vulnerabilities"]]
+    assert VULN_HIGH["vuln_id"] not in new_ids
+
+
+def test_vulnerabilities_ignores_preview_scan(api_client):
+    """preview scans must not override the latest regular scan, same as update_check."""
+    client, test_db, (_, mock_vw) = api_client
+
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:aaaa",
+        [VULN_CRITICAL],
+        scanned_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    seed_scan(
+        test_db,
+        "nginx:latest",
+        "sha256:bbbb",
+        [VULN_CRITICAL, VULN_HIGH],
+        scanned_at=datetime(2026, 1, 2, tzinfo=UTC),
+        is_preview=True,
+    )
+
+    mock_vw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
+    ]
+
+    all_data = client.get("/vulnerabilities?report=all").json()
+    all_ids = [v["vuln_id"] for v in all_data["vulnerabilities"]]
+    assert all_data["total_count"] == 1
+    assert VULN_HIGH["vuln_id"] not in all_ids  # VULN_HIGH only exists in the preview scan
+
+    new_data = client.get("/vulnerabilities?report=new").json()
+    new_ids = [v["vuln_id"] for v in new_data["vulnerabilities"]]
+    assert VULN_HIGH["vuln_id"] not in new_ids
