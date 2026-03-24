@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case as sa_case
 from sqlmodel import Session, func, select
 
-from ..api_helpers import _as_utc, _new_vuln_keys_for_scans, _priority_bucket, _severity_rank
+from ..api_helpers import _as_utc, _latest_vuln_scan_ids_for_images, _new_vuln_keys_for_scans, _priority_bucket, _severity_rank
 from ..database import db
 from ..docker_watcher import DockerWatcher
 from ..models import AppState, ImageUpdateCheck, Scan, ScanContainer, SystemTask, Vulnerability
@@ -239,13 +239,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
     unique_running_images = len({img["config_digest"] for img in running})
 
     if running_images:
-        latest_scan_id_subq = (
-            select(func.max(Scan.id))
-            .where(Scan.image_name.in_(running_images))
-            .where(Scan.is_update_check == False)  # noqa: E712
-            .where(Scan.is_preview == False)  # noqa: E712
-            .group_by(Scan.image_name)
-        )
+        latest_scan_id_subq = _latest_vuln_scan_ids_for_images(running_images)
         row = session.exec(
             select(
                 func.coalesce(func.sum(sa_case((Vulnerability.risk_score >= 80, 1), else_=0)), 0),

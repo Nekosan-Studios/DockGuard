@@ -10,6 +10,7 @@ from ..api_helpers import (
     _VALID_SORT_COLS,
     _as_utc,
     _latest_scan_for_ref,
+    _latest_vuln_scan_ids_for_images,
     _new_vuln_keys_for_scans,
     _parse_image_query,
     _serialise_vuln,
@@ -303,7 +304,7 @@ def get_vulnerabilities_across_running(
     image_names = {img["image_name"] for img in running}
 
     t0 = time.perf_counter()
-    latest_scan_id_subq = select(func.max(Scan.id)).where(Scan.image_name.in_(image_names)).group_by(Scan.image_name)
+    latest_scan_id_subq = _latest_vuln_scan_ids_for_images(image_names)
     scans = session.exec(select(Scan).where(Scan.id.in_(latest_scan_id_subq))).all()
     logger.info(
         "[VulnLoad /vulnerabilities] latest scans query: %.3fs (%d scans)", time.perf_counter() - t0, len(scans)

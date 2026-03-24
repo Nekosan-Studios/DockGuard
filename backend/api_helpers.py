@@ -1,9 +1,10 @@
 import json
 from collections import defaultdict
 from datetime import UTC, datetime
+from typing import Collection
 
 from fastapi import HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from .models import Scan, Vulnerability
 
@@ -79,6 +80,24 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None or dt.tzinfo is not None:
         return dt
     return dt.replace(tzinfo=UTC)
+
+
+def _latest_vuln_scan_ids_for_images(image_names: Collection[str]):
+    """Subquery: MAX(scan.id) per image_name, excluding update-check and preview scans.
+
+    Update-check scans scan the *latest available registry image*, not what is
+    currently running. Including them as "latest" causes the vulnerability report
+    to show findings for an image you haven't deployed yet and mis-calculates the
+    new-since-previous-scan delta. Always use this subquery when you need the
+    most recent vulnerability scan for running containers.
+    """
+    return (
+        select(func.max(Scan.id))
+        .where(Scan.image_name.in_(image_names))
+        .where(Scan.is_update_check == False)  # noqa: E712
+        .where(Scan.is_preview == False)  # noqa: E712
+        .group_by(Scan.image_name)
+    )
 
 
 def _latest_scan_for_ref(image_ref: str, session: Session) -> Scan:
