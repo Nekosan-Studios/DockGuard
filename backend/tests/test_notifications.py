@@ -320,11 +320,12 @@ class TestRunScansThenNotify:
 
     @pytest.mark.anyio
     async def test_passes_real_scan_ids_not_task_ids(self, test_db):
-        """_run_scans_then_notify must query for Scan rows and pass their IDs
-        to process_scan_notifications — NOT the SystemTask IDs."""
+        """_run_scans_then_notify must query for Scan rows by source_task_id and
+        pass their IDs to process_scan_notifications — NOT the SystemTask IDs."""
         from backend.jobs.containers import _run_scans_then_notify
 
-        # Create SystemTask rows (these have their own auto-increment IDs)
+        # Create a few dummy SystemTask rows first so that the scan task ID
+        # differs from any auto-assigned Scan ID (both tables start at 1).
         with Session(test_db.engine) as session:
             for i in range(3):
                 session.add(
@@ -335,19 +336,27 @@ class TestRunScansThenNotify:
                         created_at=datetime.now(UTC),
                     )
                 )
+            task = SystemTask(
+                task_type="scan",
+                task_name="Scan nginx:latest",
+                status="queued",
+                created_at=datetime.now(UTC),
+            )
+            session.add(task)
             session.commit()
+            session.refresh(task)
+            task_id = task.id  # will be 4; scan.id will be 1
 
-        # Record the max scan ID before the batch so only new scans are captured
-        batch_min_scan_id = 0
-
-        # Create Scan rows (simulating what scan_image_async would produce)
+        # Create Scan row with source_task_id linking it to the SystemTask
         scan = seed_scan(
             test_db,
             "nginx:latest",
             "sha256:abc",
             [VULN_CRITICAL],
             scanned_at=datetime(2026, 3, 15, 12, 0, 1, tzinfo=UTC),
+            source_task_id=task_id,
         )
+        assert scan.id != task_id, "scan.id and task_id must differ for this test to be meaningful"
 
         # The scan coroutines are already "done" — we just need dummy coros
         async def noop():
@@ -357,8 +366,7 @@ class TestRunScansThenNotify:
             await _run_scans_then_notify(
                 test_db,
                 [noop()],
-                [999],  # SystemTask ID — should NOT appear in scan_ids
-                batch_min_scan_id,
+                [task_id],
             )
 
             mock_notify.assert_called_once()
@@ -368,7 +376,7 @@ class TestRunScansThenNotify:
             # The real Scan ID must be in the list
             assert scan.id in called_scan_ids
             # The SystemTask ID must NOT be in the list (no failure)
-            assert 999 not in called_scan_ids
+            assert task_id not in called_scan_ids
             # Result for the successful scan should be None (no exception)
             assert called_results[called_scan_ids.index(scan.id)] is None
 
@@ -378,6 +386,19 @@ class TestRunScansThenNotify:
         appended to the lists passed to process_scan_notifications."""
         from backend.jobs.containers import _run_scans_then_notify
 
+        # Create a SystemTask row so the ID is valid
+        with Session(test_db.engine) as session:
+            task = SystemTask(
+                task_type="scan",
+                task_name="Scan failing-image:latest",
+                status="queued",
+                created_at=datetime.now(UTC),
+            )
+            session.add(task)
+            session.commit()
+            session.refresh(task)
+            task_id = task.id
+
         async def failing_scan():
             raise RuntimeError("grype crashed")
 
@@ -385,8 +406,7 @@ class TestRunScansThenNotify:
             await _run_scans_then_notify(
                 test_db,
                 [failing_scan()],
-                [42],  # SystemTask ID for the failed scan
-                0,  # batch_min_scan_id — no prior scans in this test db
+                [task_id],  # SystemTask ID for the failed scan
             )
 
             mock_notify.assert_called_once()
@@ -394,8 +414,8 @@ class TestRunScansThenNotify:
             called_results = mock_notify.call_args[0][2]
 
             # The failed task_id should be appended
-            assert 42 in called_scan_ids
-            idx = called_scan_ids.index(42)
+            assert task_id in called_scan_ids
+            idx = called_scan_ids.index(task_id)
             assert isinstance(called_results[idx], RuntimeError)
 
     @pytest.mark.anyio
@@ -403,16 +423,36 @@ class TestRunScansThenNotify:
         """Mix of successful scans and failures produces correct ID/result lists."""
         from backend.jobs.containers import _run_scans_then_notify
 
-        # Record baseline before seeding the batch scan
-        batch_min_scan_id = 0
+        # Create two SystemTask rows: one for the successful scan, one for the failure
+        with Session(test_db.engine) as session:
+            success_task = SystemTask(
+                task_type="scan",
+                task_name="Scan redis:7",
+                status="queued",
+                created_at=datetime.now(UTC),
+            )
+            fail_task = SystemTask(
+                task_type="scan",
+                task_name="Scan broken:latest",
+                status="queued",
+                created_at=datetime.now(UTC),
+            )
+            session.add(success_task)
+            session.add(fail_task)
+            session.commit()
+            session.refresh(success_task)
+            session.refresh(fail_task)
+            success_task_id = success_task.id
+            fail_task_id = fail_task.id
 
-        # Seed a successful scan
+        # Seed a successful scan with its source_task_id
         scan = seed_scan(
             test_db,
             "redis:7",
             "sha256:def",
             [VULN_HIGH],
             scanned_at=datetime(2026, 3, 15, 12, 0, 1, tzinfo=UTC),
+            source_task_id=success_task_id,
         )
 
         async def success_coro():
@@ -425,8 +465,7 @@ class TestRunScansThenNotify:
             await _run_scans_then_notify(
                 test_db,
                 [success_coro(), fail_coro()],
-                [100, 200],  # SystemTask IDs
-                batch_min_scan_id,
+                [success_task_id, fail_task_id],
             )
 
             mock_notify.assert_called_once()
@@ -435,11 +474,11 @@ class TestRunScansThenNotify:
 
             # Successful scan ID present, failed task ID appended
             assert scan.id in called_scan_ids
-            assert 200 in called_scan_ids
+            assert fail_task_id in called_scan_ids
             # Successful scan has None result
             assert called_results[called_scan_ids.index(scan.id)] is None
             # Failed scan has the exception
-            assert isinstance(called_results[called_scan_ids.index(200)], ValueError)
+            assert isinstance(called_results[called_scan_ids.index(fail_task_id)], ValueError)
 
 
 class TestProcessScanNotifications:

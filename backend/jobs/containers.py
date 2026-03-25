@@ -17,7 +17,6 @@ async def _run_scans_then_notify(
     db: Database,
     scan_coros: list,
     scan_task_ids: list[int],
-    batch_min_scan_id: int,
 ) -> None:
     """Run all scan coroutines, then process notifications for the batch."""
     results = await asyncio.gather(*scan_coros, return_exceptions=True)
@@ -28,11 +27,13 @@ async def _run_scans_then_notify(
         if isinstance(exc, BaseException):
             failures.append((task_id, exc))
 
-    # Find all scans created during this batch (these are the successful ones).
-    # Using ID > batch_min_scan_id avoids a race condition that could arise from
-    # using a timestamp when two batches overlap.
+    # Find scans created by this batch by matching source_task_id.
+    # This avoids a race condition where two overlapping batches share the same
+    # batch_min_scan_id and each picks up the other's scans via a range query.
     with Session(db.engine) as session:
-        recent_scans = session.exec(select(Scan).where(Scan.id > batch_min_scan_id).order_by(col(Scan.id))).all()
+        recent_scans = session.exec(
+            select(Scan).where(Scan.source_task_id.in_(scan_task_ids)).order_by(col(Scan.id))  # type: ignore[union-attr]
+        ).all()
         scan_ids = [s.id for s in recent_scans if s.id is not None]
 
         # Build the results list: None for each successful scan, exception for failures
@@ -83,10 +84,6 @@ async def check_running_containers(
         scanner = GrypeScanner(watcher=watcher, database=db)
         scan_coros: list = []
         scan_task_ids: list[int] = []
-
-        with Session(db.engine) as session:
-            last_scan = session.exec(select(Scan).order_by(col(Scan.id).desc()).limit(1)).first()
-            batch_min_scan_id = (last_scan.id or 0) if last_scan else 0
 
         for config_digest, image_group in running_by_digest.items():
             if config_digest in seen_digests:
@@ -147,7 +144,7 @@ async def check_running_containers(
 
         # Gather scans and notify on completion instead of fire-and-forget
         if scan_coros:
-            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids, batch_min_scan_id))
+            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids))
 
         with Session(db.engine) as session:
             task = session.get(SystemTask, task_id)
