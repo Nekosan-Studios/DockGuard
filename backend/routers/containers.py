@@ -268,26 +268,17 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         .order_by(EnvironmentSnapshot.created_at.asc())
     ).all()
 
-    # All snapshots, with explicit +00:00 suffix so JS parses them as UTC.
-    # Without the suffix, JS treats the string as local time → wrong chart position.
+    # Pure historical snapshots — no mutation, no override.
+    # Explicit +00:00 suffix so JS parses each timestamp as UTC.
     trend = [
         {"date": _as_utc(s.created_at).isoformat(), "urgent": s.urgent_count, "kev": s.kev_count} for s in snapshots
     ]
 
-    # Override today's LAST snapshot with live counts from currently running containers.
-    # Using reversed() so we update the most recent entry, not the first one — this
-    # preserves earlier-in-day snapshots unchanged.
-    today_iso = datetime.now(UTC).date().isoformat()
-    found_today = False
-    for t in reversed(trend):
-        if t["date"].startswith(today_iso):
-            t["urgent"] = urgent_count
-            t["kev"] = kev_count
-            found_today = True
-            break
-
-    if not found_today and (running_images or trend):
-        trend.append({"date": datetime.now(UTC).isoformat(), "urgent": urgent_count, "kev": kev_count})
+    # Separate live "now" point — always freshly computed, never stored in trend.
+    # Only present when containers are actually running.
+    now_point = (
+        {"date": datetime.now(UTC).isoformat(), "urgent": urgent_count, "kev": kev_count} if running_images else None
+    )
 
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None
@@ -327,6 +318,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "kev_count": kev_count,
         "new_findings": int(new_findings),
         "trend": trend,
+        "now_point": now_point,
         "docker_connected": docker_connected,
         "grype_version": grype_version,
         "db_schema": db_schema,

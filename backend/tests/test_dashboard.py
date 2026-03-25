@@ -92,37 +92,46 @@ def test_dashboard_summary_trend_includes_recent_scans(api_client):
     assert "kev" in data["trend"][0]
 
 
-def test_dashboard_summary_trend_current_day_adjustment(api_client):
+def test_dashboard_summary_now_point_present_when_containers_running(api_client):
     client, test_db, (mock_cw, _) = api_client
     yesterday = datetime.now(UTC) - timedelta(days=1)
-    # Seed a scan and snapshot from yesterday for the running container
     seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL], scanned_at=yesterday)
     with Session(test_db.engine) as session:
         session.add(
             EnvironmentSnapshot(created_at=yesterday, container_count=1, urgent_count=1, kev_count=1, is_backfill=True)
         )
         session.commit()
-    # It is currently running, so its critical_count will be calculated for "today"
     mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
     ]
 
     data = client.get("/dashboard/summary").json()
 
-    # Trend should have two entries: yesterday's snapshot, and today's real-time override
-    assert len(data["trend"]) == 2
-
+    # trend contains only the stored snapshot — no synthetic today entry
+    assert len(data["trend"]) == 1
     yesterday_iso = yesterday.date().isoformat()
+    assert data["trend"][0]["date"].startswith(yesterday_iso)
+
+    # now_point is separate, fresh, and reflects live counts
+    assert data["now_point"] is not None
     today_iso = datetime.now(UTC).date().isoformat()
+    assert data["now_point"]["date"].startswith(today_iso)
+    assert data["now_point"]["urgent"] == 1
 
-    # Dates are now full ISO timestamps — check with startswith
-    dates = [t["date"] for t in data["trend"]]
-    assert any(d.startswith(yesterday_iso) for d in dates)
-    assert any(d.startswith(today_iso) for d in dates)
 
-    # Both should have 1 urgent vulnerability
-    assert data["trend"][0]["urgent"] == 1
-    assert data["trend"][1]["urgent"] == 1
+def test_dashboard_summary_now_point_absent_when_no_containers(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    with Session(test_db.engine) as session:
+        session.add(
+            EnvironmentSnapshot(created_at=yesterday, container_count=0, urgent_count=0, kev_count=0, is_backfill=True)
+        )
+        session.commit()
+    mock_cw.return_value.list_running_containers.return_value = []
+
+    data = client.get("/dashboard/summary").json()
+
+    assert data["now_point"] is None
 
 
 def test_dashboard_summary_docker_disconnected(api_client):

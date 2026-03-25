@@ -7,7 +7,7 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
   import * as Pagination from "$lib/components/ui/pagination";
-  import { AreaChart } from "layerchart";
+  import { AreaChart, getTooltipContext } from "layerchart";
   import { curveMonotoneX } from "d3-shape";
   import Shield from "@lucide/svelte/icons/shield";
   import Container from "@lucide/svelte/icons/container";
@@ -142,14 +142,23 @@
   // Parse trend dates — use Date objects so layerchart creates a time scale.
   // Backend sends ISO strings with +00:00 suffix, so new Date() parses as UTC.
   // D3's local-time scale then positions each point in the browser's local timezone.
-  const trendData = $derived(
-    (summary.trend ?? []).map(
+  const trendData = $derived.by(() => {
+    const points = (summary.trend ?? []).map(
       (d: { date: string; urgent: number; kev: number }) => ({
         ...d,
         parsedDate: new Date(d.date),
+        isNow: false,
       })
-    )
-  );
+    );
+    if (summary.now_point) {
+      points.push({
+        ...summary.now_point,
+        parsedDate: new Date(summary.now_point.date),
+        isNow: true,
+      });
+    }
+    return points;
+  });
 
   const hasTrend = $derived(trendData.length > 0);
 
@@ -448,13 +457,18 @@
               }}
             >
               {#snippet tooltip()}
+                {@const ctx = getTooltipContext()}
+                {@const isNow = ctx.payload?.[0]?.payload?.isNow ?? false}
                 <Chart.Tooltip
                   indicator="line"
-                  labelFormatter={(value) =>
-                    format(
-                      value instanceof Date ? value : new Date(value),
-                      "MMM d, h:mm a"
-                    )}
+                  label={isNow ? "Now" : undefined}
+                  labelFormatter={isNow
+                    ? null
+                    : (value) =>
+                        format(
+                          value instanceof Date ? value : new Date(value),
+                          "MMM d, h:mm a"
+                        )}
                 />
               {/snippet}
             </AreaChart>
