@@ -140,13 +140,13 @@
   } satisfies Chart.ChartConfig;
 
   // Parse trend dates — use Date objects so layerchart creates a time scale.
+  // Backend sends ISO strings with +00:00 suffix, so new Date() parses as UTC.
+  // D3's local-time scale then positions each point in the browser's local timezone.
   const trendData = $derived(
     (summary.trend ?? []).map(
       (d: { date: string; urgent: number; kev: number }) => ({
         ...d,
-        // Append T00:00:00 so JS parses as local midnight, not UTC midnight.
-        // Date-only ISO strings ("2026-03-25") are parsed as UTC by the spec.
-        parsedDate: new Date(d.date + "T00:00:00"),
+        parsedDate: new Date(d.date),
       })
     )
   );
@@ -448,7 +448,14 @@
               }}
             >
               {#snippet tooltip()}
-                <Chart.Tooltip indicator="line" />
+                <Chart.Tooltip
+                  indicator="line"
+                  labelFormatter={(value) =>
+                    format(
+                      value instanceof Date ? value : new Date(value),
+                      "MMM d, h:mm a"
+                    )}
+                />
               {/snippet}
             </AreaChart>
           </Chart.Container>

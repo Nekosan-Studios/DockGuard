@@ -268,20 +268,26 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         .order_by(EnvironmentSnapshot.created_at.asc())
     ).all()
 
-    # One entry per day — later snapshots overwrite earlier ones for the same day.
-    # Emit date-only strings (YYYY-MM-DD) so the frontend has no time component to
-    # display and no ambiguous timezone parsing.
-    daily: dict[str, dict] = {}
-    for s in snapshots:
-        day = s.created_at.date().isoformat()
-        daily[day] = {"date": day, "urgent": s.urgent_count, "kev": s.kev_count}
+    # All snapshots, with explicit +00:00 suffix so JS parses them as UTC.
+    # Without the suffix, JS treats the string as local time → wrong chart position.
+    trend = [
+        {"date": _as_utc(s.created_at).isoformat(), "urgent": s.urgent_count, "kev": s.kev_count} for s in snapshots
+    ]
 
-    # Override/append today with real-time counts from currently running containers
+    # Override today's LAST snapshot with live counts from currently running containers.
+    # Using reversed() so we update the most recent entry, not the first one — this
+    # preserves earlier-in-day snapshots unchanged.
     today_iso = datetime.now(UTC).date().isoformat()
-    if today_iso in daily or (running_images or daily):
-        daily[today_iso] = {"date": today_iso, "urgent": urgent_count, "kev": kev_count}
+    found_today = False
+    for t in reversed(trend):
+        if t["date"].startswith(today_iso):
+            t["urgent"] = urgent_count
+            t["kev"] = kev_count
+            found_today = True
+            break
 
-    trend = list(daily.values())
+    if not found_today and (running_images or trend):
+        trend.append({"date": datetime.now(UTC).isoformat(), "urgent": urgent_count, "kev": kev_count})
 
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None
