@@ -151,6 +151,18 @@
 
   const hasTrend = $derived(trendData.length > 0);
 
+  let chartWidth = $state(0);
+  // Limit x-axis ticks on narrow screens so labels don't overlap
+  const xTickCount = $derived(
+    chartWidth < 360
+      ? 4
+      : chartWidth < 500
+        ? 6
+        : chartWidth < 700
+          ? 10
+          : undefined
+  );
+
   function formatVulnDb(schema: string | null, built: string | null): string {
     if (!schema && !built) return "—";
     const builtStr = built ? built.replace(/\+00:00$/, "Z") : "";
@@ -395,46 +407,49 @@
           </p>
         </div>
       {:else}
-        <Chart.Container config={chartConfig} class="h-[200px] w-full">
-          <AreaChart
-            data={trendData}
-            x="label"
-            series={[
-              {
-                key: "urgent",
-                label: chartConfig.urgent.label,
-                color: chartConfig.urgent.color,
-              },
-              {
-                key: "kev",
-                label: chartConfig.kev.label,
-                color: chartConfig.kev.color,
-                props: { line: { "stroke-dasharray": "5 3" } },
-              },
-            ]}
-            axis={true}
-            points={true}
-            props={{
-              area: {
-                fillOpacity: 0.2,
-                line: { strokeWidth: 2 },
-                curve: curveMonotoneX,
-                motion: "tween",
-              },
-              xAxis: {
-                format: (d: string) => d,
-              },
-              yAxis: {
-                format: (d: number) => (Number.isInteger(d) ? String(d) : ""),
-                ticks: 4,
-              },
-            }}
-          >
-            {#snippet tooltip()}
-              <Chart.Tooltip indicator="line" />
-            {/snippet}
-          </AreaChart>
-        </Chart.Container>
+        <div bind:clientWidth={chartWidth}>
+          <Chart.Container config={chartConfig} class="h-[200px] w-full">
+            <AreaChart
+              data={trendData}
+              x="label"
+              series={[
+                {
+                  key: "urgent",
+                  label: chartConfig.urgent.label,
+                  color: chartConfig.urgent.color,
+                },
+                {
+                  key: "kev",
+                  label: chartConfig.kev.label,
+                  color: chartConfig.kev.color,
+                  props: { line: { "stroke-dasharray": "5 3" } },
+                },
+              ]}
+              axis={true}
+              points={true}
+              props={{
+                area: {
+                  fillOpacity: 0.2,
+                  line: { strokeWidth: 2 },
+                  curve: curveMonotoneX,
+                  motion: "tween",
+                },
+                xAxis: {
+                  format: (d: string) => d,
+                  ticks: xTickCount,
+                },
+                yAxis: {
+                  format: (d: number) => (Number.isInteger(d) ? String(d) : ""),
+                  ticks: 4,
+                },
+              }}
+            >
+              {#snippet tooltip()}
+                <Chart.Tooltip indicator="line" />
+              {/snippet}
+            </AreaChart>
+          </Chart.Container>
+        </div>
         <!-- Legend -->
         <div class="mt-3 flex flex-wrap items-center justify-center gap-4">
           <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
