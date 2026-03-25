@@ -367,6 +367,7 @@ class TestRunScansThenNotify:
                 test_db,
                 [noop()],
                 [task_id],
+                [],
             )
 
             mock_notify.assert_called_once()
@@ -407,6 +408,7 @@ class TestRunScansThenNotify:
                 test_db,
                 [failing_scan()],
                 [task_id],  # SystemTask ID for the failed scan
+                [],
             )
 
             mock_notify.assert_called_once()
@@ -466,6 +468,7 @@ class TestRunScansThenNotify:
                 test_db,
                 [success_coro(), fail_coro()],
                 [success_task_id, fail_task_id],
+                [],
             )
 
             mock_notify.assert_called_once()

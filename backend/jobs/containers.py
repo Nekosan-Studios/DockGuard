@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from sqlmodel import Session, col, func, select
 
+from backend.api_helpers import _latest_vuln_scan_ids_for_images
 from backend.database import Database
 from backend.docker_watcher import DockerWatcher
 from backend.grype_scanner import GrypeScanner
@@ -17,6 +18,7 @@ async def _run_scans_then_notify(
     db: Database,
     scan_coros: list,
     scan_task_ids: list[int],
+    running_containers: list[dict],
 ) -> None:
     """Run all scan coroutines, then process notifications for the batch."""
     results = await asyncio.gather(*scan_coros, return_exceptions=True)
@@ -44,30 +46,25 @@ async def _run_scans_then_notify(
             scan_ids.append(task_id)
             result_list.append(exc)
 
-        # Write an environment snapshot capturing the state at end of this rescan cycle.
-        # Deduplicate by image_name (one scan per image per batch) before counting.
+        # Write an environment snapshot capturing the FULL environment state —
+        # counts across ALL running images, not just the scanned batch.
         if scan_ids:
-            image_to_scan: dict[str, Scan] = {}
-            for s in recent_scans:
-                if s.id is not None:
-                    existing = image_to_scan.get(s.image_name)
-                    if existing is None or s.scanned_at > existing.scanned_at:
-                        image_to_scan[s.image_name] = s
-            batch_scan_ids = [s.id for s in image_to_scan.values() if s.id is not None]
-            if batch_scan_ids:
+            running_image_names = {img["image_name"] for img in running_containers}
+            if running_image_names:
+                latest_scan_id_subq = _latest_vuln_scan_ids_for_images(running_image_names)
                 urgent_count = session.exec(
                     select(func.count(Vulnerability.id))
-                    .where(Vulnerability.scan_id.in_(batch_scan_ids))
+                    .where(Vulnerability.scan_id.in_(latest_scan_id_subq))
                     .where(Vulnerability.risk_score >= 80)
                 ).one()
                 kev_count = session.exec(
                     select(func.count(Vulnerability.id))
-                    .where(Vulnerability.scan_id.in_(batch_scan_ids))
+                    .where(Vulnerability.scan_id.in_(latest_scan_id_subq))
                     .where(Vulnerability.is_kev == True)  # noqa: E712
                 ).one()
                 snapshot = EnvironmentSnapshot(
                     created_at=datetime.now(UTC),
-                    container_count=len(image_to_scan),
+                    container_count=len(running_containers),
                     urgent_count=urgent_count,
                     kev_count=kev_count,
                 )
@@ -174,7 +171,7 @@ async def check_running_containers(
 
         # Gather scans and notify on completion instead of fire-and-forget
         if scan_coros:
-            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids))
+            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids, running))
 
         with Session(db.engine) as session:
             task = session.get(SystemTask, task_id)
