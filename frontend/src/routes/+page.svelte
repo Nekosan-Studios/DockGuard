@@ -144,7 +144,7 @@
     (summary.trend ?? []).map(
       (d: { date: string; urgent: number; kev: number }) => ({
         ...d,
-        label: format(new Date(d.date + "T12:00:00"), "MMM d"),
+        label: format(new Date(d.date), "MMM d"),
       })
     )
   );

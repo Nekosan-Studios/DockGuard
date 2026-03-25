@@ -127,6 +127,17 @@ class SystemTask(SQLModel, table=True):
     result_details: str | None = None  # Generic info (e.g. "Found 3 new containers")
 
 
+class EnvironmentSnapshot(SQLModel, table=True):
+    """Point-in-time snapshot of environment vulnerability counts, written at end of each rescan cycle."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime
+    container_count: int
+    urgent_count: int
+    kev_count: int
+    is_backfill: bool = Field(default=False)
+
+
 class ImageUpdateCheck(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     image_name: str = Field(unique=True, index=True)  # e.g. "nginx:latest"

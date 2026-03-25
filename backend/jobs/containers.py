@@ -2,13 +2,13 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from backend.database import Database
 from backend.docker_watcher import DockerWatcher
 from backend.grype_scanner import GrypeScanner
 from backend.jobs.notifications import process_scan_notifications
-from backend.models import ImageUpdateCheck, Scan, SystemTask
+from backend.models import EnvironmentSnapshot, ImageUpdateCheck, Scan, SystemTask, Vulnerability
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,36 @@ async def _run_scans_then_notify(
         for task_id, exc in failures:
             scan_ids.append(task_id)
             result_list.append(exc)
+
+        # Write an environment snapshot capturing the state at end of this rescan cycle.
+        # Deduplicate by image_name (one scan per image per batch) before counting.
+        if scan_ids:
+            image_to_scan: dict[str, Scan] = {}
+            for s in recent_scans:
+                if s.id is not None:
+                    existing = image_to_scan.get(s.image_name)
+                    if existing is None or s.scanned_at > existing.scanned_at:
+                        image_to_scan[s.image_name] = s
+            batch_scan_ids = [s.id for s in image_to_scan.values() if s.id is not None]
+            if batch_scan_ids:
+                urgent_count = session.exec(
+                    select(func.count(Vulnerability.id))
+                    .where(Vulnerability.scan_id.in_(batch_scan_ids))
+                    .where(Vulnerability.risk_score >= 80)
+                ).one()
+                kev_count = session.exec(
+                    select(func.count(Vulnerability.id))
+                    .where(Vulnerability.scan_id.in_(batch_scan_ids))
+                    .where(Vulnerability.is_kev == True)  # noqa: E712
+                ).one()
+                snapshot = EnvironmentSnapshot(
+                    created_at=datetime.now(UTC),
+                    container_count=len(image_to_scan),
+                    urgent_count=urgent_count,
+                    kev_count=kev_count,
+                )
+                session.add(snapshot)
+                session.commit()
 
     try:
         await process_scan_notifications(db, scan_ids, result_list)

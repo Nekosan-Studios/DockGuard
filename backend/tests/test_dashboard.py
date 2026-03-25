@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session
 
-from backend.models import AppState, SystemTask
+from backend.models import AppState, EnvironmentSnapshot, SystemTask
 from backend.tests.conftest import VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM, seed_scan
 
 
@@ -77,13 +77,13 @@ def test_dashboard_summary_kev_count(api_client):
 
 def test_dashboard_summary_trend_includes_recent_scans(api_client):
     client, test_db, (mock_cw, _) = api_client
-    seed_scan(
-        test_db,
-        "nginx:latest",
-        "sha256:aaaa",
-        [VULN_CRITICAL],
-        scanned_at=datetime.now(UTC) - timedelta(days=1),
-    )
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL], scanned_at=yesterday)
+    with Session(test_db.engine) as session:
+        session.add(
+            EnvironmentSnapshot(created_at=yesterday, container_count=1, urgent_count=1, kev_count=1, is_backfill=True)
+        )
+        session.commit()
     mock_cw.return_value.list_running_containers.return_value = []
 
     data = client.get("/dashboard/summary").json()
@@ -95,14 +95,13 @@ def test_dashboard_summary_trend_includes_recent_scans(api_client):
 def test_dashboard_summary_trend_current_day_adjustment(api_client):
     client, test_db, (mock_cw, _) = api_client
     yesterday = datetime.now(UTC) - timedelta(days=1)
-    # Seed a scan from yesterday for the running container
-    seed_scan(
-        test_db,
-        "nginx:latest",
-        "sha256:aaaa",
-        [VULN_CRITICAL],
-        scanned_at=yesterday,
-    )
+    # Seed a scan and snapshot from yesterday for the running container
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL], scanned_at=yesterday)
+    with Session(test_db.engine) as session:
+        session.add(
+            EnvironmentSnapshot(created_at=yesterday, container_count=1, urgent_count=1, kev_count=1, is_backfill=True)
+        )
+        session.commit()
     # It is currently running, so its critical_count will be calculated for "today"
     mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
@@ -110,15 +109,16 @@ def test_dashboard_summary_trend_current_day_adjustment(api_client):
 
     data = client.get("/dashboard/summary").json()
 
-    # Trend should have two entries: yesterday's actual scan, and today's carried-forward state
+    # Trend should have two entries: yesterday's snapshot, and today's real-time override
     assert len(data["trend"]) == 2
 
     yesterday_iso = yesterday.date().isoformat()
     today_iso = datetime.now(UTC).date().isoformat()
 
+    # Dates are now full ISO timestamps — check with startswith
     dates = [t["date"] for t in data["trend"]]
-    assert yesterday_iso in dates
-    assert today_iso in dates
+    assert any(d.startswith(yesterday_iso) for d in dates)
+    assert any(d.startswith(today_iso) for d in dates)
 
     # Both should have 1 urgent vulnerability
     assert data["trend"][0]["urgent"] == 1
