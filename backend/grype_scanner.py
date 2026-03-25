@@ -236,7 +236,12 @@ class GrypeScanner:
         t0 = time.perf_counter()
         try:
             self.scan_image(
-                image_name, grype_ref, container_names, is_update_check=is_update_check, is_preview=is_preview
+                image_name,
+                grype_ref,
+                container_names,
+                is_update_check=is_update_check,
+                is_preview=is_preview,
+                task_id=task_id,
             )
             if not is_update_check and not is_preview:
                 self._check_vex_for_latest_scan(image_name)
@@ -279,6 +284,7 @@ class GrypeScanner:
         container_names: list[str] | None = None,
         is_update_check: bool = False,
         is_preview: bool = False,
+        task_id: int | None = None,
     ) -> None:
         """Execute the grype CLI specifically and persist results to the database."""
         logger.info("Scanning %s", image_name)
@@ -308,7 +314,12 @@ class GrypeScanner:
             raise
 
         self._store_scan(
-            grype_json, image_name, container_names, is_update_check=is_update_check, is_preview=is_preview
+            grype_json,
+            image_name,
+            container_names,
+            is_update_check=is_update_check,
+            is_preview=is_preview,
+            task_id=task_id,
         )
 
     def _store_scan(
@@ -319,6 +330,7 @@ class GrypeScanner:
         is_update_check: bool = False,
         is_preview: bool = False,
         skip_enrichments: bool = False,
+        task_id: int | None = None,
     ) -> None:
         source = grype_json.get("source", {})
         target = source.get("target", {})
@@ -349,6 +361,7 @@ class GrypeScanner:
             is_distro_eol=distro_eol,
             is_update_check=is_update_check,
             is_preview=is_preview,
+            source_task_id=task_id,
         )
 
         normalised_container_names = sorted({name for name in (container_names or []) if name})

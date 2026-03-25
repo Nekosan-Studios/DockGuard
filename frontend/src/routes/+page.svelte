@@ -7,7 +7,7 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
   import * as Pagination from "$lib/components/ui/pagination";
-  import { AreaChart } from "layerchart";
+  import { AreaChart, getTooltipContext } from "layerchart";
   import { curveMonotoneX } from "d3-shape";
   import Shield from "@lucide/svelte/icons/shield";
   import Container from "@lucide/svelte/icons/container";
@@ -139,17 +139,41 @@
     },
   } satisfies Chart.ChartConfig;
 
-  // Parse trend dates for display
-  const trendData = $derived(
-    (summary.trend ?? []).map(
+  // Parse trend dates — use Date objects so layerchart creates a time scale.
+  // Backend sends ISO strings with +00:00 suffix, so new Date() parses as UTC.
+  // D3's local-time scale then positions each point in the browser's local timezone.
+  const trendData = $derived.by(() => {
+    const points = (summary.trend ?? []).map(
       (d: { date: string; urgent: number; kev: number }) => ({
         ...d,
-        label: format(new Date(d.date + "T12:00:00"), "MMM d"),
+        parsedDate: new Date(d.date),
+        isNow: false,
       })
-    )
-  );
+    );
+    if (summary.now_point) {
+      points.push({
+        ...summary.now_point,
+        parsedDate: new Date(summary.now_point.date),
+        isNow: true,
+      });
+    }
+    return points;
+  });
 
   const hasTrend = $derived(trendData.length > 0);
+
+  // Compute x-axis ticks from the actual data points so sub-day tick positions
+  // are never generated (which causes repeated date labels on sparse datasets).
+  // Cap to what fits at the current chart width (~60px per label).
+  let chartWidth = $state(0);
+  const xTicks = $derived((): Date[] => {
+    const dates = trendData.map((d: { parsedDate: Date }) => d.parsedDate);
+    const maxTicks =
+      chartWidth > 0 ? Math.max(3, Math.round(chartWidth / 60)) : dates.length;
+    if (dates.length <= maxTicks) return dates;
+    const step = Math.ceil(dates.length / maxTicks);
+    return dates.filter((_: Date, i: number) => i % step === 0);
+  });
 
   function formatVulnDb(schema: string | null, built: string | null): string {
     if (!schema && !built) return "—";
@@ -395,46 +419,61 @@
           </p>
         </div>
       {:else}
-        <Chart.Container config={chartConfig} class="h-[200px] w-full">
-          <AreaChart
-            data={trendData}
-            x="label"
-            series={[
-              {
-                key: "urgent",
-                label: chartConfig.urgent.label,
-                color: chartConfig.urgent.color,
-              },
-              {
-                key: "kev",
-                label: chartConfig.kev.label,
-                color: chartConfig.kev.color,
-                props: { line: { "stroke-dasharray": "5 3" } },
-              },
-            ]}
-            axis={true}
-            points={true}
-            props={{
-              area: {
-                fillOpacity: 0.2,
-                line: { strokeWidth: 2 },
-                curve: curveMonotoneX,
-                motion: "tween",
-              },
-              xAxis: {
-                format: (d: string) => d,
-              },
-              yAxis: {
-                format: (d: number) => (Number.isInteger(d) ? String(d) : ""),
-                ticks: 4,
-              },
-            }}
-          >
-            {#snippet tooltip()}
-              <Chart.Tooltip indicator="line" />
-            {/snippet}
-          </AreaChart>
-        </Chart.Container>
+        <div bind:clientWidth={chartWidth}>
+          <Chart.Container config={chartConfig} class="h-[200px] w-full">
+            <AreaChart
+              data={trendData}
+              x="parsedDate"
+              series={[
+                {
+                  key: "urgent",
+                  label: chartConfig.urgent.label,
+                  color: chartConfig.urgent.color,
+                },
+                {
+                  key: "kev",
+                  label: chartConfig.kev.label,
+                  color: chartConfig.kev.color,
+                  props: { line: { "stroke-dasharray": "5 3" } },
+                },
+              ]}
+              axis={true}
+              points={true}
+              props={{
+                area: {
+                  fillOpacity: 0.2,
+                  line: { strokeWidth: 2 },
+                  curve: curveMonotoneX,
+                  motion: "tween",
+                },
+                xAxis: {
+                  format: (d: Date) => format(d, "MMM d"),
+                  ticks: xTicks,
+                },
+                yAxis: {
+                  format: (d: number) => (Number.isInteger(d) ? String(d) : ""),
+                  ticks: 4,
+                },
+              }}
+            >
+              {#snippet tooltip()}
+                {@const ctx = getTooltipContext()}
+                {@const isNow = ctx.payload?.[0]?.payload?.isNow ?? false}
+                <Chart.Tooltip
+                  indicator="line"
+                  label={isNow ? "Now" : undefined}
+                  labelFormatter={isNow
+                    ? null
+                    : (value) =>
+                        format(
+                          value instanceof Date ? value : new Date(value),
+                          "MMM d, h:mm a"
+                        )}
+                />
+              {/snippet}
+            </AreaChart>
+          </Chart.Container>
+        </div>
         <!-- Legend -->
         <div class="mt-3 flex flex-wrap items-center justify-center gap-4">
           <span class="flex items-center gap-1.5 text-xs text-muted-foreground">

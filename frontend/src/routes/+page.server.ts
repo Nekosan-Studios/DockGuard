@@ -19,6 +19,7 @@ export const load: PageServerLoad = async ({ fetch }) => {
         urgent_count: null,
         new_findings: null,
         trend: [],
+        now_point: null,
         docker_connected: false,
         grype_version: null,
         db_schema: null,

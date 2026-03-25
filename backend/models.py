@@ -20,6 +20,7 @@ class Scan(SQLModel, table=True):
     vex_error: str | None = None
     is_update_check: bool = Field(default=False)
     is_preview: bool = Field(default=False)
+    source_task_id: int | None = Field(default=None, foreign_key="systemtask.id", nullable=True)
 
     vulnerabilities: list["Vulnerability"] = Relationship(back_populates="scan")
     containers: list["ScanContainer"] = Relationship(back_populates="scan")
@@ -124,6 +125,17 @@ class SystemTask(SQLModel, table=True):
     finished_at: datetime | None = None
     error_message: str | None = None
     result_details: str | None = None  # Generic info (e.g. "Found 3 new containers")
+
+
+class EnvironmentSnapshot(SQLModel, table=True):
+    """Point-in-time snapshot of environment vulnerability counts, written at end of each rescan cycle."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime
+    container_count: int
+    urgent_count: int
+    kev_count: int
+    is_backfill: bool = Field(default=False)
 
 
 class ImageUpdateCheck(SQLModel, table=True):

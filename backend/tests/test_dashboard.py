@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session
 
-from backend.models import AppState, SystemTask
+from backend.models import AppState, EnvironmentSnapshot, SystemTask
 from backend.tests.conftest import VULN_CRITICAL, VULN_HIGH, VULN_MEDIUM, seed_scan
 
 
@@ -77,13 +77,13 @@ def test_dashboard_summary_kev_count(api_client):
 
 def test_dashboard_summary_trend_includes_recent_scans(api_client):
     client, test_db, (mock_cw, _) = api_client
-    seed_scan(
-        test_db,
-        "nginx:latest",
-        "sha256:aaaa",
-        [VULN_CRITICAL],
-        scanned_at=datetime.now(UTC) - timedelta(days=1),
-    )
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL], scanned_at=yesterday)
+    with Session(test_db.engine) as session:
+        session.add(
+            EnvironmentSnapshot(created_at=yesterday, container_count=1, urgent_count=1, kev_count=1, is_backfill=True)
+        )
+        session.commit()
     mock_cw.return_value.list_running_containers.return_value = []
 
     data = client.get("/dashboard/summary").json()
@@ -92,37 +92,46 @@ def test_dashboard_summary_trend_includes_recent_scans(api_client):
     assert "kev" in data["trend"][0]
 
 
-def test_dashboard_summary_trend_current_day_adjustment(api_client):
+def test_dashboard_summary_now_point_present_when_containers_running(api_client):
     client, test_db, (mock_cw, _) = api_client
     yesterday = datetime.now(UTC) - timedelta(days=1)
-    # Seed a scan from yesterday for the running container
-    seed_scan(
-        test_db,
-        "nginx:latest",
-        "sha256:aaaa",
-        [VULN_CRITICAL],
-        scanned_at=yesterday,
-    )
-    # It is currently running, so its critical_count will be calculated for "today"
+    seed_scan(test_db, "nginx:latest", "sha256:aaaa", [VULN_CRITICAL], scanned_at=yesterday)
+    with Session(test_db.engine) as session:
+        session.add(
+            EnvironmentSnapshot(created_at=yesterday, container_count=1, urgent_count=1, kev_count=1, is_backfill=True)
+        )
+        session.commit()
     mock_cw.return_value.list_running_containers.return_value = [
         _make_running_container("my-nginx", "nginx:latest", "sha256:aaaa"),
     ]
 
     data = client.get("/dashboard/summary").json()
 
-    # Trend should have two entries: yesterday's actual scan, and today's carried-forward state
-    assert len(data["trend"]) == 2
-
+    # trend contains only the stored snapshot — no synthetic today entry
+    assert len(data["trend"]) == 1
     yesterday_iso = yesterday.date().isoformat()
+    assert data["trend"][0]["date"].startswith(yesterday_iso)
+
+    # now_point is separate, fresh, and reflects live counts
+    assert data["now_point"] is not None
     today_iso = datetime.now(UTC).date().isoformat()
+    assert data["now_point"]["date"].startswith(today_iso)
+    assert data["now_point"]["urgent"] == 1
 
-    dates = [t["date"] for t in data["trend"]]
-    assert yesterday_iso in dates
-    assert today_iso in dates
 
-    # Both should have 1 urgent vulnerability
-    assert data["trend"][0]["urgent"] == 1
-    assert data["trend"][1]["urgent"] == 1
+def test_dashboard_summary_now_point_absent_when_no_containers(api_client):
+    client, test_db, (mock_cw, _) = api_client
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    with Session(test_db.engine) as session:
+        session.add(
+            EnvironmentSnapshot(created_at=yesterday, container_count=0, urgent_count=0, kev_count=0, is_backfill=True)
+        )
+        session.commit()
+    mock_cw.return_value.list_running_containers.return_value = []
+
+    data = client.get("/dashboard/summary").json()
+
+    assert data["now_point"] is None
 
 
 def test_dashboard_summary_docker_disconnected(api_client):

@@ -14,7 +14,7 @@ from ..api_helpers import (
 )
 from ..database import db
 from ..docker_watcher import DockerWatcher
-from ..models import AppState, ImageUpdateCheck, Scan, ScanContainer, SystemTask, Vulnerability
+from ..models import AppState, EnvironmentSnapshot, ImageUpdateCheck, Scan, ScanContainer, SystemTask, Vulnerability
 from ..vex_discovery import check_vex_for_image
 
 router = APIRouter(tags=["Containers"])
@@ -260,63 +260,25 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
     else:
         urgent_count, kev_count, eol_count = 0, 0, 0
 
-    cutoff = datetime.now(UTC) - timedelta(days=30)
-    recent_scans = session.exec(
-        select(Scan)
-        .where(Scan.scanned_at >= cutoff)
-        .where(Scan.is_update_check == False)  # noqa: E712
-        .where(Scan.is_preview == False)  # noqa: E712
-        .order_by(Scan.scanned_at.asc())
+    days = 30  # default; will become a query parameter when configurable range ships
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    snapshots = session.exec(
+        select(EnvironmentSnapshot)
+        .where(EnvironmentSnapshot.created_at >= cutoff)
+        .order_by(EnvironmentSnapshot.created_at.asc())
     ).all()
 
-    day_image_scan: dict[str, dict[str, Scan]] = defaultdict(dict)
-    for scan in recent_scans:
-        day = scan.scanned_at.date().isoformat()
-        day_image_scan[day][scan.image_name] = scan
-
-    trend_scan_ids = [s.id for day_scans in day_image_scan.values() for s in day_scans.values()]
-    if trend_scan_ids:
-        urgent_rows = session.exec(
-            select(Vulnerability.scan_id, func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id.in_(trend_scan_ids))
-            .where(Vulnerability.risk_score >= 80)
-            .group_by(Vulnerability.scan_id)
-        ).all()
-        urgent_by_scan = dict(urgent_rows)
-
-        kev_rows = session.exec(
-            select(Vulnerability.scan_id, func.count(Vulnerability.id))
-            .where(Vulnerability.scan_id.in_(trend_scan_ids))
-            .where(Vulnerability.is_kev)
-            .group_by(Vulnerability.scan_id)
-        ).all()
-        kev_by_scan = dict(kev_rows)
-    else:
-        urgent_by_scan = {}
-        kev_by_scan = {}
-
+    # Pure historical snapshots — no mutation, no override.
+    # Explicit +00:00 suffix so JS parses each timestamp as UTC.
     trend = [
-        {
-            "date": day,
-            "urgent": sum(urgent_by_scan.get(s.id, 0) for s in day_image_scan[day].values()),
-            "kev": sum(kev_by_scan.get(s.id, 0) for s in day_image_scan[day].values()),
-        }
-        for day in sorted(day_image_scan.keys())
+        {"date": _as_utc(s.created_at).isoformat(), "urgent": s.urgent_count, "kev": s.kev_count} for s in snapshots
     ]
 
-    # Override current day with the real-time exact counts of currently running containers
-    today_iso = datetime.now(UTC).date().isoformat()
-    found_today = False
-    for t in trend:
-        if t["date"] == today_iso:
-            t["urgent"] = urgent_count
-            t["kev"] = kev_count
-            found_today = True
-            break
-
-    # If today is not in trend at all, append it so the chart is perfectly up to date
-    if not found_today and (running_images or trend):
-        trend.append({"date": today_iso, "urgent": urgent_count, "kev": kev_count})
+    # Separate live "now" point — always freshly computed, never stored in trend.
+    # Only present when containers are actually running.
+    now_point = (
+        {"date": datetime.now(UTC).isoformat(), "urgent": urgent_count, "kev": kev_count} if running_images else None
+    )
 
     app_state = session.get(AppState, 1)
     last_db_checked_at = _as_utc(app_state.last_db_checked_at) if app_state else None
@@ -356,6 +318,7 @@ def get_dashboard_summary(session: Session = Depends(db.get_session)):
         "kev_count": kev_count,
         "new_findings": int(new_findings),
         "trend": trend,
+        "now_point": now_point,
         "docker_connected": docker_connected,
         "grype_version": grype_version,
         "db_schema": db_schema,

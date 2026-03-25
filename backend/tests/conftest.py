@@ -134,6 +134,7 @@ def seed_scan(
     container_names: list[str] | None = None,
     is_update_check: bool = False,
     is_preview: bool = False,
+    source_task_id: int | None = None,
 ) -> Scan:
     scan = Scan(
         scanned_at=scanned_at or datetime.now(UTC),
@@ -146,6 +147,7 @@ def seed_scan(
         distro_version="12",
         is_update_check=is_update_check,
         is_preview=is_preview,
+        source_task_id=source_task_id,
     )
     with Session(database.engine) as session:
         session.add(scan)

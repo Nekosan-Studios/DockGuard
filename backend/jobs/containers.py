@@ -2,13 +2,14 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
+from backend.api_helpers import _latest_vuln_scan_ids_for_images
 from backend.database import Database
 from backend.docker_watcher import DockerWatcher
 from backend.grype_scanner import GrypeScanner
 from backend.jobs.notifications import process_scan_notifications
-from backend.models import ImageUpdateCheck, Scan, SystemTask
+from backend.models import EnvironmentSnapshot, ImageUpdateCheck, Scan, SystemTask, Vulnerability
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ async def _run_scans_then_notify(
     db: Database,
     scan_coros: list,
     scan_task_ids: list[int],
-    batch_min_scan_id: int,
+    running_containers: list[dict],
 ) -> None:
     """Run all scan coroutines, then process notifications for the batch."""
     results = await asyncio.gather(*scan_coros, return_exceptions=True)
@@ -28,11 +29,13 @@ async def _run_scans_then_notify(
         if isinstance(exc, BaseException):
             failures.append((task_id, exc))
 
-    # Find all scans created during this batch (these are the successful ones).
-    # Using ID > batch_min_scan_id avoids a race condition that could arise from
-    # using a timestamp when two batches overlap.
+    # Find scans created by this batch by matching source_task_id.
+    # This avoids a race condition where two overlapping batches share the same
+    # batch_min_scan_id and each picks up the other's scans via a range query.
     with Session(db.engine) as session:
-        recent_scans = session.exec(select(Scan).where(Scan.id > batch_min_scan_id).order_by(col(Scan.id))).all()
+        recent_scans = session.exec(
+            select(Scan).where(Scan.source_task_id.in_(scan_task_ids)).order_by(col(Scan.id))  # type: ignore[union-attr]
+        ).all()
         scan_ids = [s.id for s in recent_scans if s.id is not None]
 
         # Build the results list: None for each successful scan, exception for failures
@@ -42,6 +45,31 @@ async def _run_scans_then_notify(
         for task_id, exc in failures:
             scan_ids.append(task_id)
             result_list.append(exc)
+
+        # Write an environment snapshot capturing the FULL environment state —
+        # counts across ALL running images, not just the scanned batch.
+        if scan_ids:
+            running_image_names = {img["image_name"] for img in running_containers}
+            if running_image_names:
+                latest_scan_id_subq = _latest_vuln_scan_ids_for_images(running_image_names)
+                urgent_count = session.exec(
+                    select(func.count(Vulnerability.id))
+                    .where(Vulnerability.scan_id.in_(latest_scan_id_subq))
+                    .where(Vulnerability.risk_score >= 80)
+                ).one()
+                kev_count = session.exec(
+                    select(func.count(Vulnerability.id))
+                    .where(Vulnerability.scan_id.in_(latest_scan_id_subq))
+                    .where(Vulnerability.is_kev == True)  # noqa: E712
+                ).one()
+                snapshot = EnvironmentSnapshot(
+                    created_at=datetime.now(UTC),
+                    container_count=len(running_containers),
+                    urgent_count=urgent_count,
+                    kev_count=kev_count,
+                )
+                session.add(snapshot)
+                session.commit()
 
     try:
         await process_scan_notifications(db, scan_ids, result_list)
@@ -83,10 +111,6 @@ async def check_running_containers(
         scanner = GrypeScanner(watcher=watcher, database=db)
         scan_coros: list = []
         scan_task_ids: list[int] = []
-
-        with Session(db.engine) as session:
-            last_scan = session.exec(select(Scan).order_by(col(Scan.id).desc()).limit(1)).first()
-            batch_min_scan_id = (last_scan.id or 0) if last_scan else 0
 
         for config_digest, image_group in running_by_digest.items():
             if config_digest in seen_digests:
@@ -147,7 +171,7 @@ async def check_running_containers(
 
         # Gather scans and notify on completion instead of fire-and-forget
         if scan_coros:
-            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids, batch_min_scan_id))
+            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids, running))
 
         with Session(db.engine) as session:
             task = session.get(SystemTask, task_id)

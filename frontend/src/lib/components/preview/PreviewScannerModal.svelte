@@ -37,7 +37,7 @@
 
   let previewItems = $state<PreviewItem[]>([]);
   let pollingInterval: ReturnType<typeof setInterval> | null = null;
-  let skipEnrichments = $state(false);
+  let skipEnrichments = $state(true);
   let maxConcurrent = $state(1);
   let submitting = $state(false);
   let fatalError = $state<string | null>(null);
@@ -51,7 +51,7 @@
     parseError = null;
     fatalError = null;
     previewItems = [];
-    skipEnrichments = false;
+    skipEnrichments = true;
     maxConcurrent = 1;
     stopPolling();
   }
