@@ -144,7 +144,9 @@
     (summary.trend ?? []).map(
       (d: { date: string; urgent: number; kev: number }) => ({
         ...d,
-        parsedDate: new Date(d.date),
+        // Append T00:00:00 so JS parses as local midnight, not UTC midnight.
+        // Date-only ISO strings ("2026-03-25") are parsed as UTC by the spec.
+        parsedDate: new Date(d.date + "T00:00:00"),
       })
     )
   );
