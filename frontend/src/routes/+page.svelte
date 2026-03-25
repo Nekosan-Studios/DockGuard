@@ -156,12 +156,12 @@
   // Cap to what fits at the current chart width (~60px per label).
   let chartWidth = $state(0);
   const xTicks = $derived((): Date[] => {
-    const dates = trendData.map((d) => d.parsedDate);
+    const dates = trendData.map((d: { parsedDate: Date }) => d.parsedDate);
     const maxTicks =
       chartWidth > 0 ? Math.max(3, Math.round(chartWidth / 60)) : dates.length;
     if (dates.length <= maxTicks) return dates;
     const step = Math.ceil(dates.length / maxTicks);
-    return dates.filter((_, i) => i % step === 0);
+    return dates.filter((_: Date, i: number) => i % step === 0);
   });
 
   function formatVulnDb(schema: string | null, built: string | null): string {
