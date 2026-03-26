@@ -7,6 +7,7 @@ from sqlmodel import Session, func, select
 
 from ..api_helpers import (
     _as_utc,
+    _compute_vuln_diff,
     _latest_vuln_scan_ids_for_images,
     _new_vuln_keys_for_scans,
     _priority_bucket,
@@ -515,21 +516,9 @@ def get_container_scan_history(
             )
         else:
             prev_keys = keys_by_scan.get(prev.id, set())
-            prev_cves = {k[0] for k in prev_keys}
-            # Diff at the CVE level: only count a CVE as added/removed when it
-            # is entirely new or completely gone — not when it merely shifted packages.
-            added_cve_ids = current_cves - prev_cves
-            removed_cve_ids = prev_cves - current_cves
-            added_items = [
-                vuln_details[(scan.id, k)]
-                for k in current_keys
-                if k[0] in added_cve_ids and (scan.id, k) in vuln_details
-            ]
-            removed_items = [
-                vuln_details[(prev.id, k)]
-                for k in prev_keys
-                if k[0] in removed_cve_ids and (prev.id, k) in vuln_details
-            ]
+            added_keys, removed_keys = _compute_vuln_diff(current_keys, prev_keys)
+            added_items = [vuln_details[(scan.id, k)] for k in added_keys if (scan.id, k) in vuln_details]
+            removed_items = [vuln_details[(prev.id, k)] for k in removed_keys if (prev.id, k) in vuln_details]
             entries.append(
                 {
                     "scan_id": scan.id,
@@ -613,14 +602,10 @@ def get_update_scan_diff(scan_id: int, session: Session = Depends(db.get_session
     update_keys = _vuln_keys(update_scan)
     current_keys = _vuln_keys(current_scan) if current_scan else {}
 
-    update_cves = {k[0] for k in update_keys}
-    current_cves = {k[0] for k in current_keys}
+    added_keys, removed_keys = _compute_vuln_diff(set(update_keys.keys()), set(current_keys.keys()))
 
-    added_cve_ids = update_cves - current_cves
-    removed_cve_ids = current_cves - update_cves
-
-    added = [v for k, v in update_keys.items() if k[0] in added_cve_ids]
-    removed = [v for k, v in current_keys.items() if k[0] in removed_cve_ids]
+    added = [update_keys[k] for k in added_keys if k in update_keys]
+    removed = [current_keys[k] for k in removed_keys if k in current_keys]
 
     return {
         "image_name": check.image_name,

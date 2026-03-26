@@ -746,3 +746,46 @@ def test_vulnerabilities_ignores_preview_scan(api_client):
     new_data = client.get("/vulnerabilities?report=new").json()
     new_ids = [v["vuln_id"] for v in new_data["vulnerabilities"]]
     assert VULN_HIGH["vuln_id"] not in new_ids
+
+
+def test_image_tag_change_no_new_vulns_when_same_vulnerabilities(api_client):
+    """When a container is updated to a new image tag with identical vulnerabilities,
+    nothing should be marked as new — no NEW pills, no new_findings count, no entries
+    in report=new. Regression test: old image_name-only predecessor lookup treated the
+    new tag as a baseline, marking all vulns as new even though scan history correctly
+    showed 'No changes'.
+    """
+    client, test_db, (_, mock_vw) = api_client
+    t1 = datetime.now(UTC) - timedelta(hours=2)
+    t2 = datetime.now(UTC) - timedelta(hours=1)
+
+    # First image tag: 2 vulns
+    seed_scan(
+        test_db,
+        "myapp:v1",
+        "sha256:img1",
+        [VULN_CRITICAL, VULN_HIGH],
+        scanned_at=t1,
+        container_names=["my-app"],
+    )
+    # Container updated to new tag — same 2 vulns, nothing changed
+    seed_scan(
+        test_db,
+        "myapp:v2",
+        "sha256:img2",
+        [VULN_CRITICAL, VULN_HIGH],
+        scanned_at=t2,
+        container_names=["my-app"],
+    )
+
+    mock_vw.return_value.list_running_containers.return_value = [
+        _make_running_container("my-app", "myapp:v2", "sha256:img2"),
+    ]
+
+    # report=new must be empty — nothing is actually new
+    new_data = client.get("/vulnerabilities?report=new").json()
+    assert new_data["total_count"] == 0, f"Expected 0 new vulns after tag-only change, got {new_data['total_count']}"
+
+    # Dashboard new_findings must also be 0
+    summary = client.get("/dashboard/summary").json()
+    assert summary["new_findings"] == 0, f"Expected new_findings=0 after tag-only change, got {summary['new_findings']}"
