@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from sqlmodel import Session, func, select
 
-from backend.api_helpers import _new_vuln_keys_for_scans, _previous_scan, _priority_bucket
+from backend.api_helpers import _compute_vuln_diff, _new_vuln_keys_for_scans, _previous_scan, _priority_bucket
 from backend.config import ConfigManager
 from backend.database import Database
 from backend.docker_watcher import DockerWatcher
@@ -125,20 +125,26 @@ def _compute_update_diffs(session: Session, checks: list[ImageUpdateCheck]) -> l
 
     Each entry: {"image_name": str, "status": str, "added": int|None, "removed": int|None}
     added/removed are None when the update scan has not yet completed.
-    Counts unique CVE IDs added/removed in the registry version vs running version.
+    Counts unique (vuln_id, package_name, installed_version) tuples added/removed in the
+    registry version vs running version — consistent with the 'new' pill and scan history.
     """
     results: list[dict] = []
     for check in checks:
         entry: dict = {"image_name": check.image_name, "status": check.status, "added": None, "removed": None}
         if check.status == "scan_complete" and check.update_scan_id and check.current_scan_id:
-            update_cves = set(
-                session.exec(select(Vulnerability.vuln_id).where(Vulnerability.scan_id == check.update_scan_id)).all()
-            )
-            current_cves = set(
-                session.exec(select(Vulnerability.vuln_id).where(Vulnerability.scan_id == check.current_scan_id)).all()
-            )
-            entry["added"] = len(update_cves - current_cves)
-            entry["removed"] = len(current_cves - update_cves)
+            update_rows = session.exec(
+                select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
+                    Vulnerability.scan_id == check.update_scan_id
+                )
+            ).all()
+            current_rows = session.exec(
+                select(Vulnerability.vuln_id, Vulnerability.package_name, Vulnerability.installed_version).where(
+                    Vulnerability.scan_id == check.current_scan_id
+                )
+            ).all()
+            added_keys, removed_keys = _compute_vuln_diff(set(update_rows), set(current_rows))
+            entry["added"] = len(added_keys)
+            entry["removed"] = len(removed_keys)
         results.append(entry)
     return results
 
@@ -189,11 +195,11 @@ def _build_digest_tier1(data: dict) -> str:
             if u["status"] == "scan_complete":
                 added, removed = u["added"], u["removed"]
                 if added and removed:
-                    lines.append(f"{u['image_name']}: +{added} added, {removed} fixed")
+                    lines.append(f"{u['image_name']}: +{added} added, {removed} removed")
                 elif added:
                     lines.append(f"{u['image_name']}: +{added} added")
                 elif removed:
-                    lines.append(f"{u['image_name']}: {removed} fixed")
+                    lines.append(f"{u['image_name']}: {removed} removed")
                 else:
                     lines.append(f"{u['image_name']}: no vuln changes")
             elif u["status"] == "scan_pending":

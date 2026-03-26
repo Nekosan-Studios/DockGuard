@@ -1203,7 +1203,7 @@ class TestBuildDigestBody:
         assert "Updates available" in body
         assert "nginx:latest" in body
         assert "+5 added" in body
-        assert "2 fixed" in body
+        assert "2 removed" in body
         assert "scan in progress" in body
 
     def test_tier2_omits_per_image_detail(self):
