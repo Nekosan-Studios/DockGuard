@@ -176,7 +176,9 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="max-w-3xl max-h-[85vh] overflow-y-auto">
+  <Dialog.Content
+    class="max-w-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden"
+  >
     <Dialog.Header>
       <Dialog.Title>Scan History — {container.container_name}</Dialog.Title>
       <Dialog.Description class="font-mono text-xs truncate">
