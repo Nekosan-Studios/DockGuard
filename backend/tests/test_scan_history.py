@@ -161,6 +161,64 @@ class TestScanHistoryDiff:
         s1 = entries[2]
         assert s1["is_baseline"] is True
 
+    def test_same_cve_new_package_version_shows_as_added_and_removed(self, api_client):
+        """Same CVE appearing in a new package version must show as added/removed.
+
+        Regression test: the old CVE-ID-only diff treated this as 'No changes'
+        because the CVE ID was still present. The correct behaviour is to diff
+        on (vuln_id, package_name, installed_version) tuples, consistent with
+        the 'new' pill and notification logic.
+        """
+        client, test_db, _ = api_client
+        t1 = datetime.now(UTC) - timedelta(hours=2)
+        t2 = datetime.now(UTC) - timedelta(hours=1)
+
+        vuln_v1 = dict(
+            vuln_id="CVE-2024-9999",
+            severity="High",
+            package_name="openssl",
+            installed_version="3.0.0",
+            cvss_base_score=7.5,
+            is_kev=False,
+            epss_score=0.10,
+            epss_percentile=0.70,
+            risk_score=60.0,
+            fix_state="fixed",
+            fixed_version="3.0.1",
+        )
+        vuln_v2 = {**vuln_v1, "installed_version": "3.0.1", "fixed_version": "3.0.2"}
+
+        seed_scan(
+            test_db,
+            "myapp:latest",
+            "sha256:img1",
+            [vuln_v1],
+            scanned_at=t1,
+            container_names=["my-app"],
+        )
+        seed_scan(
+            test_db,
+            "myapp:latest",
+            "sha256:img2",
+            [vuln_v2],
+            scanned_at=t2,
+            container_names=["my-app"],
+        )
+
+        response = client.get("/containers/my-app/scan-history")
+        assert response.status_code == 200
+        data = response.json()
+
+        latest = data["entries"][0]
+        assert latest["is_baseline"] is False
+        # Same CVE but different installed_version — must appear as both added and removed
+        assert len(latest["added"]) == 1
+        assert latest["added"][0]["vuln_id"] == "CVE-2024-9999"
+        assert latest["added"][0]["installed_version"] == "3.0.1"
+        assert len(latest["removed"]) == 1
+        assert latest["removed"][0]["vuln_id"] == "CVE-2024-9999"
+        assert latest["removed"][0]["installed_version"] == "3.0.0"
+
 
 class TestScanHistoryMultipleImageNames:
     def test_image_tag_change_produces_single_baseline(self, api_client):

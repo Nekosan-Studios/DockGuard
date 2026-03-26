@@ -120,6 +120,18 @@ def _previous_scan(session: Session, scan: Scan) -> Scan | None:
     ).first()
 
 
+def _compute_vuln_diff(
+    current_keys: set[tuple[str, str, str]],
+    prev_keys: set[tuple[str, str, str]],
+) -> tuple[set[tuple[str, str, str]], set[tuple[str, str, str]]]:
+    """Return (added_keys, removed_keys) using (vuln_id, pkg, version) tuples.
+
+    Both callers — scan history and new-vuln marking — must use this function
+    so their definition of 'new' stays in sync.
+    """
+    return current_keys - prev_keys, prev_keys - current_keys
+
+
 def _new_vuln_keys_for_scans(session: Session, scans: list[Scan]) -> dict[int, set[tuple[str, str, str]]]:
     """Batch-compute new vulnerability keys for each scan vs its predecessor.
 
@@ -170,7 +182,8 @@ def _new_vuln_keys_for_scans(session: Session, scans: list[Scan]) -> dict[int, s
         if prev is None:
             result[scan.id] = current_keys
         else:
-            result[scan.id] = current_keys - keys_by_scan.get(prev.id, set())
+            added_keys, _ = _compute_vuln_diff(current_keys, keys_by_scan.get(prev.id, set()))
+            result[scan.id] = added_keys
 
     return result
 
