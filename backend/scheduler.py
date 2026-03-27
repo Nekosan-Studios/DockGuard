@@ -272,7 +272,9 @@ class ContainerScheduler:
                 await asyncio.sleep(RECONNECT_DELAY)
 
     async def _run_check_db_update(self) -> None:
-        await check_db_update(self.db, self._seen_digests)
+        triggered = await check_db_update(self.db, self._seen_digests)
+        if triggered:
+            await check_running_containers(self.db, self._seen_digests, self._scan_semaphore, write_snapshot=True)
 
     async def _run_purge_old_data(self) -> None:
         await purge_old_data(self.db, self.scan_retention_days, self.task_retention_days)

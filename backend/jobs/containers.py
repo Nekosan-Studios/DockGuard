@@ -19,6 +19,7 @@ async def _run_scans_then_notify(
     scan_coros: list,
     scan_task_ids: list[int],
     running_containers: list[dict],
+    write_snapshot: bool = False,
 ) -> None:
     """Run all scan coroutines, then process notifications for the batch."""
     results = await asyncio.gather(*scan_coros, return_exceptions=True)
@@ -48,7 +49,8 @@ async def _run_scans_then_notify(
 
         # Write an environment snapshot capturing the FULL environment state —
         # counts across ALL running images, not just the scanned batch.
-        if scan_ids:
+        # Only written when a grype DB update triggered a full rescan.
+        if scan_ids and write_snapshot:
             running_image_names = {img["image_name"] for img in running_containers}
             if running_image_names:
                 latest_scan_id_subq = _latest_vuln_scan_ids_for_images(running_image_names)
@@ -81,6 +83,7 @@ async def check_running_containers(
     db: Database,
     seen_digests: set[str],
     scan_semaphore: asyncio.Semaphore,
+    write_snapshot: bool = False,
 ) -> None:
     """Scheduled job: detect new/updated running containers and trigger scans."""
     now = datetime.now(UTC)
@@ -171,7 +174,7 @@ async def check_running_containers(
 
         # Gather scans and notify on completion instead of fire-and-forget
         if scan_coros:
-            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids, running))
+            asyncio.create_task(_run_scans_then_notify(db, scan_coros, scan_task_ids, running, write_snapshot))
 
         with Session(db.engine) as session:
             task = session.get(SystemTask, task_id)

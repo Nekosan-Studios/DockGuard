@@ -168,11 +168,20 @@
   let chartWidth = $state(0);
   const xTicks = $derived((): Date[] => {
     const dates = trendData.map((d: { parsedDate: Date }) => d.parsedDate);
+    const uniqueDates = dates.filter(
+      (date: Date, i: number) =>
+        dates.findIndex(
+          (d: Date) =>
+            d.toISOString().slice(0, 10) === date.toISOString().slice(0, 10)
+        ) === i
+    );
     const maxTicks =
-      chartWidth > 0 ? Math.max(3, Math.round(chartWidth / 60)) : dates.length;
-    if (dates.length <= maxTicks) return dates;
-    const step = Math.ceil(dates.length / maxTicks);
-    return dates.filter((_: Date, i: number) => i % step === 0);
+      chartWidth > 0
+        ? Math.max(3, Math.round(chartWidth / 60))
+        : uniqueDates.length;
+    if (uniqueDates.length <= maxTicks) return uniqueDates;
+    const step = Math.ceil(uniqueDates.length / maxTicks);
+    return uniqueDates.filter((_: Date, i: number) => i % step === 0);
   });
 
   function formatVulnDb(schema: string | null, built: string | null): string {
