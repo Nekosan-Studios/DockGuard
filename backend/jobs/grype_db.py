@@ -56,7 +56,7 @@ async def fetch_grype_info() -> tuple[str | None, str | None, datetime | None]:
     return grype_version, db_schema, db_built
 
 
-async def check_db_update(db: Database, seen_digests: set[str]) -> None:
+async def check_db_update(db: Database, seen_digests: set[str]) -> bool:
     """Scheduled job: check if a newer grype DB is available.
 
     Uses 'grype db check' exit codes:
@@ -88,6 +88,7 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
     result_msg = ""
     error_msg = None
     has_error = False
+    triggered = False
     t0 = time.perf_counter()
 
     try:
@@ -127,6 +128,7 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
             else:
                 logger.info("grype db update completed — clearing seen digests to trigger full rescan")
                 seen_digests.clear()
+                triggered = True
                 result_msg = "New DB available. Triggered full rescan."
         else:
             err_text = result.stderr.strip()
@@ -172,3 +174,4 @@ async def check_db_update(db: Database, seen_digests: set[str]) -> None:
 
         session.commit()
     logger.info("Persisted last_db_checked_at = %s, grype_version = %s, db_built = %s", now, grype_version, db_built)
+    return triggered
