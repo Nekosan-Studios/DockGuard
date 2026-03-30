@@ -1,0 +1,89 @@
+name: Check for Python Updates
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Daily, 06:00 UTC (offset from grype at 06:00, node at 06:15)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_WORKFLOW_PAT }}
+
+      - name: Get latest Python 3.14 patch
+        id: latest
+        run: |
+          LATEST=$(curl -s https://endoflife.date/api/python/3.14.json | jq -r '.latest')
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest Python 3.14: $LATEST"
+
+      - name: Get current pinned Python version
+        id: current
+        run: |
+          CURRENT=$(grep -oP '3\.14\.\d+' docker/Dockerfile | head -1)
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Current Python: $CURRENT"
+
+      - name: Check if update needed
+        id: check
+        run: |
+          if [ "${{ steps.latest.outputs.version }}" != "${{ steps.current.outputs.version }}" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "Update needed: ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date: ${{ steps.current.outputs.version }}"
+          fi
+
+      - name: Create update PR
+        if: steps.check.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_WORKFLOW_PAT }}
+          CURRENT: ${{ steps.current.outputs.version }}
+          LATEST: ${{ steps.latest.outputs.version }}
+        run: |
+          BRANCH="chore/python-${LATEST}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          # Update Dockerfile base image tag
+          sed -i "s|dhi.io/python:${CURRENT}-dev|dhi.io/python:${LATEST}-dev|g" docker/Dockerfile
+
+          # Update pyproject.toml minimum version (keeps Dockerfile and pyproject in sync)
+          sed -i "s|requires-python = \">=${CURRENT}\"|requires-python = \">=${LATEST}\"|g" pyproject.toml
+
+          # Update .python-version (keeps local dev environment in sync)
+          echo "${LATEST}" > .python-version
+
+          git add docker/Dockerfile pyproject.toml .python-version
+          git commit -m "chore: bump Python ${CURRENT} → ${LATEST}"
+          git push origin "$BRANCH"
+
+          echo "## Python version update"                                                          > /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "Bumps the pinned Python runtime from \`${CURRENT}\` to \`${LATEST}\`."           >> /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "**Files updated:**"                                                                >> /tmp/pr_body.md
+          echo "- \`docker/Dockerfile\` — base image \`dhi.io/python:${CURRENT}-dev\` → \`dhi.io/python:${LATEST}-dev\`" >> /tmp/pr_body.md
+          echo "- \`pyproject.toml\` — \`requires-python = \">=${CURRENT}\"\` → \`\">=${LATEST}\"\`" >> /tmp/pr_body.md
+          echo "- \`.python-version\` — pyenv local version pin"                                  >> /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "**Release notes:** https://www.python.org/downloads/release/python-${LATEST//./}/" >> /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "_Automated by the [Check for Python Updates](/.github/workflows/update-python.yml) workflow._" >> /tmp/pr_body.md
+
+          gh pr create \
+            --title "chore: bump Python ${CURRENT} → ${LATEST}" \
+            --body-file /tmp/pr_body.md \
+            --label "dependencies" \
+            --head "$BRANCH" \
+            --base master

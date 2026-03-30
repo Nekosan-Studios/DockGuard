@@ -5,7 +5,7 @@ This document covers everything you need to get a local development environment 
 ## Prerequisites
 
 - [uv](https://github.com/astral-sh/uv) — Python package manager
-- [Node.js](https://nodejs.org/) (v20+) and npm
+- [Node.js](https://nodejs.org/) 24 LTS and npm — version is pinned in `.nvmrc`; run `nvm use` or `nvm install` to activate it
 - [Grype](https://github.com/anchore/grype) — vulnerability scanner (`brew install grype` on Mac)
 - Docker (for e2e tests and Docker dev builds)
 

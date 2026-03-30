@@ -1,5 +1,5 @@
 # ── Stage 1: Frontend Builder ──────────────────────────────────────────
-FROM node:25-alpine AS frontend-builder
+FROM node:24.14.1-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -19,7 +19,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: Backend & Base Image ──────────────────────────────────────
-FROM dhi.io/python:3.13-dev
+FROM dhi.io/python:3.14.3-dev
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
