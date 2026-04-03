@@ -7,7 +7,7 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
   import * as Pagination from "$lib/components/ui/pagination";
-  import { AreaChart, getTooltipContext } from "layerchart";
+  import { AreaChart } from "layerchart";
   import { curveMonotoneX } from "d3-shape";
   import Shield from "@lucide/svelte/icons/shield";
   import Container from "@lucide/svelte/icons/container";
@@ -465,9 +465,8 @@
                 },
               }}
             >
-              {#snippet tooltip()}
-                {@const ctx = getTooltipContext()}
-                {@const isNow = ctx.payload?.[0]?.payload?.isNow ?? false}
+              {#snippet tooltip({ context })}
+                {@const isNow = context.tooltip.data?.isNow ?? false}
                 <Chart.Tooltip
                   indicator="line"
                   label={isNow ? "Now" : undefined}
