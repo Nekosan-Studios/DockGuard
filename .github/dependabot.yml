@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # npm — Svelte, SvelteKit, Vite, Tailwind, layerchart, shadcn deps, etc.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    groups:
+      svelte:
+        patterns:
+          - "svelte"
+          - "@sveltejs/*"
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vitest"
+          - "@vitest/*"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+
+  # GitHub Actions — actions/checkout, setup-node, docker/build-push-action, etc.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+
+  # Docker Hub base image — node:24.x.y-alpine (patch tracking via update-node.yml handles Python/dhi.io)
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
