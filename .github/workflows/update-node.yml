@@ -1,0 +1,87 @@
+name: Check for Node.js Updates
+
+on:
+  schedule:
+    - cron: '15 6 * * *'   # Daily, 06:15 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_WORKFLOW_PAT }}
+
+      - name: Get latest Node.js 24 LTS patch
+        id: latest
+        run: |
+          LATEST=$(curl -s https://nodejs.org/dist/index.json \
+            | jq -r '[.[] | select(.lts != false and (.version | startswith("v24"))) | .version][0]' \
+            | sed 's/^v//')
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest Node 24 LTS: $LATEST"
+
+      - name: Get current pinned Node.js version
+        id: current
+        run: |
+          CURRENT=$(grep -oP '24\.\d+\.\d+' docker/Dockerfile | head -1)
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Current Node: $CURRENT"
+
+      - name: Check if update needed
+        id: check
+        run: |
+          if [ "${{ steps.latest.outputs.version }}" != "${{ steps.current.outputs.version }}" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "Update needed: ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date: ${{ steps.current.outputs.version }}"
+          fi
+
+      - name: Create update PR
+        if: steps.check.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_WORKFLOW_PAT }}
+          CURRENT: ${{ steps.current.outputs.version }}
+          LATEST: ${{ steps.latest.outputs.version }}
+        run: |
+          BRANCH="chore/node-${LATEST}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          # Update Dockerfile build stage (patch-pinned tag)
+          sed -i "s|node:${CURRENT}-alpine|node:${LATEST}-alpine|g" docker/Dockerfile
+
+          # Update .nvmrc (keeps local dev environment in sync)
+          echo "${LATEST}" > .nvmrc
+
+          git add docker/Dockerfile .nvmrc
+          git commit -m "chore: bump Node.js ${CURRENT} → ${LATEST}"
+          git push origin "$BRANCH"
+
+          echo "## Node.js version update"                                                         > /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "Bumps the pinned Node.js build stage from \`${CURRENT}\` to \`${LATEST}\`."      >> /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "**Files updated:**"                                                                >> /tmp/pr_body.md
+          echo "- \`docker/Dockerfile\` — \`node:${CURRENT}-alpine\` → \`node:${LATEST}-alpine\`" >> /tmp/pr_body.md
+          echo "- \`.nvmrc\` — nvm local version pin"                                             >> /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "**Changelog:** https://github.com/nodejs/node/blob/main/CHANGELOG.md"             >> /tmp/pr_body.md
+          echo ""                                                                                  >> /tmp/pr_body.md
+          echo "_Automated by the [Check for Node.js Updates](/.github/workflows/update-node.yml) workflow._" >> /tmp/pr_body.md
+
+          gh pr create \
+            --title "chore: bump Node.js ${CURRENT} → ${LATEST}" \
+            --body-file /tmp/pr_body.md \
+            --label "dependencies" \
+            --head "$BRANCH" \
+            --base master
