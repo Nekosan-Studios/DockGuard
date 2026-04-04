@@ -10,12 +10,10 @@
 
 DockGuard is a free, self-hosted security scanner. It watches your running Docker containers, automatically scans every image for known vulnerabilities, and gives you a clean web dashboard to understand your exposure.
 
-> **Notes on Security:** 
-- The recommended setup uses a proxy to ensure that DockGuard has minimal access to your Docker installation. 
-- DockerGuard is currently limited to single-host setups. Features like multi-user support and connecting to multiple Docker installations are on the roadmap, but not yet available.  
-- Because DockGuard does not currently have authentication or user login, do not expose it directly to the internet or untrusted networks. Run it behind a VPN, reverse proxy with authentication, or bind it only to `localhost` / your local network. If you need remote access, place it behind a solution like Authelia, Authentik, or your reverse proxy's built-in auth.
-
-## Screenshots
+</br>
+<details>
+  <summary><b>View Screenshots</b> (Click to expand)</summary>
+</br>
 
 **Dashboard**
 ![Dashboard](docs/screenshots/dashboard.png)
@@ -31,6 +29,8 @@ DockGuard is a free, self-hosted security scanner. It watches your running Docke
 
 **Scan History**
 ![Scan History](docs/screenshots/scanhistory.png)
+
+</details>
 
 ## Features
 
@@ -54,6 +54,10 @@ DockGuard is a free, self-hosted security scanner. It watches your running Docke
 
 - **Fully self-hosted** — No cloud account. No telemetry. No subscription. DockGuard runs entirely on your machine and stores all data locally in a SQLite database.
 
+> **Notes on Security:** 
+- The recommended setup uses a proxy to ensure that DockGuard has minimal access to your Docker installation. 
+- DockerGuard is currently limited to single-host setups. Features like multi-user support and connecting to multiple Docker installations are on the roadmap, but not yet available.  
+- Because DockGuard does not currently have authentication or user login, do not expose it directly to the internet or untrusted networks. Run it behind a VPN, reverse proxy with authentication, or bind it only to `localhost` / your local network. If you need remote access, place it behind a solution like Authelia, Authentik, or your reverse proxy's built-in auth.
 
 ## Requirements
 
