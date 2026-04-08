@@ -19,7 +19,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: Backend & Base Image ──────────────────────────────────────
-FROM dhi.io/python:3.14.3-dev
+FROM dhi.io/python:3.14.4-dev
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
