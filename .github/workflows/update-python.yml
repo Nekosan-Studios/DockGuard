@@ -60,11 +60,16 @@ jobs:
 
           # Update pyproject.toml minimum version (keeps Dockerfile and pyproject in sync)
           sed -i "s|requires-python = \">=${CURRENT}\"|requires-python = \">=${LATEST}\"|g" pyproject.toml
+          sed -i "s|requires-python = \">=${CURRENT}\"|requires-python = \">=${LATEST}\"|g" uv.lock
 
           # Update .python-version (keeps local dev environment in sync)
           echo "${LATEST}" > .python-version
 
-          git add docker/Dockerfile pyproject.toml .python-version
+          # Update CI setup-python pin so tests use the exact runtime required by pyproject.toml
+          sed -i "s|python-version: \"${CURRENT%.*}\"|python-version: \"${LATEST}\"|g" .github/workflows/ci.yml
+          sed -i "s|python-version: \"${CURRENT}\"|python-version: \"${LATEST}\"|g" .github/workflows/ci.yml
+
+          git add docker/Dockerfile pyproject.toml uv.lock .python-version .github/workflows/ci.yml
           git commit -m "chore: bump Python ${CURRENT} → ${LATEST}"
           git push origin "$BRANCH"
 
@@ -75,7 +80,9 @@ jobs:
           echo "**Files updated:**"                                                                >> /tmp/pr_body.md
           echo "- \`docker/Dockerfile\` — base image \`dhi.io/python:${CURRENT}-dev\` → \`dhi.io/python:${LATEST}-dev\`" >> /tmp/pr_body.md
           echo "- \`pyproject.toml\` — \`requires-python = \">=${CURRENT}\"\` → \`\">=${LATEST}\"\`" >> /tmp/pr_body.md
+          echo "- \`uv.lock\` — \`requires-python = \">=${CURRENT}\"\` → \`\">=${LATEST}\"\`" >> /tmp/pr_body.md
           echo "- \`.python-version\` — pyenv local version pin"                                  >> /tmp/pr_body.md
+          echo "- \`.github/workflows/ci.yml\` — setup-python runtime pin \`${CURRENT%.*}\`/\`${CURRENT}\` → \`${LATEST}\`" >> /tmp/pr_body.md
           echo ""                                                                                  >> /tmp/pr_body.md
           echo "**Release notes:** https://www.python.org/downloads/release/python-${LATEST//./}/" >> /tmp/pr_body.md
           echo ""                                                                                  >> /tmp/pr_body.md
