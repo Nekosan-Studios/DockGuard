@@ -1,5 +1,5 @@
 # ── Stage 1: Frontend Builder ──────────────────────────────────────────
-FROM node:24.14.1-alpine AS frontend-builder
+FROM node:24.15.0-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -19,7 +19,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: Backend & Base Image ──────────────────────────────────────
-FROM dhi.io/python:3.14.3-dev
+FROM dhi.io/python:3.14.4-dev
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install grype
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
-    | sh -s -- -b /usr/local/bin v0.110.0
+    | sh -s -- -b /usr/local/bin v0.111.0
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

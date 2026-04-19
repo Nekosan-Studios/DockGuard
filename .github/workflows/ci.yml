@@ -41,7 +41,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.14"
+          python-version: "3.14.4"
 
       - name: Install Python dependencies
         run: uv sync --frozen
@@ -52,7 +52,7 @@ jobs:
       - name: Install grype (for e2e tests)
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
-            | sh -s -- -b /usr/local/bin v0.110.0
+            | sh -s -- -b /usr/local/bin v0.111.0
 
       - name: Run pytest (including e2e)
         run: uv run pytest -m ""
