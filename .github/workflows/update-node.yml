@@ -55,7 +55,12 @@ jobs:
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -b "$BRANCH"
+          fi
 
           # Update Dockerfile build stage (patch-pinned tag)
           sed -i "s|node:${CURRENT}-alpine|node:${LATEST}-alpine|g" docker/Dockerfile
@@ -64,8 +69,12 @@ jobs:
           echo "${LATEST}" > .nvmrc
 
           git add docker/Dockerfile .nvmrc
+          if git diff --cached --quiet; then
+            echo "No Node.js update changes to commit."
+            exit 0
+          fi
           git commit -m "chore: bump Node.js ${CURRENT} → ${LATEST}"
-          git push origin "$BRANCH"
+          git push --force-with-lease origin "$BRANCH"
 
           echo "## Node.js version update"                                                         > /tmp/pr_body.md
           echo ""                                                                                  >> /tmp/pr_body.md
@@ -78,6 +87,11 @@ jobs:
           echo "**Changelog:** https://github.com/nodejs/node/blob/main/CHANGELOG.md"             >> /tmp/pr_body.md
           echo ""                                                                                  >> /tmp/pr_body.md
           echo "_Automated by the [Check for Node.js Updates](/.github/workflows/update-node.yml) workflow._" >> /tmp/pr_body.md
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --base master --state open --json number --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ]; then
+            echo "PR #$PR_NUMBER already exists for $BRANCH."
+            exit 0
+          fi
 
           gh pr create \
             --title "chore: bump Node.js ${CURRENT} → ${LATEST}" \
