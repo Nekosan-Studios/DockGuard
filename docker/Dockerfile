@@ -1,5 +1,5 @@
 # ── Stage 1: Frontend Builder ──────────────────────────────────────────
-FROM node:24.14.1-alpine AS frontend-builder
+FROM node:24.15.0-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
