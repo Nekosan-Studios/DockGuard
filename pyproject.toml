@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest", "httpx", "pytest-cov", "ruff>=0.9"]
+dev = ["pytest>=9.0.3", "httpx", "pytest-cov", "ruff>=0.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
